@@ -22,7 +22,7 @@ class Pipeline():
     ii) abundance estimation and iii) spectrum stacking.
     """
 
-    def __init__(self, config, objId = None, pfsConfig: dict = None, pfsSingle: dict = None):
+    def __init__(self, config: Config, objId = None, pfsConfig: dict = None, pfsSingle: dict = None):
         """
         Initializes a GA Pipeline object for processing of individual exposures of a
         single object.
@@ -41,7 +41,13 @@ class Pipeline():
         """
         
         self.__config = config
-        self.__objId = objId
+        
+        self.__logger = logging.getLogger('gapipe')
+        self.__logfile = None
+        self.__logFormatter = None
+        self.__logFileHandler = None
+        self.__logConsoleHandler = None
+
         self.__pfsConfig = pfsConfig          
         self.__pfsSingle = pfsSingle
         self.__pfsGAObject = None
@@ -100,9 +106,9 @@ class Pipeline():
     def __get_tracebacks(self):
         return self.__tracebacks
 
-    def verify(self):
+    def validate(self):
         """
-        Verifies the configuration and the existence of all necessary input data. Returns
+        Validates the configuration and the existence of all necessary input data. Returns
         `True` if the pipeline can proceed or 'False' if it cannot.
 
         Return
@@ -110,6 +116,15 @@ class Pipeline():
         :bool:
             `True` if the pipeline can proceed or 'False' if it cannot.
         """
+
+        if not os.path.isdir(self.__config.workdir):
+            raise FileNotFoundError(f'Working directory `{self.__config.workdir}` does not exist.')
+        
+        if not os.path.isdir(self.__config.rerundir):
+            raise FileNotFoundError(f'Data directory `{self.__config.rerundir}` does not exist.')
+        
+        if not os.path.isfile(self.__config.modelGridPath):
+            raise FileNotFoundError(f'Synthetic spectrum grid `{self.__config.modelGridPath}` does not exist.')
 
         return True
 
@@ -119,7 +134,7 @@ class Pipeline():
         the inferred parameters and the co-added spectrum.
         """
 
-        if not self._start_logging():
+        if not self.__start_logging():
             return None
         
         for i, step in enumerate(self._steps):
@@ -130,12 +145,43 @@ class Pipeline():
         self._stop_logging()
         
         return self._pfsGAObject
+    
+    def __create_dir(self, dir, name):
+        if not os.path.isdir(dir):
+            os.makedirs(dir, exist_ok=True)
+            logging.debug(f'Created {name} directory `{dir}`.')
+        else:
+            logging.debug(f'Found existing {name} directory `{dir}`.')
 
     def __start_logging(self):
-        pass
+        self.__create_dir(self.__config.logdir, 'log')
+
+        self.__logfile = os.path.join(self.__config.logdir, f'gapipe_{self.__config.objId:016x}.log')
+        self.__logFormatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
+        self.__logFileHandler = logging.FileHandler(self.__logfile)
+        self.__logFileHandler.setFormatter(self.__logFormatter)
+        self.__logConsoleHandler = logging.StreamHandler()
+        self.__logConsoleHandler.setFormatter(self.__logFormatter)
+
+        # Configure root logger
+        root = logging.getLogger()
+        root.handlers = []
+        root.setLevel(self.__config.loglevel)
+        root.addHandler(self.__logFileHandler)
+        root.addHandler(self.__logConsoleHandler)
+ 
+        self.__logger.propagate = True
+        self.__logger.setLevel(self.__config.loglevel)
+
+        self.__logger.info(f'Logging started to `{self.__logfile}`.')
 
     def __stop_logging(self):
-        pass
+        self.__logger.info(f'Logging finished to `{self.__logfile}`.')
+
+        # Disconnect file logger and re-assign stderr
+        root = logging.getLogger()
+        root.handlers = []
+        root.addHandler(logging.StreamHandler())
 
     def __execute_step(self, name, step):
         """
@@ -144,21 +190,22 @@ class Pipeline():
         """
 
         try:
-            logging.info(f'Executing GA pipeline step `{name}` for objID={self._objId}.')
-
-
-
-            logging.info(f'GA pipeline step `{name}` for objID={self._objId} completed successfully.')
+            self.__logger.info(f'Executing GA pipeline step `{name}` for objID={self._objId}.')
+            step()
+            self.__logger.info(f'GA pipeline step `{name}` for objID={self._objId} completed successfully.')
             return True
         except Exception as ex:
-            logging.info(f'GA pipeline step `{name}` for objID={self._objId} failed with error `{type(ex).__name__}`.')
+            self.__logger.info(f'GA pipeline step `{name}` for objID={self._objId} failed with error `{type(ex).__name__}`.')
+            self.__logger.exception(ex)
+            
             self.__exceptions.append(ex)
             self.__tracebacks.append(traceback.format_tb(ex.traceback))
             return False
 
     def __step_init(self):
-        # TODO: create output directories
-        raise NotImplementedError()
+        # Create output directories
+        self.__create_dir(self.__config.outdir, 'output')
+        self.__create_dir(self.__config.figdir, 'figure')
 
     def __step_load(self):
         # TODO: open synthetic grid
