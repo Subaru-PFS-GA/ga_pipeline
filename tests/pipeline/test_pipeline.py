@@ -8,7 +8,7 @@ class TestPipeline(TestCase):
         config = Config()
         config.workdir = os.path.expandvars('${PFS_GA_TEMP}')
         config.logdir = os.path.expandvars('${PFS_GA_TEMP}/log')
-        config.rerundir = os.path.expandvars('${PFS_GA_DATA_RERUN}')
+        config.datadir = os.path.expandvars('${PFS_GA_DATA_RERUN}')
         config.outdir = os.path.expandvars('${PFS_GA_TEMP}')
         config.figdir = os.path.expandvars('${PFS_GA_TEMP}')
         config.modelGridPath = os.path.expandvars('${PFS_GA_SYNTH_GRID}/phoenix/phoenix_HiRes_FGK/spectra.h5')
@@ -61,7 +61,7 @@ class TestPipeline(TestCase):
         pipeline = self.get_test_pipeline(config)
         pipeline.validate()
 
-    def test_start_logging(self):
+    def test_start_stop_logging(self):
         config = self.get_test_config()
         pipeline = self.get_test_pipeline(config)
         pipeline._Pipeline__start_logging()
@@ -70,3 +70,14 @@ class TestPipeline(TestCase):
         self.assertTrue(os.path.isfile(pipeline._Pipeline__logfile))
         os.remove(pipeline._Pipeline__logfile)
 
+    def test_set_load(self):
+        config = self.get_test_config()
+        pipeline = self.get_test_pipeline(config)
+        pipeline._Pipeline__start_logging()
+        
+        pipeline._Pipeline__step_load()
+        
+        pipeline._Pipeline__stop_logging()
+
+        self.assertEqual(3, len(pipeline._Pipeline__pfsConfig))
+        self.assertEqual(3, len(pipeline._Pipeline__pfsSingle))

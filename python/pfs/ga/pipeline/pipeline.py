@@ -1,8 +1,10 @@
 import os
 import logging
 import traceback
+import time
 
-from pfs.datamodel import PfsConfig
+from pfs.datamodel import PfsConfig, PfsSingle
+from pfs.ga.datamodel import PfsGAObject
 
 from .config import Config
 
@@ -48,10 +50,6 @@ class Pipeline():
         self.__logFileHandler = None
         self.__logConsoleHandler = None
 
-        self.__pfsConfig = pfsConfig          
-        self.__pfsSingle = pfsSingle
-        self.__pfsGAObject = None
-
         self.__exceptions = []
         self.__tracebacks = []
 
@@ -92,6 +90,10 @@ class Pipeline():
                 'critical': False
             },
         ]
+
+        self.__pfsConfig = pfsConfig          
+        self.__pfsSingle = pfsSingle
+        self.__pfsGAObject = None
 
     def __get_pfsGAObject(self):
         return self.__pfsGAObject
@@ -183,6 +185,11 @@ class Pipeline():
         root.handlers = []
         root.addHandler(logging.StreamHandler())
 
+        # Destroy logging objects (but keep last filename)
+        self.__logFormatter = None
+        self.__logFileHandler = None
+        self.__logConsoleHandler = None
+
     def __execute_step(self, name, step):
         """
         Execute a single processing step. Handle exceptions and return `True` if the
@@ -208,8 +215,40 @@ class Pipeline():
         self.__create_dir(self.__config.figdir, 'figure')
 
     def __step_load(self):
-        # TODO: open synthetic grid
-        raise NotImplementedError()
+        # Load each PfsConfig and PfsSingle file. Make sure that PfsConfig loaded only once if
+        # repeated between exposures.
+
+        self.__pfsConfig = {}
+        self.__pfsSingle = {}
+
+        start_time = time.perf_counter()
+
+        for i, visit in enumerate(self.__config.visit):
+            identity = {
+                'catId': self.__config.catId[visit],
+                'tract': self.__config.tract[visit],
+                'patch': self.__config.patch[visit],
+                'objId': self.__config.objId,
+                'visit': visit
+            }
+
+            dir = os.path.join(self.__config.datadir, 'pfsSingle/{catId:05d}/{tract:05d}/{patch}'.format(**identity))
+            fn = PfsSingle.filenameFormat % identity
+            self.__logger.info(f'Loading PfsSingle from `{os.path.join(dir, fn)}`.')
+            single =  PfsSingle.read(identity, dirName=dir)
+            self.__pfsSingle[visit] = single
+
+            dir = os.path.join(self.__config.datadir, 'pfsConfig/{date}'.format(date=self.__config.date[visit]))
+            fn = PfsConfig.fileNameFormat % (self.__config.designId[visit], visit)
+            self.__logger.info(f'Loading PfsConfig from `{os.path.join(dir, fn)}`.')
+            config = PfsConfig.read(self.__config.designId[visit], visit, dirName=dir)
+            self.__pfsConfig[visit] = config
+
+        stop_time = time.perf_counter()
+        self.__logger.info(f'PFS data files loaded successfully for {len(self.__pfsSingle)} exposures in {stop_time - start_time:.3f} s.')
+
+        # Construct the output object that will filled up by subsequent steps
+        self.__pfsGAObject = PfsGAObject()
 
     def __step_rvfit(self):
         # TODO: run RV fitting
