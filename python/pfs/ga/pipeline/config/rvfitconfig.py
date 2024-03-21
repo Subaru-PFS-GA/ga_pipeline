@@ -42,6 +42,9 @@ class RVFitConfig(Config):
             "log_g_dist": [ "normal", 3.5, 1.0 ],
             "a_M": 0.0,
             "rv": [-300, 300],
+
+            "flux_corr": True,
+            "flux_corr_deg": 10,
         }
 
         super().__init__(config=config)

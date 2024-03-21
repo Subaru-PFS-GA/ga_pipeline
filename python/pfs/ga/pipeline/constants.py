@@ -1,0 +1,1 @@
+GA_PIPELINE_LOGNAME = 'gapipe'
