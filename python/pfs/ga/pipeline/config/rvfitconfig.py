@@ -47,4 +47,18 @@ class RVFitConfig(Config):
             "flux_corr_deg": 10,
         }
 
+        # RVFIT trace args - these control plotting, etc.
+        # TODO: change these to False by default
+        self.trace_args = {
+            'plot_rv_prior': True,
+            'plot_rv_guess': True,
+            'plot_input_spec': True,
+            'plot_fit_spec': True,
+            'plot_spec_flux_err': True,
+            'plot_spec_mask': True,
+            'plot_spec_cont': True,
+            'plot_params_priors': True,
+            'plot_params_cov': True
+        }
+
         super().__init__(config=config)
