@@ -4,10 +4,10 @@ import traceback
 
 from .constants import *
 from .config.pipelineconfig import PipelineConfig
-from .trace import Trace
+from .pipelinetrace import PipelineTrace
 
 class Pipeline():
-    def __init__(self, config: PipelineConfig, trace: Trace = None):
+    def __init__(self, config: PipelineConfig, trace: PipelineTrace = None):
 
         self.__config = config
         self.__trace = trace
@@ -27,6 +27,11 @@ class Pipeline():
         return self.__config
     
     config = property(__get_config)
+
+    def __get_trace(self):
+        return self.__trace
+    
+    trace = property(__get_trace)
 
     def __get_logger(self):
         return self.__logger

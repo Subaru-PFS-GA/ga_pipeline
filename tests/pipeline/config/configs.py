@@ -58,6 +58,12 @@ TEST_CONFIG_EDR2_90006 = dict(
         },
     ),
     rvfit = dict(
-        fit_arms = [ 'b' ]
-    )
+        fit_arms = [ 'b', 'm', 'n' ],
+        rvfit_args = dict(
+            flux_corr_per_arm = True,
+            flux_corr_per_exp = False,
+            amplitude_per_arm = True,
+            amplitude_per_exp = True,
+        )
+    ),
 )

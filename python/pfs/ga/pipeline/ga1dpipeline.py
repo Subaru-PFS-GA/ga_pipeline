@@ -5,7 +5,7 @@ import numpy as np
 from pfs.datamodel import PfsConfig, PfsSingle
 from pfs.ga.datamodel import PfsGAObject
 
-from pfs.ga.pfsspec.core import Physics, Spectrum
+from pfs.ga.pfsspec.core import Physics
 from pfs.ga.pfsspec.core.obsmod.resampling import FluxConservingResampler, Interp1dResampler
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
@@ -16,6 +16,7 @@ from .pipeline import Pipeline
 from .pipelineerror import PipelineError
 from .config import GA1DPipelineConfig
 from .ga1dpipelinetrace import GA1DPipelineTrace
+from .ga1dspectrum import GA1DSpectrum
 
 
 class GA1DPipeline(Pipeline):
@@ -285,7 +286,7 @@ class GA1DPipeline(Pipeline):
         rvfit = self.__rvfit_init(template_grids, template_psfs)
 
         # Extract the spectra of individual arms from the pfsSingle objects
-        spectra = self.__rvfit_get_spectra(fit_arms)
+        spectra = self.__rvfit_load_spectra(fit_arms)
 
         # Determine the normalization factor to be used to keep continuum coefficients unity
         rvfit.spec_norm, rvfit.temp_norm = rvfit.get_normalization(spectra)
@@ -376,19 +377,20 @@ class GA1DPipeline(Pipeline):
         return psfs
     
     def __rvfit_init(self, template_grids, template_psfs):
-        rvfit = ModelGridRVFit()
+        trace = ModelGridRVFitTrace(self.config.figdir)
+        trace.figure_formats = [ '.pdf', '.png' ]
         
-        # TODO: add trace
-        # rvfit.trace = rvfit.create_trace()
+        rvfit = ModelGridRVFit(trace)
 
         rvfit.template_grids = template_grids
         rvfit.template_psf = template_psfs
 
         rvfit.init_from_args(None, None, self.config.rvfit.rvfit_args)
+        rvfit.trace.init_from_args(None, None, self.config.rvfit.trace_args)
 
         return rvfit
     
-    def __rvfit_get_spectra(self, arms):
+    def __rvfit_load_spectra(self, arms):
         # Extract spectra from the fluxtables of pfsSingle objects
 
         spectra = { arm: [] for arm in arms }
@@ -396,26 +398,34 @@ class GA1DPipeline(Pipeline):
         for i, visit in enumerate(sorted(self.__pfsSingle.keys())):
             pfsConfig = self.__pfsConfig[visit]
             pfsSingle = self.__pfsSingle[visit]
-            
-            wave = pfsSingle.fluxTable.wavelength * 10              # pfsspec likes Angstroms
-            flux = Physics.fnu_to_flam(wave, pfsSingle.fluxTable.flux)    # pfsspec like F_lambda
-            error = Physics.fnu_to_flam(wave, pfsSingle.fluxTable.error)
+
+            # nm -> A            
+            wave = Physics.nm_to_angstrom(pfsSingle.fluxTable.wavelength)
+
+            # nJy -> erg s-1 cm-2 A-1
+            flux = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.flux)
+            flux_err = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.error)
+
+            # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
+
             mask = (pfsSingle.fluxTable.mask == 0)
 
             # Slice up by arm
             for arm in arms:
                 armmask = (self.config.rvfit.arms[arm]['wave'][0] <= wave) & (wave <= self.config.rvfit.arms[arm]['wave'][1])
                 
-                s = Spectrum()
+                s = GA1DSpectrum()
                 s.index = i
-                s.id = self.config.object.objId
+                s.catId = self.config.object.catId
+                s.objId = s.id = self.config.object.objId
+                s.visit = visit
 
                 s.spectrograph = pfsConfig.spectrograph[self.__idx[visit]]
                 s.fiberid = pfsConfig.fiberId[self.__idx[visit]]
 
                 s.wave = wave[armmask]
                 s.flux = flux[armmask]
-                s.flux_err = error[armmask]
+                s.flux_err = flux_err[armmask]
                 s.mask = mask[armmask]
 
                 # SNR
@@ -437,6 +447,9 @@ class GA1DPipeline(Pipeline):
                 # s.seeing = 0
                
                 spectra[arm].append(s)
+
+        if self.trace is not None:
+            self.trace.on_rvfit_load_spectra(spectra)
 
         return spectra
 
