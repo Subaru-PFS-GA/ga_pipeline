@@ -293,8 +293,6 @@ class GA1DPipeline(Pipeline):
 
         # Run the maximum likelihood fitting
         self.__rvfit_res = rvfit.fit_rv(spectra)
-
-        pass
     
     def __rvfit_get_avail_arms(self):
         # TODO: add option to require that all observations contain all arms

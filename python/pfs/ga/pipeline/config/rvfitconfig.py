@@ -34,9 +34,9 @@ class RVFitConfig(Config):
 
         # RVFIT parameter priors - arguments to pass to ModelGridRVFit
         self.rvfit_args = {
-            "M_H": [ -2.5, -0.5 ],
+            "M_H": [ -2.5, 0.0 ],
             "M_H_dist": [ "normal", -1.5, 0.5 ],
-            "T_eff": [ 5250, 5750 ],
+            "T_eff": [ 4000, 6000 ],
             "T_eff_dist": [ "normal", 5500, 50 ],
             "log_g": [ 1.5, 5.5 ],
             "log_g_dist": [ "normal", 3.5, 1.0 ],
@@ -50,10 +50,18 @@ class RVFitConfig(Config):
         # RVFIT trace args - these control plotting, etc.
         # TODO: change these to False by default
         self.trace_args = {
-            'plot_rv_prior': True,
+            'plot_priors': True,
             'plot_rv_guess': True,
+            'plot_rv_fit': True,
             'plot_input_spec': True,
-            'plot_fit_spec': True,
+            'plot_fit_spec': {
+                'rvfit_best': dict(
+                    plot_spectra=True, plot_processed_templates=True,
+                    plot_flux_err=True, plot_residuals=False),
+                'rvfit_residuals': dict(
+                    plot_spectra=False, plot_processed_templates=False,
+                    plot_flux_err=False, plot_residuals=True),
+            },
             'plot_spec_flux_err': True,
             'plot_spec_mask': True,
             'plot_spec_cont': True,

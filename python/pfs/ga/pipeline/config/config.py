@@ -16,6 +16,32 @@ class Config():
         else:
             raise NotImplementedError()
         
+    def __merge_dict(self, a: dict, b: dict, ignore_collisions=False):
+        """
+        Deep-merge two dictionaries. This function will merge the two dictionaries
+        recursively. If a key is present in both dictionaries, the value will be 
+        merged recursively, unless a collision is detected.
+        """
+
+        kk = list(a.keys()) + list(b.keys())
+
+        r = {}
+        for k in kk:
+            # Both are dictionaries, merge them
+            if k in a and isinstance(a[k], dict) and k in b  and isinstance(b[k], dict):
+                r[k] = self.__merge_dict(a[k], b[k], ignore_collisions=ignore_collisions)
+            elif k in a and k in b:
+                if ignore_collisions:
+                    r[k] = a[k]
+                else:
+                    raise ValueError(f"Collision detected for key {k}")
+            elif k in a:
+                r[k] = a[k]
+            elif k in b:
+                r[k] = b[k]
+
+        return r
+        
     def _load_config_from_dict(self, config=None, type_map=None):
         # Load configuration from a dictionary
 
@@ -40,8 +66,7 @@ class Config():
                     setattr(self, k, self.map_config_class(type_map[k], config=config[k]))
                 elif isinstance(c, dict) and isinstance(config[k], dict):
                     # This member is a dictionary, merge with the config dict
-                    # TODO: merge dictionaries recursively?
-                    setattr(self, k, { **c, **config[k] })
+                    setattr(self, k, self.__merge_dict(c, config[k]))
                 else:
                     # This is a regular member, just set its value
                     setattr(self, k, config[k])
