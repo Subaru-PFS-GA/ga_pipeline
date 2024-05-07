@@ -5,7 +5,7 @@ from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
 from pfs.ga.pipeline.config import GA1DPipelineConfig
 from pipeline.config.configs import *
 
-class TestPipeline(TestCase):
+class TestGA1DPipeline(TestCase):
     def get_test_config(self):
         config = GA1DPipelineConfig(config=TEST_CONFIG_EDR2_90006)
 
@@ -89,3 +89,19 @@ class TestPipeline(TestCase):
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
+
+    def test_step_rvfit_save(self):
+        config = self.get_test_config()
+        pipeline = self.create_test_pipeline(config)
+        pipeline._Pipeline__start_logging()
+        
+        pipeline._GA1DPipeline__step_load()
+        pipeline._GA1DPipeline__step_validate()
+        pipeline._GA1DPipeline__step_rvfit()
+
+        pipeline._GA1DPipeline__step_save()
+        
+        pipeline._Pipeline__stop_logging()
+
+        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
+        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))

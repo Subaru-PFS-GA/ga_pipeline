@@ -2,8 +2,8 @@ import os
 import time
 import numpy as np
 
-from pfs.datamodel import PfsConfig, PfsSingle
-from pfs.ga.datamodel import PfsGAObject
+from pfs.datamodel import PfsConfig, PfsSingle, Target, Observations, MaskHelper
+from pfs.ga.datamodel import PfsGAObject, PfsGAObjectNotes, StellarParams, VelocityCorrections, Abundances
 
 from pfs.ga.pfsspec.core import Physics
 from pfs.ga.pfsspec.core.obsmod.resampling import FluxConservingResampler, Interp1dResampler
@@ -106,7 +106,8 @@ class GA1DPipeline(Pipeline):
         self.__pfsSingle = pfsSingle
         self.__idx = None                       # dict, index of object within pfsConfig files, for each visit
         
-        self.__rvfit_res = None                 # Results from RVFit
+        self.__rvfit_results = None             # Results from RVFit
+        self.__chemfit_resutls = None           # Results from ChemFit
 
         self.__pfsGAObject = None
 
@@ -230,7 +231,8 @@ class GA1DPipeline(Pipeline):
         # some validation steps
 
         self.__idx = {}
-        self.__identity = {}
+
+        target = None
 
         for visit in self.__pfsSingle.keys():
             if self.__pfsConfig is not None:
@@ -240,8 +242,12 @@ class GA1DPipeline(Pipeline):
             pfsSingle = self.__pfsSingle[visit]
             self.__validate_pfsSingle(visit, pfsSingle)
 
-        # TODO: Make sure that coordinates are the same
-            
+            # Make sure that targets are the same
+            if target is None:
+                target = pfsSingle.target
+            elif not target == pfsSingle.target:
+                raise PipelineError(f'Target information in PfsSingle files do not match.')
+
         # TODO: Count spectra per arm and write report to log
 
     def __validate_pfsConfig(self, visit, pfsConfig):
@@ -292,7 +298,7 @@ class GA1DPipeline(Pipeline):
         rvfit.spec_norm, rvfit.temp_norm = rvfit.get_normalization(spectra)
 
         # Run the maximum likelihood fitting
-        self.__rvfit_res = rvfit.fit_rv(spectra)
+        self.__rvfit_results = rvfit.fit_rv(spectra)
     
     def __rvfit_get_avail_arms(self):
         # TODO: add option to require that all observations contain all arms
@@ -468,28 +474,153 @@ class GA1DPipeline(Pipeline):
         raise NotImplementedError()
 
     def __step_save(self):
-        raise NotImplementedError()
-
         # Construct the output object based on the results from the pipeline steps
-        target = self.__create_target()
+
+        # Copy target from any of the PfsSingle objects
+        first_visit = sorted(list(self.__pfsSingle.keys()))[0]
+        target = self.__copy_target(self.__pfsSingle[first_visit].target)
+        observations = self.__merge_observations([ self.__pfsSingle[visit].observations for visit in sorted(self.__pfsSingle.keys()) ])
+        flags = self.__copy_flags(self.__pfsSingle[first_visit].flags)
+        metadata = {}       # TODO
+
+
+        # TODO: replace this with the stacked spectrum
+        wavelength = self.__pfsSingle[first_visit].wavelength
+        flux = self.__pfsSingle[first_visit].flux
+        mask = self.__pfsSingle[first_visit].mask
+        sky = self.__pfsSingle[first_visit].sky
+        covar = self.__pfsSingle[first_visit].covar
+        covar2 = self.__pfsSingle[first_visit].covar2
+
+        # TODO: replace this with the stacked spectrum
+        flux_table = None
+
+        stellar_params = self.__get_stellar_params()
+        stellar_params_covar = self.__rvfit_results.cov
+        velocity_corrections = self.__get_velocity_corrections()
+        abundances = self.__get_abundances()
+        abundances_covar = None
+        notes = PfsGAObjectNotes()
 
         self.__pfsGAObject = PfsGAObject(target, observations,
                                   wavelength, flux, mask, sky, covar, covar2,
                                   flags, metadata,
-                                  fluxTable,
-                                  stellarParams,
-                                  velocityCorrections,
+                                  flux_table,
+                                  stellar_params,
+                                  velocity_corrections,
                                   abundances,
-                                  paramsCovar,
-                                  abundCovar,
+                                  stellar_params_covar,
+                                  abundances_covar,
                                   notes)
 
-        # TODO: save any outputs
-        raise NotImplementedError()
+        # Save output FITS file
+        id = self.__pfsGAObject.getIdentity()
+        fn = os.path.join(self.config.outdir, PfsGAObject.filenameFormat % id)
+        self.__pfsGAObject.writeFits(fn)
     
-    def __create_target(self):
-        # Construct the target object
-        pass
+    def __copy_target(self, orig):
+        # Copy the target object
+        return Target(
+            catId = orig.catId,
+            tract = orig.tract,
+            patch = orig.patch,
+            objId = orig.objId,
+            ra = orig.ra,
+            dec = orig.dec,
+            targetType = orig.targetType,
+            fiberFlux = orig.fiberFlux,
+        )
+    
+    def __merge_observations(self, observations):
+        # Merge observations into a single object
+        visit = np.concatenate([ o.visit for o in observations ])
+        arm = np.concatenate([ o.arm for o in observations ])
+        spectrograph = np.concatenate([ o.spectrograph for o in observations ])
+        pfsDesignId = np.concatenate([ o.pfsDesignId for o in observations ])
+        fiberId = np.concatenate([ o.fiberId for o in observations ])
+        pfiNominal = np.concatenate([ o.pfiNominal for o in observations ])
+        pfiCenter = np.concatenate([ o.pfiCenter for o in observations ])
+
+        return Observations(
+            visit = visit,
+            arm = arm,
+            spectrograph = spectrograph,
+            pfsDesignId = pfsDesignId,
+            fiberId = fiberId,
+            pfiNominal = pfiNominal,
+            pfiCenter = pfiCenter,
+        )
+    
+    def __copy_flags(self, flags):
+        return MaskHelper(**flags.flags)
+    
+    def __get_stellar_params(self):
+        # Extract stellar parameters from rvfit results
+
+        # Collect parameters
+        units = {
+            'T_eff': 'K',
+            'log_g': 'dex',
+            'M_H': 'dex',
+            'a_M': 'dex',
+            'v_los': 'km s-1',
+        }
+        params_fit = self.__rvfit_results.params_free + [ 'v_los' ]
+        params_all = params_fit + [ p for p in self.__rvfit_results.params_fit if p not in params_fit ]
+
+        # Construct columns
+        method = [ 'ga1dpipe' for p in params_all ]
+        frame = [ 'bary' for p in params_all ]
+        param = [ p for p in params_all ]
+        covarId = [ params_fit.index(p) if p in params_fit else 255 for p in params_all ]
+        unit = [ units[p] for p in params_all ]
+        value = [ self.__rvfit_results.params_fit[p] for p in self.__rvfit_results.params_free ] + \
+                [ self.__rvfit_results.rv_fit ] + \
+                [ self.__rvfit_results.params_fit[p] for p in self.__rvfit_results.params_fit if p not in params_fit ]
+        value_err = [ self.__rvfit_results.params_err[p] for p in self.__rvfit_results.params_free ] + \
+                [ self.__rvfit_results.rv_err ] + \
+                [ self.__rvfit_results.params_err[p] for p in self.__rvfit_results.params_fit if p not in params_fit ]
+        flag = [ False for p in params_all ]
+
+        # TODO: we currently have no means of detecting bad fits
+        status = [ '' for p in params_all ]
+
+        return StellarParams(
+            method=np.array(method),
+            frame=np.array(frame),
+            param=np.array(param),
+            covarId=np.array(covarId),
+            unit=np.array(unit),
+            value=np.array(value),
+            valueErr=np.array(value_err),
+            flag=np.array(flag),
+            status=np.array(status),
+        )
+    
+    def __get_velocity_corrections(self):
+        visit = list(sorted(self.__pfsSingle.keys()))
+
+        # TODO: not obs time data in any of the headers!
+        JD = [ 0.0 for v in visit]
+        helio = [ 0.0 for v in visit]
+        bary = [ 0.0 for v in visit]
+
+        return VelocityCorrections(
+            visit=np.array(visit),
+            JD=np.array(JD),
+            helio=np.array(helio),
+            bary=np.array(bary),
+        )
+    
+    def __get_abundances(self):
+        # TODO: implement this
+        return Abundances(
+            method = np.array([], dtype=str),
+            element = np.array([], dtype=str),
+            covarId = np.array([], dtype=np.int8),
+            value = np.array([], dtype=np.float32),
+            valueErr = np.array([], dtype=np.float32),
+        )
 
     def __step_cleanup(self):
         # TODO: Perform any cleanup
