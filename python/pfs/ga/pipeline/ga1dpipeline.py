@@ -381,7 +381,9 @@ class GA1DPipeline(Pipeline):
         return psfs
     
     def __rvfit_init(self, template_grids, template_psfs):
-        trace = ModelGridRVFitTrace(self.config.figdir)
+        trace = ModelGridRVFitTrace(
+            figdir=self.config.figdir,
+            logdir=self.config.logdir)
         trace.figure_formats = [ '.pdf', '.png' ]
         
         rvfit = ModelGridRVFit(trace)
