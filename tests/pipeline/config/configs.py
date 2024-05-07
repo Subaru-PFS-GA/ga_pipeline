@@ -60,10 +60,22 @@ TEST_CONFIG_EDR2_90006 = dict(
     rvfit = dict(
         fit_arms = [ 'b', 'm', 'n' ],
         rvfit_args = dict(
-            flux_corr_per_arm = True,
+            flux_corr_per_arm = False,
             flux_corr_per_exp = False,
             amplitude_per_arm = True,
             amplitude_per_exp = True,
+        ),
+        trace_args = dict(
+            plot_fit_spec = {
+                'rvfit_best_400nm': dict(
+                    wlim=[385, 405],
+                    plot_spectra=True, plot_processed_templates=True,
+                    plot_flux_err=True, plot_residuals=False),
+                'rvfit_best_ca': dict(
+                    wlim=[849, 870],
+                    plot_spectra=True, plot_processed_templates=True,
+                    plot_flux_err=True, plot_residuals=False),
+            }
         )
     ),
 )
