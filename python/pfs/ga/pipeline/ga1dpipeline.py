@@ -1,16 +1,19 @@
 import os
 import time
+from datetime import datetime
+import pytz
 import numpy as np
 
 from pfs.datamodel import PfsConfig, PfsSingle, Target, Observations, MaskHelper
 from pfs.ga.datamodel import PfsGAObject, PfsGAObjectNotes, StellarParams, VelocityCorrections, Abundances
 
-from pfs.ga.pfsspec.core import Physics
-from pfs.ga.pfsspec.core.obsmod.resampling import FluxConservingResampler, Interp1dResampler
+from pfs.ga.pfsspec.core import Physics, Astro
+from pfs.ga.pfsspec.core.obsmod.resampling import Binning, FluxConservingResampler, Interp1dResampler
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
-from pfs.ga.pfsspec.stellar.rvfit import ModelGridRVFit, ModelGridRVFitTrace
+from pfs.ga.pfsspec.stellar.rvfit import RVFit, ModelGridRVFit, ModelGridRVFitTrace
+from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 
 from .pipeline import Pipeline
 from .pipelineerror import PipelineError
@@ -76,18 +79,23 @@ class GA1DPipeline(Pipeline):
                 'critical': True
             },
             {
+                'name': 'vcorr',
+                'func': self.__step_vcorr,
+                'critical': False
+            },
+            {
                 'name': 'rvfit',
                 'func': self.__step_rvfit,
                 'critical': False
             },
             {
-                'name': 'chemfit',
-                'func': self.__step_chemfit,
+                'name': 'coadd',
+                'func': self.__step_coadd,
                 'critical': False
             },
             {
-                'name': 'coadd',
-                'func': self.__step_coadd,
+                'name': 'chemfit',
+                'func': self.__step_chemfit,
                 'critical': False
             },
             {
@@ -105,9 +113,16 @@ class GA1DPipeline(Pipeline):
         self.__pfsConfig = pfsConfig
         self.__pfsSingle = pfsSingle
         self.__idx = None                       # dict, index of object within pfsConfig files, for each visit
-        
+
+        self.__spectra = None                   # spectra in PFSSPEC class for each class and visit
+        self.__v_corr = None                    # velocity correction for each visit
+
+        self.__rvfit = None                     # RVFit object
         self.__rvfit_results = None             # Results from RVFit
-        self.__chemfit_resutls = None           # Results from ChemFit
+
+        self.__stacking_results = None          # Results from stacking
+
+        self.__chemfit_results = None           # Results from ChemFit
 
         self.__pfsGAObject = None
 
@@ -176,7 +191,8 @@ class GA1DPipeline(Pipeline):
 
         start_time = time.perf_counter()
 
-        for i, visit in enumerate(self.config.object.visits.keys()):
+        self.__idx = {}
+        for i, visit in enumerate(sorted(self.config.object.visits.keys())):
             identity = {
                 'objId': self.config.object.objId,
                 'catId': self.config.object.catId,
@@ -186,9 +202,23 @@ class GA1DPipeline(Pipeline):
             }
 
             if self.config.load_pfsConfig:
-                self.__pfsConfig[visit] = self.__load_pfsConfig(visit)
+                pfsConfig = self.__load_pfsConfig(visit)
+
+                # Verify that object ID is found in pfsConfig
+                idx = np.where(pfsConfig.objId == self.config.object.objId)[0]
+                if idx.size == 0:
+                    raise PipelineError(f'Object ID `{self.config.object.objId}` not found in `{pfsConfig.filename}`.')
+                elif idx.size > 1:
+                    raise PipelineError(f'Object ID `{self.config.object.objId}` found more than once in `{pfsConfig.filename}`.')
+            
+                self.__pfsConfig[visit] = pfsConfig
+                self.__idx[visit] = idx[0]
             
             self.__pfsSingle[visit] = self.__load_pfsSingle(identity)
+
+        # Extract the spectra of individual arms from the pfsSingle objects
+        avail_arms = self.__get_avail_arms()
+        self.__spectra = self.__read_spectra(avail_arms)
 
         stop_time = time.perf_counter()
         self.logger.info(f'PFS data files loaded successfully for {len(self.__pfsSingle)} exposures in {stop_time - start_time:.3f} s.')
@@ -255,14 +285,7 @@ class GA1DPipeline(Pipeline):
         if pfsConfig.visit != visit:
             raise PipelineError(f'Visit does not match visit ID found in `{pfsConfig.filename}`')
 
-        # Verify that object ID is found in pfsConfig
-        idx = np.where(pfsConfig.objId == self.config.object.objId)[0]
-        if idx.size == 0:
-            raise PipelineError(f'Object ID `{self.config.object.objId}` not found in `{pfsConfig.filename}`.')
-        elif idx.size > 1:
-            raise PipelineError(f'Object ID `{self.config.object.objId}` found more than once in `{pfsConfig.filename}`.')
-        
-        self.__idx[visit] = idx[0]
+        # TODO: write log message
     
     def __validate_pfsSingle(self, visit, pfsSingle):
         fn = pfsSingle.filenameFormat % {**pfsSingle.getIdentity(), 'visit': visit}
@@ -281,26 +304,9 @@ class GA1DPipeline(Pipeline):
         if pfsSingle.target.objId != self.config.object.objId:
             raise PipelineError(f'objId in config `{self.config.object.objId}` does not match objID in `{fn}`.')
         
-    #region RVFIT
-        
-    def __step_rvfit(self):
-        avail_arms = self.__rvfit_get_avail_arms()
-        fit_arms = self.__rvfit_validate(avail_arms)
+        # TODO: write log message
 
-        template_grids = self.__rvfit_load_grid(fit_arms)
-        template_psfs = self.__rvfit_load_psf(fit_arms, template_grids)
-        rvfit = self.__rvfit_init(template_grids, template_psfs)
-
-        # Extract the spectra of individual arms from the pfsSingle objects
-        spectra = self.__rvfit_load_spectra(fit_arms)
-
-        # Determine the normalization factor to be used to keep continuum coefficients unity
-        rvfit.spec_norm, rvfit.temp_norm = rvfit.get_normalization(spectra)
-
-        # Run the maximum likelihood fitting
-        self.__rvfit_results = rvfit.fit_rv(spectra)
-    
-    def __rvfit_get_avail_arms(self):
+    def __get_avail_arms(self):
         # TODO: add option to require that all observations contain all arms
 
         # Collect all arms available in observations
@@ -312,6 +318,135 @@ class GA1DPipeline(Pipeline):
                     arms.add(arm)
 
         return arms
+    
+    def __read_spectra(self, arms):
+        # Extract spectra from the fluxtables of pfsSingle objects
+
+        # TODO: move this whore routine to pfs.ga.pfsspec.survey
+
+        spectra = { arm: {} for arm in arms }
+
+        for i, visit in enumerate(sorted(self.__pfsSingle.keys())):
+            pfsConfig = self.__pfsConfig[visit]
+            pfsSingle = self.__pfsSingle[visit]
+
+            # nm -> A            
+            wave = Physics.nm_to_angstrom(pfsSingle.fluxTable.wavelength)
+
+            # nJy -> erg s-1 cm-2 A-1
+            flux = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.flux)
+            flux_err = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.error)
+
+            # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
+
+            mask = (pfsSingle.fluxTable.mask == 0)
+
+            # Slice up by arm
+            for arm in arms:
+                arm_mask = (self.config.rvfit.arms[arm]['wave'][0] <= wave) & (wave <= self.config.rvfit.arms[arm]['wave'][1])
+                
+                s = GA1DSpectrum()
+                s.index = i
+                s.catId = self.config.object.catId
+                s.objId = s.id = self.config.object.objId
+                s.visit = visit
+
+                s.spectrograph = pfsConfig.spectrograph[self.__idx[visit]]
+                s.fiberid = pfsConfig.fiberId[self.__idx[visit]]
+
+                s.wave = wave[arm_mask]
+                s.wave_edges = Binning.find_wave_edges(s.wave)
+                s.flux = flux[arm_mask]
+                s.flux_err = flux_err[arm_mask]
+                s.mask = mask[arm_mask]
+
+                # SNR
+                s.calculate_snr(QuantileSnr(0.75, binning=self.config.rvfit.arms[arm]['pix_per_res']))
+
+                # Target PSF magnitude from pfsConfig metadata
+                filters = pfsConfig.filterNames[self.__idx[visit]]
+                if self.config.rvfit.ref_mag in filters:
+                    fidx = filters.index(self.config.rvfit.ref_mag)
+
+                    # TODO: convert nJy to ABmag
+                    s.mag = pfsConfig.psfFlux[self.__idx[visit]][fidx]
+                else:
+                    s.mag = np.nan
+
+                # TODO: where do we take these from?
+                # s.exp_count = 1
+                # s.exp_time = 0
+                # s.seeing = 0
+
+                # Get coordinates, observation time, airmass
+                s.ra = pfsSingle.target.ra
+                s.dec = pfsSingle.target.dec
+                
+                # TODO: read MJD from somewhere
+                # Convert datetime to MJD using astropy
+                # Create datetime with UTC time zone (Hawaii: UTC - 10)
+                s.mjd = Astro.datetime_to_mjd(datetime(2023, 7, 24, 14, 0, 0, tzinfo=pytz.timezone('UTC')))
+                s.alt, s.az = Astro.radec_to_altaz(s.ra, s.dec, s.mjd)
+               
+                spectra[arm][visit] = s
+
+        if self.trace is not None:
+            self.trace.on_rvfit_load_spectra(spectra)
+
+        return spectra
+
+    #region v_corr
+
+    def __step_vcorr(self):
+
+        # TODO: logging + perf counter
+
+        self.__v_corr = {}
+
+        # Calculate the velocity correction for each spectrum
+        for arm in self.__spectra:
+            for visit in self.__spectra[arm]:
+                s = self.__spectra[arm][visit]
+
+                if visit not in self.__v_corr:
+                    self.__v_corr[visit] = Astro.v_corr(self.config.v_corr, s.ra, s.dec, s.mjd)
+
+                # Apply the correction to the spectrum
+                # TODO: verify this
+                z = Physics.vel_to_z(self.__v_corr[visit])
+                s.wave = s.wave * (1 + z)
+
+    #endregion     
+    #region RVFIT
+        
+    def __step_rvfit(self):
+        # Run RV fitting
+
+        self.logger.info(f'Starting RVFit...')
+        start_time = time.perf_counter()
+
+        avail_arms = self.__get_avail_arms()
+        fit_arms = self.__rvfit_validate(avail_arms)
+
+        template_grids = self.__rvfit_load_grid(fit_arms)
+        template_psfs = self.__rvfit_load_psf(fit_arms, template_grids)
+        self.__rvfit = self.__rvfit_init(template_grids, template_psfs)
+
+        # Run calibration steps on the spectra such as velocity frame conversion
+        self.__rvfit_preprocess(self.__spectra)
+
+        # Determine the normalization factor to be used to keep continuum coefficients unity
+        self.__rvfit.spec_norm, self.__rvfit.temp_norm = self.__rvfit.get_normalization(
+            { arm: [ self.__spectra[arm][v] for v in self.__spectra[arm] ] for arm in self.__spectra }
+        )
+
+        # Run the maximum likelihood fitting
+        self.__rvfit_results = self.__rvfit.fit_rv(
+            { arm: [ self.__spectra[arm][v] for v in self.__spectra[arm] ] for arm in self.__spectra }
+        )
+
+        stop_time = time.perf_counter()
+        self.logger.info(f'Successfully executed RVFit in {stop_time - start_time:.3f} s.')
     
     def __rvfit_validate(self, avail_arms):
         # Find a unique set of available arms in the pfsSingle files
@@ -396,71 +531,102 @@ class GA1DPipeline(Pipeline):
 
         return rvfit
     
-    def __rvfit_load_spectra(self, arms):
-        # Extract spectra from the fluxtables of pfsSingle objects
-
-        spectra = { arm: [] for arm in arms }
-
-        for i, visit in enumerate(sorted(self.__pfsSingle.keys())):
-            pfsConfig = self.__pfsConfig[visit]
-            pfsSingle = self.__pfsSingle[visit]
-
-            # nm -> A            
-            wave = Physics.nm_to_angstrom(pfsSingle.fluxTable.wavelength)
-
-            # nJy -> erg s-1 cm-2 A-1
-            flux = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.flux)
-            flux_err = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.error)
-
-            # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
-
-            mask = (pfsSingle.fluxTable.mask == 0)
-
-            # Slice up by arm
-            for arm in arms:
-                armmask = (self.config.rvfit.arms[arm]['wave'][0] <= wave) & (wave <= self.config.rvfit.arms[arm]['wave'][1])
-                
-                s = GA1DSpectrum()
-                s.index = i
-                s.catId = self.config.object.catId
-                s.objId = s.id = self.config.object.objId
-                s.visit = visit
-
-                s.spectrograph = pfsConfig.spectrograph[self.__idx[visit]]
-                s.fiberid = pfsConfig.fiberId[self.__idx[visit]]
-
-                s.wave = wave[armmask]
-                s.flux = flux[armmask]
-                s.flux_err = flux_err[armmask]
-                s.mask = mask[armmask]
-
-                # SNR
-                s.calculate_snr(QuantileSnr(0.75, binning=self.config.rvfit.arms[arm]['pix_per_res']))
-
-                # Target PSF magnitude from pfsConfig metadata
-                filters = pfsConfig.filterNames[self.__idx[visit]]
-                if self.config.rvfit.ref_mag in filters:
-                    fidx = filters.index(self.config.rvfit.ref_mag)
-
-                    # TODO: convert nJy to ABmag
-                    s.mag = pfsConfig.psfFlux[self.__idx[visit]][fidx]
-                else:
-                    s.mag = np.nan
-
-                # TODO: where do we take these from?
-                # s.exp_count = 1
-                # s.exp_time = 0
-                # s.seeing = 0
-               
-                spectra[arm].append(s)
-
-        if self.trace is not None:
-            self.trace.on_rvfit_load_spectra(spectra)
-
-        return spectra
+    def __rvfit_preprocess(self, spectra):
+        # TODO: convolution?
+        pass
 
     def __rvfit_cleanup(self):
         pass
+
+    #endregion
+    #region Co-add
+
+    def __step_coadd(self):
+        # Coadd the spectra
+
+        first_visit = sorted(list(self.__pfsSingle.keys()))[0]
+        no_data_bit = self.__pfsSingle[first_visit].flags['NO_DATA']
+
+        # TODO: v_corr has already been applied to the spectra, so we only have to apply the
+        #       flux correction here. Since the flux correction normalizes the spectra to an
+        #       arbitrary value of unity, we'll have to recalibrate the flux based on broadband
+        #       magnitudes or else.
+
+        self.__stacker = self.__coadd_init()
+
+        # TODO: now we stack each arm separately and merge at the end. This will have to change
+        #       we want to process spectra that overlap between arms
+
+        templates = self.__coadd_get_templates()
+        flux_corr = self.__coadd_eval_flux_corr(templates)
+
+        self.__stacking_results = {}
+        arms = self.__get_avail_arms()
+        for arm in arms:
+            stacked_wave, stacked_wave_edges, stacked_flux, stacked_error, stacked_weight, stacked_mask = \
+                self.__stacker.stack([ self.__spectra[arm][visit] for visit in sorted(self.__spectra[arm]) ],
+                                     flux_corr=flux_corr[arm])
+            
+            # Mask out bins where the weight is zero
+            stacked_mask = np.where(stacked_weight == 0, stacked_mask | no_data_bit, stacked_mask)
+
+            # Create a spectrum
+            spec = GA1DSpectrum()
+            spec.wave = stacked_wave
+            spec.wave_edges = stacked_wave_edges
+            spec.flux = stacked_flux
+            spec.flux_err = stacked_error
+            spec.mask = stacked_mask
+
+            self.__stacking_results[arm] = spec
+
+        # TODO: trace hook
+        pass
+    
+    def __coadd_init(self):
+        trace = StackerTrace(
+            figdir=self.config.figdir,
+            logdir=self.config.logdir)
+        trace.figure_formats = [ '.pdf', '.png' ]
+
+        stacker = Stacker(trace)
+
+        stacker.init_from_args(None, None, self.config.coadd.stacker_args)
+        stacker.trace.init_from_args(None, None, self.config.coadd.trace_args)
+
+        return stacker
+    
+    def __coadd_get_templates(self):
+        # Return the templates at the best fit parameters
+
+        spectra = { arm: [ self.__spectra[arm][visit] for visit in sorted(self.__spectra[arm]) ] for arm in self.__spectra }
+
+        # Interpolate the templates to the best fit parameters
+        templates, missing = self.__rvfit.get_templates(
+            spectra,
+            self.__rvfit_results.params_fit)
+        
+        if self.trace is not None:
+            self.trace.on_coadd_get_templates(spectra, templates)
+
+        return templates
+    
+    def __coadd_eval_flux_corr(self, templates):
+        # Evaluate the flux correction for every exposure of each arm.
+
+        spectra = { arm: [ self.__spectra[arm][visit] for visit in sorted(self.__spectra[arm]) ] for arm in self.__spectra }
+
+        flux_corr = RVFit.eval_flux_corr(
+            self.__rvfit,
+            spectra,
+            templates,
+            self.__rvfit_results.rv_fit,
+            a=self.__rvfit_results.a_fit)
+        
+        if self.trace is not None:
+            self.trace.on_coadd_eval_flux_corr(spectra, templates, flux_corr, self.__rvfit.spec_norm, self.__rvfit.temp_norm)
+        
+        return flux_corr
 
     #endregion
     #region CHEMFIT
@@ -470,10 +636,6 @@ class GA1DPipeline(Pipeline):
         raise NotImplementedError()
     
     #endregion
-
-    def __step_coadd(self):
-        # TODO: run spectrum co-adding
-        raise NotImplementedError()
 
     def __step_save(self):
         # Construct the output object based on the results from the pipeline steps

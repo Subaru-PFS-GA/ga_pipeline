@@ -20,6 +20,8 @@ class GA1DSpectrum(StellarSpectrum, Spectrum):
             self.ra = None
             self.dec = None
             self.mjd = None
+
+            self.airmass = None
         else:
             self.catId = orig.catId
             self.objId = orig.objId
@@ -31,8 +33,9 @@ class GA1DSpectrum(StellarSpectrum, Spectrum):
             self.ra = orig.ra
             self.dec = orig.dec
             self.mjd = orig.mjd
-            
 
+            self.airmass = orig.airmass
+            
     def get_param_names(self):
         params = ['objid',
                   'visit',

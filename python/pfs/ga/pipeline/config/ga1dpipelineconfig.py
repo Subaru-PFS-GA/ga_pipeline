@@ -2,7 +2,7 @@ from .pipelineconfig import PipelineConfig
 from .gaobjectconfig import GAObjectConfig
 from .rvfitconfig import RVFitConfig
 from .chemfitconfig import ChemfitConfig
-from .stackingconfig import StackingConfig
+from .coaddconfig import CoaddConfig
 
 class GA1DPipelineConfig(PipelineConfig):
     """
@@ -20,15 +20,17 @@ class GA1DPipelineConfig(PipelineConfig):
 
         # GA pipeline configuration
         self.load_pfsConfig = True          # Load and use info from pfsConfig files
+
+        self.v_corr = 'barycentric'         # Type of velocity corrections
         
         self.rvfit = RVFitConfig()
         self.run_rvfit = True
 
+        self.coadd = CoaddConfig()
+        self.run_coadd = True
+
         self.chemfit = ChemfitConfig()
         self.run_chemfit = False
-
-        self.stacking = StackingConfig()
-        self.run_stacking = False
         
         super().__init__(config=config)
 
@@ -37,6 +39,6 @@ class GA1DPipelineConfig(PipelineConfig):
                                     type_map={ 
                                         'object': GAObjectConfig,
                                         'rvfit': RVFitConfig,
+                                        'coadd': CoaddConfig,
                                         'chemfit': ChemfitConfig,
-                                        'stacking': StackingConfig
                                     })
