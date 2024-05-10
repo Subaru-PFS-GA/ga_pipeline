@@ -75,6 +75,20 @@ class TestGA1DPipeline(TestCase):
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
+    def test_step_vcorr(self):
+        config = self.get_test_config()
+        pipeline = self.create_test_pipeline(config)
+        pipeline._Pipeline__start_logging()
+        
+        pipeline._GA1DPipeline__step_load()
+        pipeline._GA1DPipeline__step_validate()
+        pipeline._GA1DPipeline__step_vcorr()
+        
+        pipeline._Pipeline__stop_logging()
+
+        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
+        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
+
     def test_step_rvfit(self):
         config = self.get_test_config()
         pipeline = self.create_test_pipeline(config)
@@ -82,6 +96,7 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._GA1DPipeline__step_load()
         pipeline._GA1DPipeline__step_validate()
+        pipeline._GA1DPipeline__step_vcorr()
         pipeline._GA1DPipeline__step_rvfit()
         
         pipeline._Pipeline__stop_logging()
@@ -89,6 +104,21 @@ class TestGA1DPipeline(TestCase):
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
+    def test_step_coadd(self):
+        config = self.get_test_config()
+        pipeline = self.create_test_pipeline(config)
+        pipeline._Pipeline__start_logging()
+        
+        pipeline._GA1DPipeline__step_load()
+        pipeline._GA1DPipeline__step_validate()
+        pipeline._GA1DPipeline__step_vcorr()
+        pipeline._GA1DPipeline__step_rvfit()
+        pipeline._GA1DPipeline__step_coadd()
+        
+        pipeline._Pipeline__stop_logging()
+
+        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
+        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
     def test_step_rvfit_save(self):
         config = self.get_test_config()
@@ -98,7 +128,7 @@ class TestGA1DPipeline(TestCase):
         pipeline._GA1DPipeline__step_load()
         pipeline._GA1DPipeline__step_validate()
         pipeline._GA1DPipeline__step_rvfit()
-
+        pipeline._GA1DPipeline__step_coadd()
         pipeline._GA1DPipeline__step_save()
         
         pipeline._Pipeline__stop_logging()
