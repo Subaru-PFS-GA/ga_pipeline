@@ -1,6 +1,11 @@
 import os
+import time
 import logging
 import traceback
+try:
+    import debugpy
+except ModuleNotFoundError:
+    debugpy = None
 
 from .constants import *
 from .config.pipelineconfig import PipelineConfig
@@ -129,14 +134,29 @@ class Pipeline():
         """
 
         try:
-            self.__logger.info(f'Executing GA pipeline step `{name}` for objID={self._objId}.')
+            self.__logger.info(self._get_log_message_step_start(name))
+            start_time = time.perf_counter()
             step()
-            self.__logger.info(f'GA pipeline step `{name}` for objID={self._objId} completed successfully.')
+            stop_time = time.perf_counter()
+            self.__logger.info(self._get_log_message_step_stop(name, stop_time - start_time))
             return True
         except Exception as ex:
-            self.__logger.info(f'GA pipeline step `{name}` for objID={self._objId} failed with error `{type(ex).__name__}`.')
+            # Break into debugger if available
+            if debugpy is not None and debugpy.is_client_connected():
+                raise ex
+
+            self.__logger.info(self._get_log_message_step_error(name, ex))
             self.__logger.exception(ex)
             
             self.__exceptions.append(ex)
-            self.__tracebacks.append(traceback.format_tb(ex.traceback))
+            self.__tracebacks.append(traceback.format_tb(ex.__traceback__))
             return False
+
+    def _get_log_message_step_start(self, name):
+        return f'Executing pipeline step `{name}`'
+
+    def _get_log_message_step_stop(self, name, elapsed_time):
+        return f'Pipeline step `{name}` completed successfully.'
+
+    def _get_log_message_step_error(self, name, ex):
+        return f'Pipeline step `{name}` failed with error `{type(ex).__name__}`.'
