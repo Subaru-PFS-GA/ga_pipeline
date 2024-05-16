@@ -9,17 +9,15 @@ class TestGA1DPipeline(TestCase):
     def get_test_config(self):
         config = GA1DPipelineConfig(config=TEST_CONFIG_EDR2_90006)
 
-        workdir = os.path.expandvars(os.path.join('${PFS_GA_TEMP}', f'{config.object.objId:016x}'))
+        workdir = os.path.expandvars(os.path.join('${GAPIPE_WORKDIR}', f'{config.object.objId:016x}'))
 
         config.workdir = workdir
-        config.datadir = os.path.expandvars('${PFS_GA_DATA}')
-        config.rerundir = os.path.expandvars('${PFS_GA_RERUN}')
         config.logdir = os.path.join(workdir, 'log')
         config.figdir = os.path.join(workdir, 'fig')
         config.outdir = workdir
 
-        config.rvfit.model_grid_path = os.path.expandvars('${PFS_GA_SYNTH_GRID}')
-        config.rvfit.psf_path = os.path.expandvars('${PFS_GA_ARM_PSF}')
+        config.rvfit.model_grid_path = os.path.expandvars('${GAPIPE_SYNTH_GRID}')
+        config.rvfit.psf_path = os.path.expandvars('${GAPIPE_ARM_PSF}')
            
         return config
     
@@ -31,7 +29,7 @@ class TestGA1DPipeline(TestCase):
     def test_validate_config(self):
         config = self.get_test_config()
         pipeline = self.create_test_pipeline(config)
-        pipeline.validate_config()
+        pipeline._validate_config()
 
     def test_start_stop_logging(self):
         config = self.get_test_config()
@@ -59,7 +57,6 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._Pipeline__stop_logging()
 
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
     def test_step_validate(self):
@@ -72,7 +69,6 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._Pipeline__stop_logging()
 
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
     def test_step_vcorr(self):
@@ -86,7 +82,6 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._Pipeline__stop_logging()
 
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
     def test_step_rvfit(self):
@@ -101,7 +96,6 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._Pipeline__stop_logging()
 
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
     def test_step_coadd(self):
@@ -117,7 +111,6 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._Pipeline__stop_logging()
 
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
 
     def test_step_rvfit_save(self):
@@ -133,5 +126,4 @@ class TestGA1DPipeline(TestCase):
         
         pipeline._Pipeline__stop_logging()
 
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsConfig))
         self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))

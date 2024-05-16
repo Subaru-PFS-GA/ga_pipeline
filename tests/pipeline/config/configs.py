@@ -1,49 +1,10 @@
-# TODO: update this
-TEST_CONFIG = dict(
-    objId = 1,
-    visit = [
-        98765,
-        98766,
-        98767
-    ],
-    catId = {
-        98765: 90003,
-        98766: 90003,
-        98767: 90003,
-    },
-    tract = {
-        98765: 1,
-        98766: 1,
-        98767: 1,
-    },
-    patch = {
-        98765: '1,1',
-        98766: '1,1',
-        98767: '1,1',
-    },
-    designId = {
-        98765: 7884270544754596914,
-        98766: 7884270544754596914,
-        98767: 7884270544754596914,
-    },
-    date = {
-        98765: '2024-01-03',
-        98766: '2024-01-03',
-        98767: '2024-01-03',
-    },
-    fiber = {
-        98765: '2024-01-03',
-        98766: '2024-01-03',
-        98767: '2024-01-03',
-    }
-)
-
 TEST_CONFIG_EDR2_90006 = dict(
+    rerundir = 'edr2-20231203',
     object = dict(
-        objId = 36072,
         catId = 90006,
         tract = 1,
         patch = '1,1',
+        objId = 36072,
         visits = {
             97821: dict(
                 date = '2023-07-24',
@@ -57,10 +18,29 @@ TEST_CONFIG_EDR2_90006 = dict(
             )
         },
     ),
+    mask_flags = [
+        'BAD',
+        # 'BAD_FIBERTRACE',
+        # 'BAD_FLAT',
+        # 'BAD_FLUXCAL',
+        # 'BAD_SKY',
+        'CR',
+        # 'DETECTED',
+        # 'DETECTED_NEGATIVE',
+        # 'EDGE',
+        # 'FIBERTRACE',
+        # 'INTRP',
+        # 'IPC',
+        # 'NO_DATA',
+        # 'REFLINE',
+        'SAT',
+        # 'SUSPECT',
+        'UNMASKEDNAN'
+    ],
     rvfit = dict(
         fit_arms = [ 'b', 'm', 'n' ],
         rvfit_args = dict(
-            flux_corr_per_arm = False,
+            flux_corr_per_arm = True,
             flux_corr_per_exp = False,
             amplitude_per_arm = True,
             amplitude_per_exp = True,
@@ -76,6 +56,9 @@ TEST_CONFIG_EDR2_90006 = dict(
                     plot_spectra=True, plot_processed_templates=True,
                     plot_flux_err=True, plot_residuals=False),
             }
-        )
+        ),
     ),
+    coadd = dict(
+        coadd_arms = [ 'b', 'm']
+    )
 )

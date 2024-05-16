@@ -138,7 +138,7 @@ class GA1DPipeline(Pipeline):
     def _get_log_message_step_error(self, name, ex):
         return f'GA pipeline step `{name}` for objID={self.config.object.objId:016x} failed with error `{type(ex).__name__}`.'
 
-    def validate_config(self):
+    def _validate_config(self):
         """
         Validates the configuration and the existence of all necessary input data. Returns
         `True` if the pipeline can proceed or 'False' if it cannot.
@@ -478,7 +478,7 @@ class GA1DPipeline(Pipeline):
                     # Apply the correction to the spectrum
                     # TODO: verify this and convert into a function on spectrum
                     z = Physics.vel_to_z(self.__v_corr[visit])
-                    s.apply_v_corr(z)
+                    s.apply_v_corr(z=z)
 
     #endregion     
     #region RVFIT

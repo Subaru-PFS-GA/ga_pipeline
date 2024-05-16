@@ -53,7 +53,7 @@ class Pipeline():
     
     tracebacks = property(__get_tracebacks)
     
-    def validate_config(self):
+    def _validate_config(self):
         raise NotImplementedError()
     
     def execute(self):
