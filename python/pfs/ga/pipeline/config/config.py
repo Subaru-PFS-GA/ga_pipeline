@@ -1,8 +1,18 @@
+import os
+import commentjson
+import yaml
+
 class Config():
     """Base class for configurations"""
 
     def __init__(self, config=None):
         self.load(config)
+
+    def _get_env(self, name, default=None):
+        if name in os.environ and os.environ[name] is not None and os.environ[name] != '':
+            return os.environ[name]
+        else:
+            return None
 
     # TODO: add json/yaml dump and load functions
 
@@ -13,8 +23,53 @@ class Config():
             pass
         elif isinstance(source, dict):
             self._load_impl(config=source)
+        elif isinstance(source, str):
+            # Configuration to be loaded from a file
+            # Depending on the file extension, load the configuration file
+            dir, filename = os.path.split(source)
+            _, ext = os.path.splitext(filename)
+            if ext == '.py':
+                config = self.__load_config_py(source)
+            elif ext == '.json':
+                config = self.__load_config_json(source)
+            elif ext == '.yaml':
+                config = self.__load_config_yaml(source)
+            else:
+                raise ValueError(f'Unknown configuration file extension `{ext}`')
+            
+            self._load_impl(config=config)
         else:
             raise NotImplementedError()
+        
+    def __load_config_py(self, filename):
+        # Load a python file with the configuration and execute it to get
+        # the configuration dictionary
+
+        with open(filename, 'r') as f:
+            code = f.read()
+
+        global_variables = {}
+        local_variables = {}
+        exec(code, global_variables, local_variables)
+
+        if 'config' in local_variables:
+            return local_variables['config']
+        else:
+            raise ValueError(f'Configuration not found in file `{filename}`')
+    
+    def __load_config_json(self, filename):
+        # Load configuration from a JSON file with comments
+
+        with open(filename, 'r') as f:
+            config = commentjson.load(f)
+        return config
+    
+    def __load_config_yaml(self, filename):
+        # Load configuration from a YAML file
+
+        with open(filename, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
         
     def __merge_dict(self, a: dict, b: dict, ignore_collisions=False):
         """

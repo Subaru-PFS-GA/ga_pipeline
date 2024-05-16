@@ -5,8 +5,7 @@ class RVFitConfig(Config):
 
         # RVFIT global parameters
         
-        self.ref_mag = 'hsc_g'
-        self.fit_arms = [ 'b', 'm' ]
+        self.fit_arms = [ 'b', 'm', 'n' ]
         self.require_all_arms = True              # Require all arms to run fit
         self.model_grid_path = None               # Template grid path, use {arm} for wildcard
         self.model_grid_args = None               # Extra arguments to model grid
@@ -15,22 +14,6 @@ class RVFitConfig(Config):
         self.psf_path = None                      # Line spread function path, use {arm} for wildcard
         self.wave_resampler = "interp"
         self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
-
-        # Arm definitions with defaults
-        self.arms = { 
-            'b': dict(
-                wave = [ 3800, 6500 ],
-                pix_per_res = 3,
-            ),
-            'm': dict(
-                wave = [ 7100, 8850 ],
-                pix_per_res = 4,
-            ),
-            'n': dict(
-                wave = [ 9400, 12600 ],
-                pix_per_res = 3,
-            ),
-        }   
 
         # RVFIT parameter priors - arguments to pass to ModelGridRVFit
         self.rvfit_args = {

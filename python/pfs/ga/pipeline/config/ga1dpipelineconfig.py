@@ -13,15 +13,54 @@ class GA1DPipelineConfig(PipelineConfig):
 
     def __init__(self, config=None):
         # Path to rerun data, absolute or relative to `datadir`
-        self.rerundir = None
+        self.rerundir = self._get_env('GAPIPE_RERUNDIR')
 
         # GA target object configuration
         self.object = GAObjectConfig()
 
         # GA pipeline configuration
-        self.load_pfsConfig = True          # Load and use info from pfsConfig files
 
-        self.v_corr = 'barycentric'         # Type of velocity corrections
+        # Arm definitions with defaults
+        self.arms = { 
+            'b': dict(
+                wave = [ 3800, 6500 ],
+                pix_per_res = 3,
+            ),
+            'm': dict(
+                wave = [ 7100, 8850 ],
+                pix_per_res = 4,
+            ),
+            'n': dict(
+                wave = [ 9400, 12600 ],
+                pix_per_res = 3,
+            ),
+        }  
+
+        self.ref_mag = 'hsc_g'                  # Reference magnitude
+
+        # Type of velocity corrections, 'barycentric' or 'heliocentric' or 'none'
+        self.v_corr = 'barycentric'
+
+        # Flags to treat as masked pixel, combined with logical or.
+        self.mask_flags = [
+            'BAD',
+            'BAD_FIBERTRACE',
+            'BAD_FLAT',
+            'BAD_FLUXCAL',
+            'BAD_SKY',
+            'CR',
+            'DETECTED',
+            'DETECTED_NEGATIVE',
+            'EDGE',
+            'FIBERTRACE',
+            'INTRP',
+            'IPC',
+            'NO_DATA',
+            'REFLINE',
+            'SAT',
+            'SUSPECT',
+            'UNMASKEDNAN'
+        ]
         
         self.rvfit = RVFitConfig()
         self.run_rvfit = True
