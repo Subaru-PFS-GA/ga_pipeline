@@ -1,0 +1,72 @@
+#!/bin/env bash
+
+# Verify if file is being sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    echo "The init script must be sourced!"
+    exit
+fi
+
+if [[ -f "~/.bashrc" ]]; then
+    echo "Sourcing .bashrc"
+    source ~/.bashrc
+fi
+
+# Parse arguments
+
+PARAMS=""
+GAPIPE_ENV="default"
+INIT_GIT_KEY="0"
+
+while (( "$#" )); do
+    case "$1" in
+      -e|--env)
+        GAPIPE_ENV="$2"
+        shift 2
+        ;;
+      -g|--init-git)
+        INIT_GIT_KEY="0"
+        shift
+        ;;
+      --no-init-git)
+        INIT_GIT_KEY="0"
+        shift
+        ;;
+      --) # end argument parsing
+        shift
+        break
+        ;;
+      *) # preserve all other arguments
+        PARAMS="$PARAMS $1"
+        shift
+        ;;
+    esac
+done
+
+# Source environment configs
+
+if [[ -f "./configs/envs/$GAPIPE_ENV" ]]; then
+    echo "Sourcing environment file $GAPIPE_ENV"
+    source "./configs/envs/$GAPIPE_ENV"
+else
+    ech "Environment file for $GAPIPE_ENV not found. "
+    exit 1
+fi
+
+# Set up environment
+echo "Activating conda environment $GAPIPE_CONDAENV"
+source "$GAPIPE_CONDAPATH/bin/activate" "$GAPIPE_CONDAENV"
+
+export PYTHONPATH="$GAPIPE_ROOT/python:$PFSSPEC_ROOT/test:$PFSSPEC_ROOT/python:$PYTHONPATH"
+
+# Generate .env file for vscode python debugging
+cat > .env <<EOF
+DISPLAY="$DISPLAY"
+CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
+GAPIPE_DEBUGPORT="$GAPIPE_DEBUGPORT"
+
+GAPIPE_ROOT="$GAPIPE_ROOT"
+PYTHONPATH="$PYTHONPATH"
+
+PFSSPEC_ROOT="$PFSSPEC_ROOT"
+PFSSPEC_DATA="$PFSSPEC_DATA"
+EOF

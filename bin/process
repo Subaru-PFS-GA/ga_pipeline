@@ -1,0 +1,6 @@
+#!/bin/env bash
+
+# Run the GA 1D pipeline over a set of PfsSingle files corresponding to
+# multiple visits of the same object.
+
+./bin/run "-m pfs.ga.pipeline.scripts.process" "$@"
