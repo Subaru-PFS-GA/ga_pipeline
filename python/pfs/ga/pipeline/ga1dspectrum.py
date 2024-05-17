@@ -44,5 +44,5 @@ class GA1DSpectrum(StellarSpectrum, Spectrum):
                   'mjd']
         return params
 
-    def get_id_string(self):
+    def get_name(self):
         return f'catId={self.catId:05d}, objID={self.objId:016x}, visit={self.visit:06d}'

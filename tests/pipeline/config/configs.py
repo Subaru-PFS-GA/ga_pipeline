@@ -47,13 +47,13 @@ TEST_CONFIG_EDR2_90006 = dict(
         ),
         trace_args = dict(
             plot_fit_spec = {
-                'rvfit_best_400nm': dict(
+                'pfsGA-RVFit-best-400nm-{id}': dict(
                     wlim=[385, 405],
-                    plot_spectra=True, plot_processed_templates=True,
+                    plot_spectrum=True, plot_processed_template=True,
                     plot_flux_err=True, plot_residuals=False),
-                'rvfit_best_ca': dict(
+                'pfsGA-RVFit-best-Ca-{id}': dict(
                     wlim=[849, 870],
-                    plot_spectra=True, plot_processed_templates=True,
+                    plot_spectrum=True, plot_processed_template=True,
                     plot_flux_err=True, plot_residuals=False),
             }
         ),

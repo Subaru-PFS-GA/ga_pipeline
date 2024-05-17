@@ -108,6 +108,7 @@ class GA1DPipeline(Pipeline):
         ]
 
         self.__pfsSingle = pfsSingle
+        self.__identity = None
 
         self.__spectra = None                   # spectra in PFSSPEC class for each class and visit
         self.__v_corr = None                    # velocity correction for each visit
@@ -149,8 +150,10 @@ class GA1DPipeline(Pipeline):
             `True` if the pipeline can proceed or 'False' if it cannot.
         """
 
-        if not os.path.isdir(self.config.workdir):
-            raise FileNotFoundError(f'Working directory `{self.config.workdir}` does not exist.')
+        # TODO: put this back but check if outdir is to be created automatically
+        #       also add option to test if outfile exists
+        # if not os.path.isdir(self.config.workdir):
+        #     raise FileNotFoundError(f'Working directory `{self.config.workdir}` does not exist.')
         
         if not os.path.isdir(self.config.datadir):
             raise FileNotFoundError(f'Data directory `{self.config.datadir}` does not exist.')
@@ -174,6 +177,57 @@ class GA1DPipeline(Pipeline):
     def validate_libs(self):
         # TODO: write code to validate library versions and log git hash for each when available
         pass
+
+    #region Object and visit identity
+
+    def __copy_target(self, orig):
+        # Copy the target object
+        return Target(
+            catId = orig.catId,
+            tract = orig.tract,
+            patch = orig.patch,
+            objId = orig.objId,
+            ra = orig.ra,
+            dec = orig.dec,
+            targetType = orig.targetType,
+            fiberFlux = orig.fiberFlux,
+        )
+    
+    def __merge_observations(self, observations):
+        # Merge observations into a single object
+        visit = np.concatenate([ o.visit for o in observations ])
+        arm = np.concatenate([ o.arm for o in observations ])
+        spectrograph = np.concatenate([ o.spectrograph for o in observations ])
+        pfsDesignId = np.concatenate([ o.pfsDesignId for o in observations ])
+        fiberId = np.concatenate([ o.fiberId for o in observations ])
+        pfiNominal = np.concatenate([ o.pfiNominal for o in observations ])
+        pfiCenter = np.concatenate([ o.pfiCenter for o in observations ])
+
+        return Observations(
+            visit = visit,
+            arm = arm,
+            spectrograph = spectrograph,
+            pfsDesignId = pfsDesignId,
+            fiberId = fiberId,
+            pfiNominal = pfiNominal,
+            pfiCenter = pfiCenter,
+        )
+    
+    def __get_identity(self):
+        """
+        Returns an identity generated from the pfsSingle objects.
+        """
+
+        first_visit = sorted(list(self.__pfsSingle.keys()))[0]
+        target = self.__copy_target(self.__pfsSingle[first_visit].target)
+        observations = self.__merge_observations([ self.__pfsSingle[visit].observations for visit in sorted(self.__pfsSingle.keys()) ])
+
+        identity = target.identity
+        identity.update(observations.getIdentity())
+
+        return target, observations, identity
+
+    #endregion
 
     def __step_init(self):
         # Create output directories
@@ -199,6 +253,13 @@ class GA1DPipeline(Pipeline):
                 'visit': visit
             }            
             self.__pfsSingle[visit] = self.__load_pfsSingle(identity)
+
+        self.__target, self.__observations, self.__identity = self.__get_identity()
+        self.__id = ('{catId:05d}-{tract:05d}-{patch}-{objId:016x}' + \
+                    '-{nVisit:03d}-0x{pfsVisitHash:016x}').format(**self.__identity)
+        
+        if self.trace is not None:
+            self.trace.id = self.__id
 
         # Extract the spectra of individual arms from the pfsSingle objects
         avail_arms = self.__get_avail_arms()
@@ -587,9 +648,12 @@ class GA1DPipeline(Pipeline):
     
     def __rvfit_init(self, template_grids, template_psfs):
         trace = ModelGridRVFitTrace(
+            id=self.__id,
             figdir=self.config.figdir,
             logdir=self.config.logdir)
-        trace.figure_formats = [ '.pdf', '.png' ]
+        
+        if self.trace is not None:
+            trace.figure_formats = self.trace.figure_formats
         
         rvfit = ModelGridRVFit(trace)
 
@@ -671,9 +735,12 @@ class GA1DPipeline(Pipeline):
     
     def __coadd_init(self):
         trace = StackerTrace(
+            id=self.__id,
             figdir=self.config.figdir,
             logdir=self.config.logdir)
-        trace.figure_formats = [ '.pdf', '.png' ]
+        
+        if self.trace is not None:
+            trace.figure_formats = [ '.png' ]
 
         stacker = Stacker(trace)
 
@@ -767,39 +834,6 @@ class GA1DPipeline(Pipeline):
         id = self.__pfsGAObject.getIdentity()
         fn = os.path.join(self.config.outdir, PfsGAObject.filenameFormat % id)
         self.__pfsGAObject.writeFits(fn)
-    
-    def __copy_target(self, orig):
-        # Copy the target object
-        return Target(
-            catId = orig.catId,
-            tract = orig.tract,
-            patch = orig.patch,
-            objId = orig.objId,
-            ra = orig.ra,
-            dec = orig.dec,
-            targetType = orig.targetType,
-            fiberFlux = orig.fiberFlux,
-        )
-    
-    def __merge_observations(self, observations):
-        # Merge observations into a single object
-        visit = np.concatenate([ o.visit for o in observations ])
-        arm = np.concatenate([ o.arm for o in observations ])
-        spectrograph = np.concatenate([ o.spectrograph for o in observations ])
-        pfsDesignId = np.concatenate([ o.pfsDesignId for o in observations ])
-        fiberId = np.concatenate([ o.fiberId for o in observations ])
-        pfiNominal = np.concatenate([ o.pfiNominal for o in observations ])
-        pfiCenter = np.concatenate([ o.pfiCenter for o in observations ])
-
-        return Observations(
-            visit = visit,
-            arm = arm,
-            spectrograph = spectrograph,
-            pfsDesignId = pfsDesignId,
-            fiberId = fiberId,
-            pfiNominal = pfiNominal,
-            pfiCenter = pfiCenter,
-        )
     
     def __copy_flags(self, flags):
         return MaskHelper(**flags.flags)

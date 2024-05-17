@@ -40,7 +40,9 @@ class Process(Script):
         config.logdir = os.path.join(config.workdir, 'log')
         config.figdir = os.path.join(config.workdir, 'fig')
 
-        trace = GA1DPipelineTrace(config.figdir)
+        trace = GA1DPipelineTrace(figdir=config.figdir, logdir=config.logdir)
+        trace.init_from_args(self, None, config.trace_args)
+
         pipeline = GA1DPipeline(config, trace)
         
         pipeline._validate_config()

@@ -45,9 +45,7 @@ class GA1DPipelineTrace(PipelineTrace):
         """Fired when the flux correction is evaluated."""
 
         if self.plot_flux_correction or self.plot_level >= Trace.PLOT_LEVEL_DEBUG:
-            key = 'coadd_flux_corr'
-
-            f = self.get_diagram_page(key, 1, 1, 1, diagram_size=(6.5, 3.5))
+            f = self.get_diagram_page('pfsGA-Coadd-fluxcorr-{id}', 1, 1, 1, diagram_size=(6.5, 3.5))
 
             p = SpectrumPlot()
             ax = f.add_diagram((0, 0, 0), p)

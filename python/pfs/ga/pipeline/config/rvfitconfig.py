@@ -38,11 +38,12 @@ class RVFitConfig(Config):
             'plot_rv_fit': True,
             'plot_input_spec': True,
             'plot_fit_spec': {
-                'rvfit_best': dict(
-                    plot_spectra=True, plot_processed_templates=True,
+                # Default plots of RVFit results
+                'pfsGA-RVFit-best-{id}': dict(
+                    plot_spectrum=True, plot_processed_template=True,
                     plot_flux_err=True, plot_residuals=False),
-                'rvfit_residuals': dict(
-                    plot_spectra=False, plot_processed_templates=False,
+                'pfsGA-RVFit-residuals-{id}': dict(
+                    plot_spectrum=False, plot_processed_template=False,
                     plot_flux_err=False, plot_residuals=True),
             },
             'plot_spec_flux_err': True,

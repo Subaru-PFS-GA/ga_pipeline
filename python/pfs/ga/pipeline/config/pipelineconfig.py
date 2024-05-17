@@ -4,6 +4,8 @@ from .config import Config
 
 class PipelineConfig(Config):
     def __init__(self, config=None):
+        self.trace_args = {}
+
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory, must be writable         
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
         self.logdir = self._get_env('GAPIPE_WORKDIR')         # Log directory, must be writable
