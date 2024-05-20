@@ -46,9 +46,6 @@ class RVFitConfig(Config):
                     plot_spectrum=False, plot_processed_template=False,
                     plot_flux_err=False, plot_residuals=True),
             },
-            'plot_spec_flux_err': True,
-            'plot_spec_mask': True,
-            'plot_spec_cont': True,
             'plot_params_priors': True,
             'plot_params_cov': True
         }

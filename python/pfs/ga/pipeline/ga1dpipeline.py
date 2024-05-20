@@ -71,11 +71,6 @@ class GA1DPipeline(Pipeline):
                 'critical': True
             },
             {
-                'name': 'validate',
-                'func': self.__step_validate,
-                'critical': True
-            },
-            {
                 'name': 'vcorr',
                 'func': self.__step_vcorr,
                 'critical': False
@@ -277,8 +272,14 @@ class GA1DPipeline(Pipeline):
 
         self.__spectra = self.__read_spectra(use_arms)
 
+        self.__load_validate()
+
         stop_time = time.perf_counter()
         self.logger.info(f'PFS data files loaded successfully for {len(self.__pfsSingle)} exposures in {stop_time - start_time:.3f} s.')
+
+        if self.trace is not None:
+            spectra = self.__rvfit_collect_spectra(use_arms)
+            self.trace.on_load(spectra)
 
     def __load_pfsSingle(self, identity):
         dir = os.path.join(self.config.datadir,
@@ -296,7 +297,7 @@ class GA1DPipeline(Pipeline):
 
         return pfsSingle
     
-    def __step_validate(self):
+    def __load_validate(self):
         # Extract info from pfsSingle objects one by one and perform
         # some validation steps
 
@@ -304,7 +305,7 @@ class GA1DPipeline(Pipeline):
 
         for visit in self.__pfsSingle.keys():
             pfsSingle = self.__pfsSingle[visit]
-            self.__validate_pfsSingle(visit, pfsSingle)
+            self.__load_validate_pfsSingle(visit, pfsSingle)
 
             # Make sure that targets are the same
             if target is None:
@@ -316,7 +317,7 @@ class GA1DPipeline(Pipeline):
 
         self.__rvfit_validate()
     
-    def __validate_pfsSingle(self, visit, pfsSingle):
+    def __load_validate_pfsSingle(self, visit, pfsSingle):
         fn = pfsSingle.filenameFormat % {**pfsSingle.getIdentity(), 'visit': visit}
 
         # Verify that it is a single visit and not a co-add
@@ -338,6 +339,10 @@ class GA1DPipeline(Pipeline):
         # TODO: write log message
 
     def __get_avail_arms(self):
+        """
+        Return a set of arms that are available in the observations.
+        """
+
         # TODO: add option to require that all observations contain all arms
 
         # Collect all arms available in observations
@@ -378,9 +383,6 @@ class GA1DPipeline(Pipeline):
                     read += 1
 
                 spectra[arm][visit] = s
-
-        if self.trace is not None:
-            self.trace.on_rvfit_load_spectra(spectra)
 
         stop_time = time.perf_counter()
         self.logger.info(f'Extracted {read} and skipped {skipped} spectra from PfsSingle files in {stop_time - start_time:.3f} s.')
@@ -484,29 +486,10 @@ class GA1DPipeline(Pipeline):
             for flag in mask_flags:
                 mask_bits |= pfsSingle.flags[flag]
             return mask_bits
-        
-    def __collect_spectra(self, use_arms):
-        # Collect spectra that will be used to fit the RV and stacking
-        # Only add those arms where at least on spectrum is available
-        spectra = {}
-        for arm in use_arms:
-            for visit in sorted(self.__spectra[arm].keys()):
-                spec = self.__spectra[arm][visit]
-                if spec is not None:
-                    mask = self.__rvfit.get_full_mask(spec)
-                    if mask.sum() == 0:
-                        self.logger.warning(f'All pixels in arm `{arm}` for visit `{visit}` are masked.')
-                        continue
-                    elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
-                        self.logger.warning(f'Not enough unmasked pixels in arm `{arm}` for visit `{visit}`.')
-
-                    if arm not in spectra:
-                        spectra[arm] = []
-                    spectra[arm].append(spec)
-
-        return spectra
 
     #region v_corr
+
+    # TODO: these have to be moved to the 2D pipeline
 
     def __step_vcorr(self):
         if self.config.v_corr is not None and self.config.v_corr.lower() != 'none':
@@ -563,7 +546,7 @@ class GA1DPipeline(Pipeline):
         self.__rvfit = self.__rvfit_init(template_grids, template_psfs)
 
         # Collect spectra in a format that can be passed to RVFit
-        spectra = self.__collect_spectra(use_arms)
+        spectra = self.__rvfit_collect_spectra(use_arms)
 
         # TODO: validate available spectra here and throw warning if any of the arms are missing after
         #       filtering based on masks
@@ -665,6 +648,40 @@ class GA1DPipeline(Pipeline):
 
         return rvfit
     
+    def __rvfit_collect_spectra(self, use_arms, skip_fully_masked=False, skip_mosly_masked=False, skip_none=False, mask_bits=None):
+        # Collect spectra that will be used to fit the RV and stacking
+        # Only add those arms where at least on spectrum is available
+
+        spectra = {}
+        for arm in use_arms:
+            for visit in sorted(self.__spectra[arm].keys()):
+                spec = self.__spectra[arm][visit]
+                if spec is not None:
+
+                    if self.__rvfit is not None:
+                        mask = self.__rvfit.get_full_mask(spec, mask_bits=mask_bits)
+                    else:
+                        mask = spec.mask_as_bool(bits=mask_bits)
+
+                    if mask.sum() == 0:
+                        self.logger.warning(f'All pixels in arm `{arm}` for visit `{visit}` are masked.')
+                        if skip_fully_masked:
+                            continue
+                        else:
+                            # Skip this spectrum because it is fully masked
+                            spec = None
+                    elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
+                        self.logger.warning(f'Not enough unmasked pixels in arm `{arm}` for visit `{visit}`.')
+                        if skip_mosly_masked:
+                            continue
+
+                if not skip_none or spec is not None:
+                    if arm not in spectra:
+                        spectra[arm] = []
+                    spectra[arm].append(spec)
+
+        return spectra
+    
     def __rvfit_preprocess(self, spectra):
         pass
 
@@ -695,7 +712,7 @@ class GA1DPipeline(Pipeline):
         stack_arms = set(self.config.coadd.coadd_arms)
         use_arms = avail_arms.intersection(rvfit_arms.intersection(stack_arms))
 
-        spectra = self.__collect_spectra(use_arms)
+        spectra = self.__rvfit_collect_spectra(use_arms)
 
         # TODO: Validate here
 
@@ -714,21 +731,27 @@ class GA1DPipeline(Pipeline):
 
         self.__stacking_results = {}
         for arm in spectra:
-            stacked_wave, stacked_wave_edges, stacked_flux, stacked_error, stacked_weight, stacked_mask = \
-                self.__stacker.stack(spectra[arm], flux_corr=flux_corr[arm])
-            
-            # Mask out bins where the weight is zero
-            stacked_mask = np.where(stacked_weight == 0, stacked_mask | no_data_bit, stacked_mask)
+            # Only stack those spectra that are not None
+            ss = [ s for s in spectra[arm] if s is not None ]
+            fc = [ f for f in flux_corr[arm] if f is not None ]
+            if len(ss) > 0:
+                stacked_wave, stacked_wave_edges, stacked_flux, stacked_error, stacked_weight, stacked_mask = \
+                    self.__stacker.stack(ss, flux_corr=fc)
+                
+                # Mask out bins where the weight is zero
+                stacked_mask = np.where(stacked_weight == 0, stacked_mask | no_data_bit, stacked_mask)
 
-            # Create a spectrum
-            spec = GA1DSpectrum()
-            spec.wave = stacked_wave
-            spec.wave_edges = stacked_wave_edges
-            spec.flux = stacked_flux
-            spec.flux_err = stacked_error
-            spec.mask = stacked_mask
+                # Create a spectrum
+                spec = GA1DSpectrum()
+                spec.wave = stacked_wave
+                spec.wave_edges = stacked_wave_edges
+                spec.flux = stacked_flux
+                spec.flux_err = stacked_error
+                spec.mask = stacked_mask
 
-            self.__stacking_results[arm] = spec
+                self.__stacking_results[arm] = spec
+            else:
+                self.__stacking_results[arm] = None
 
         # TODO: trace hook
         pass

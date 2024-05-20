@@ -2,10 +2,10 @@ import numpy as np
 
 from pfs.ga.pfsspec.core.plotting import SpectrumPlot, styles
 from pfs.ga.pfsspec.core.util.args import *
-from pfs.ga.pfsspec.core import Trace
+from pfs.ga.pfsspec.core import Trace, SpectrumTrace
 from .pipelinetrace import PipelineTrace
 
-class GA1DPipelineTrace(PipelineTrace):
+class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
     def __init__(self, figdir='.', logdir='.',
                  plot_inline=False, 
                  plot_level=Trace.PLOT_LEVEL_NONE, 
@@ -16,6 +16,7 @@ class GA1DPipelineTrace(PipelineTrace):
                          plot_level=plot_level,
                          log_level=log_level)
         
+        self.plot_exposures = True
         self.plot_flux_correction = True
 
         self.reset()
@@ -31,10 +32,15 @@ class GA1DPipelineTrace(PipelineTrace):
 
         self.plot_flux_correction = get_arg('plot_flux_correction', self.plot_flux_correction, args)
 
-    def on_rvfit_load_spectra(self, spectra):
+    def on_load(self, spectra):
         """Fired when the individual exposures are read from the pfsSingle files."""
 
-        pass
+        if self.plot_exposures:
+            self._plot_spectra('pfsGA-exposures-{id}',
+                               spectra,
+                               plot_spectrum=True, plot_flux_err=True, plot_mask=True,
+                               title='Input spectra - {id}')
+            self.flush_figures()
 
     def on_coadd_get_templates(self, spectra, templates):
         """Fired when the templates at the best fit parameters are loaded."""
@@ -56,8 +62,9 @@ class GA1DPipelineTrace(PipelineTrace):
 
             for arm, specs in spectra.items():
                 for i, spec in enumerate(specs):
-                    # s = styles.lightgray_line(**styles.thin_line())
-                    p.plot_spectrum(spec, flux_corr=flux_corr[arm][i], auto_limits=True)
+                    if spec is not None:
+                        # s = styles.lightgray_line(**styles.thin_line())
+                        p.plot_spectrum(spec, flux_corr=flux_corr[arm][i], auto_limits=True)
 
             f.match_limits()
 
