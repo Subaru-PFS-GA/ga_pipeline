@@ -26,6 +26,10 @@ class GA1DPipelineConfig(PipelineConfig):
                 wave = [ 3800, 6500 ],
                 pix_per_res = 3,
             ),
+            'r': dict(
+                wave = [ 6300, 9700 ],
+                pix_per_res = 3,
+            ),
             'm': dict(
                 wave = [ 7100, 8850 ],
                 pix_per_res = 4,
