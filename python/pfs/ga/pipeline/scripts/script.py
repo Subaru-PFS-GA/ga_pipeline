@@ -1,4 +1,5 @@
 import os
+import logging
 from argparse import ArgumentParser
 
 class Script():
@@ -8,14 +9,25 @@ class Script():
 
     def __init__(self):
         self.__debug = False
+        self.__loglevel = logging.INFO
 
-        self.parser = ArgumentParser()
+        self.__parser = ArgumentParser()
+
+    def __get_debug(self):
+        return self.__debug
+    
+    debug = property(__get_debug)
+
+    def __get_loglevel(self):
+        return self.__loglevel
+    
+    loglevel = property(__get_loglevel)
 
     def __parse_args(self):
-        self.__args = self.parser.parse_args().__dict__
+        self.__args = self.__parser.parse_args().__dict__
 
     def _add_arg(self, *args, **kwargs):
-        self.parser.add_argument(*args, **kwargs)
+        self.__parser.add_argument(*args, **kwargs)
 
     def _get_arg(self, name, args=None, default=None):
         args = args if args is not None else self.__args

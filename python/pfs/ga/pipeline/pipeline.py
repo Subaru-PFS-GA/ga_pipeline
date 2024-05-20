@@ -1,23 +1,25 @@
 import os
 import time
-import logging
 import traceback
+import logging
 try:
     import debugpy
 except ModuleNotFoundError:
     debugpy = None
 
+from .setup_logger import logger
+from .scripts.script import Script
 from .constants import *
 from .config.pipelineconfig import PipelineConfig
 from .pipelinetrace import PipelineTrace
 
 class Pipeline():
-    def __init__(self, config: PipelineConfig, trace: PipelineTrace = None):
+    def __init__(self, script: Script, config: PipelineConfig, trace: PipelineTrace = None):
 
+        self.__script = script
         self.__config = config
         self.__trace = trace
 
-        self.__logger = logging.getLogger(GA_PIPELINE_LOGNAME)
         self.__logfile = None
         self.__logFormatter = None
         self.__logFileHandler = None
@@ -28,6 +30,11 @@ class Pipeline():
 
         self._steps = None
 
+    def __get_script(self): 
+        return self.__script
+    
+    script = property(__get_script)
+
     def __get_config(self):
         return self.__config
     
@@ -37,11 +44,6 @@ class Pipeline():
         return self.__trace
     
     trace = property(__get_trace)
-
-    def __get_logger(self):
-        return self.__logger
-    
-    logger = property(__get_logger)
 
     def __get_exceptions(self):
         return self.__exceptions
@@ -76,12 +78,23 @@ class Pipeline():
     def _create_dir(self, dir, name):
         if not os.path.isdir(dir):
             os.makedirs(dir, exist_ok=True)
-            logging.debug(f'Created {name} directory `{dir}`.')
+            logger.debug(f'Created {name} directory `{dir}`.')
         else:
-            logging.debug(f'Found existing {name} directory `{dir}`.')
+            logger.debug(f'Found existing {name} directory `{dir}`.')
 
     def _get_log_filename(self):
         raise NotImplementedError()
+    
+    def _get_log_level(self):
+        loglevel = self.__config.loglevel
+
+        if self.__script.loglevel is not None and self.__script.loglevel < loglevel:
+            loglevel = self.__script.loglevel
+        
+        if self.__script.debug and logging.DEBUG < loglevel:
+            loglevel = logging.DEBUG
+        
+        return loglevel
 
     def __start_logging(self):
         self._create_dir(self.__config.logdir, 'log')
@@ -96,17 +109,21 @@ class Pipeline():
         # Configure root logger
         root = logging.getLogger()
         root.handlers = []
-        root.setLevel(self.__config.loglevel)
+        root.setLevel(self._get_log_level())
         root.addHandler(self.__logFileHandler)
         root.addHandler(self.__logConsoleHandler)
- 
-        self.__logger.propagate = True
-        self.__logger.setLevel(self.__config.loglevel)
 
-        self.__logger.info(f'Logging started to `{self.__logfile}`.')
+        # Filter out log messages from matplotlib
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
+ 
+        # Configure pipeline logger
+        logger.propagate = True
+        logger.setLevel(self._get_log_level())
+
+        logger.info(f'Logging started to `{self.__logfile}`.')
 
     def __stop_logging(self):
-        self.__logger.info(f'Logging finished to `{self.__logfile}`.')
+        logger.info(f'Logging finished to `{self.__logfile}`.')
 
         # Disconnect file logger and re-assign stderr
         root = logging.getLogger()
@@ -121,11 +138,11 @@ class Pipeline():
     def __start_tracing(self):
         if self.__trace is not None:
             self.__trace.figdir = self.__config.figdir
-            self.__logger.info(f'Tracing initialized. Figure directory is `{self.__config.figdir}`.')
+            logger.info(f'Tracing initialized. Figure directory is `{self.__config.figdir}`.')
 
     def __stop_tracing(self):
         if self.__trace is not None:
-            self.__logger.info(f'Tracing stopped.')
+            logger.info(f'Tracing stopped.')
 
     def __execute_step(self, name, step):
         """
@@ -134,19 +151,19 @@ class Pipeline():
         """
 
         try:
-            self.__logger.info(self._get_log_message_step_start(name))
+            logger.info(self._get_log_message_step_start(name))
             start_time = time.perf_counter()
             step()
             stop_time = time.perf_counter()
-            self.__logger.info(self._get_log_message_step_stop(name, stop_time - start_time))
+            logger.info(self._get_log_message_step_stop(name, stop_time - start_time))
             return True
         except Exception as ex:
             # Break into debugger if available
             if debugpy is not None and debugpy.is_client_connected():
                 raise ex
 
-            self.__logger.info(self._get_log_message_step_error(name, ex))
-            self.__logger.exception(ex)
+            logger.info(self._get_log_message_step_error(name, ex))
+            logger.exception(ex)
             
             self.__exceptions.append(ex)
             self.__tracebacks.append(traceback.format_tb(ex.__traceback__))

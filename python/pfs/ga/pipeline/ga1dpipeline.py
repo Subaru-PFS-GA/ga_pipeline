@@ -15,6 +15,8 @@ from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.rvfit import RVFit, ModelGridRVFit, ModelGridRVFitTrace
 from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 
+from .setup_logger import logger
+from .scripts.script import Script
 from .pipeline import Pipeline
 from .pipelineerror import PipelineError
 from .config import GA1DPipelineConfig
@@ -39,6 +41,7 @@ class GA1DPipeline(Pipeline):
     """
 
     def __init__(self,
+                 script: Script,
                  config: GA1DPipelineConfig,
                  trace: GA1DPipelineTrace = None,
                  pfsSingle: dict = None):
@@ -57,7 +60,7 @@ class GA1DPipeline(Pipeline):
             keyed by ˙visit˙.
         """
         
-        super().__init__(config=config, trace=trace)
+        super().__init__(script=script, config=config, trace=trace)
 
         self._steps = [
             {
@@ -264,7 +267,7 @@ class GA1DPipeline(Pipeline):
 
         if len(use_arms) < len(fit_arms):
             # TODO: list missing arms, include visit IDs
-            self.logger.warning(f'Not all arms required to run the pipeline are available in the observations for Object ID `{self.config.object.objId}.')
+            logger.warning(f'Not all arms required to run the pipeline are available in the observations for Object ID `{self.config.object.objId}.')
 
         # TODO: do we want to load arms that we don't fit?
         #       consider taking the intersection of avail_arms and fit_arms
@@ -275,7 +278,7 @@ class GA1DPipeline(Pipeline):
         self.__load_validate()
 
         stop_time = time.perf_counter()
-        self.logger.info(f'PFS data files loaded successfully for {len(self.__pfsSingle)} exposures in {stop_time - start_time:.3f} s.')
+        logger.info(f'PFS data files loaded successfully for {len(self.__pfsSingle)} exposures in {stop_time - start_time:.3f} s.')
 
         if self.trace is not None:
             spectra = self.__rvfit_collect_spectra(use_arms)
@@ -287,13 +290,13 @@ class GA1DPipeline(Pipeline):
                            'pfsSingle/{catId:05d}/{tract:05d}/{patch}'.format(**identity))
         fn = PfsSingle.filenameFormat % identity
         
-        self.logger.info(f'Loading PfsSingle from `{os.path.join(dir, fn)}`.')
+        logger.info(f'Loading PfsSingle from `{os.path.join(dir, fn)}`.')
 
         start_time = time.perf_counter()
         pfsSingle = PfsSingle.read(identity, dirName=dir)
         stop_time = time.perf_counter()
 
-        self.logger.info(f'Loaded PfsSingle from `{os.path.join(dir, fn)}` in {stop_time - start_time:.3f} s.')
+        logger.info(f'Loaded PfsSingle from `{os.path.join(dir, fn)}` in {stop_time - start_time:.3f} s.')
 
         return pfsSingle
     
@@ -385,7 +388,7 @@ class GA1DPipeline(Pipeline):
                 spectra[arm][visit] = s
 
         stop_time = time.perf_counter()
-        self.logger.info(f'Extracted {read} and skipped {skipped} spectra from PfsSingle files in {stop_time - start_time:.3f} s.')
+        logger.info(f'Extracted {read} and skipped {skipped} spectra from PfsSingle files in {stop_time - start_time:.3f} s.')
 
         return spectra
     
@@ -461,7 +464,7 @@ class GA1DPipeline(Pipeline):
         # Write number of masked/unmasked pixels to log
         # TODO: review message and add IDs
         mm = s.mask_as_bool()
-        self.logger.info(f'Spectrum contains masked pixels, {np.sum(~mm)} unmasked pixels.')
+        logger.info(f'Spectrum contains masked pixels, {np.sum(~mm)} unmasked pixels.')
 
         self.__calc_spectrum_params(s)
 
@@ -496,7 +499,7 @@ class GA1DPipeline(Pipeline):
             self.__v_corr_calculate()
             self.__v_corr_apply()
         else:
-            self.logger.info('Velocity correction for geocentric frame is set to `none`, skipping corrections.')
+            logger.info('Velocity correction for geocentric frame is set to `none`, skipping corrections.')
         
     def __v_corr_calculate(self):
         
@@ -529,11 +532,11 @@ class GA1DPipeline(Pipeline):
         
     def __step_rvfit(self):
         if not self.config.run_rvfit:
-            self.logger.info('RV fitting is disabled, skipping step.')
+            logger.info('RV fitting is disabled, skipping step.')
             
         # Run RV fitting
 
-        self.logger.info(f'Starting RVFit...')
+        logger.info(f'Starting RVFit...')
         start_time = time.perf_counter()
 
         # Collect arms that can be used for fitting
@@ -562,7 +565,7 @@ class GA1DPipeline(Pipeline):
         self.__rvfit_cleanup()
 
         stop_time = time.perf_counter()
-        self.logger.info(f'Successfully executed RVFit in {stop_time - start_time:.3f} s.')
+        logger.info(f'Successfully executed RVFit in {stop_time - start_time:.3f} s.')
     
     def __rvfit_validate(self):
         # Find a unique set of available arms in the pfsSingle files
@@ -577,7 +580,7 @@ class GA1DPipeline(Pipeline):
             if self.config.rvfit.require_all_arms and arm not in avail_arms:
                 raise PipelineError(f'RVFIT requires arm `{arm}` which is not observed.')
             elif arm not in avail_arms:
-                self.logger.warning(f'RVFIT requires arm `{arm}` which is not observed.')
+                logger.warning(f'RVFIT requires arm `{arm}` which is not observed.')
     
     def __rvfit_load_grid(self, arms):
         # Load template grids. Make sure each grid is only loaded once, if grid is
@@ -622,7 +625,7 @@ class GA1DPipeline(Pipeline):
                 raise NotImplementedError()
 
             s = gauss_psf.get_optimal_size(wave)
-            self.logger.info(f'Optimal kernel size for PSF in arm `{arm}` is {s}.')
+            logger.info(f'Optimal kernel size for PSF in arm `{arm}` is {s}.')
 
             pca_psf = PcaPsf.from_psf(gauss_psf, wave, size=s, truncate=5)
             psfs[arm] = pca_psf
@@ -664,14 +667,14 @@ class GA1DPipeline(Pipeline):
                         mask = spec.mask_as_bool(bits=mask_bits)
 
                     if mask.sum() == 0:
-                        self.logger.warning(f'All pixels in arm `{arm}` for visit `{visit}` are masked.')
+                        logger.warning(f'All pixels in arm `{arm}` for visit `{visit}` are masked.')
                         if skip_fully_masked:
                             continue
                         else:
                             # Skip this spectrum because it is fully masked
                             spec = None
                     elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
-                        self.logger.warning(f'Not enough unmasked pixels in arm `{arm}` for visit `{visit}`.')
+                        logger.warning(f'Not enough unmasked pixels in arm `{arm}` for visit `{visit}`.')
                         if skip_mosly_masked:
                             continue
 
@@ -693,10 +696,10 @@ class GA1DPipeline(Pipeline):
 
     def __step_coadd(self):
         if not self.config.run_rvfit:
-            self.logger.info('Spectrum stacking required RV fitting which is disabled, skipping step.')
+            logger.info('Spectrum stacking required RV fitting which is disabled, skipping step.')
             return
         elif not self.config.run_coadd:
-            self.logger.info('Spectrum stacking is disabled, skipping step.')
+            logger.info('Spectrum stacking is disabled, skipping step.')
             return
         
         # Coadd the spectra
@@ -805,7 +808,7 @@ class GA1DPipeline(Pipeline):
 
     def __step_chemfit(self):
         if not self.config.run_chemfit:
-            self.logger.info('Chemical abundance fitting is disabled, skipping...')
+            logger.info('Chemical abundance fitting is disabled, skipping...')
             return
         
         # TODO: run abundance fitting

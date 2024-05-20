@@ -43,7 +43,7 @@ class Process(Script):
         trace = GA1DPipelineTrace(figdir=config.figdir, logdir=config.logdir)
         trace.init_from_args(self, None, config.trace_args)
 
-        pipeline = GA1DPipeline(config, trace)
+        pipeline = GA1DPipeline(script=self, config=config, trace=trace)
         
         pipeline._validate_config()
         pipeline.execute()
