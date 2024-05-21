@@ -28,6 +28,8 @@ class RVFitConfig(Config):
 
             "flux_corr": True,
             "flux_corr_deg": 10,
+
+            "resampler": "interp",              # Resampler to use for resampling model grid
         }
 
         # RVFIT trace args - these control plotting, etc.
