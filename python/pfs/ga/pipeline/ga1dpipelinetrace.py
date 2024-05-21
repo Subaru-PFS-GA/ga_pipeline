@@ -38,8 +38,10 @@ class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
         if self.plot_exposures:
             self._plot_spectra('pfsGA-exposures-{id}',
                                spectra,
-                               plot_spectrum=True, plot_flux_err=True, plot_mask=True,
-                               title='Input spectra - {id}')
+                               plot_spectrum=True, plot_flux_err=True, plot_mask=False,
+                               title='Input spectra - {id}',
+                               nrows=2, ncols=1, diagram_size=(6.5, 3.5))
+            
             self.flush_figures()
 
     def on_coadd_get_templates(self, spectra, templates):

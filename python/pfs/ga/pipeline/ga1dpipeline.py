@@ -442,6 +442,7 @@ class GA1DPipeline(Pipeline):
         # Consider using different mask bits for each pipeline step
         # TODO: are mask bits the same for a rerun or they vary from file to file?
         s.mask_bits = self.__get_mask_bits(pfsSingle, self.config.mask_flags)
+        s.mask_flags = self.__get_mask_flags(pfsSingle, self.config.mask_flags)
 
         # Make sure pixels with nan and inf are masked
         s.mask = np.where(np.isnan(s.flux) | np.isinf(s.flux) | np.isnan(s.flux_err) | np.isinf(s.flux_err),
@@ -478,8 +479,6 @@ class GA1DPipeline(Pipeline):
         # Create datetime with UTC time zone (Hawaii: UTC - 10)
         s.mjd = Astro.datetime_to_mjd(datetime(2023, 7, 24, 14, 0, 0, tzinfo=pytz.timezone('UTC')))
         s.alt, s.az = Astro.radec_to_altaz(s.ra, s.dec, s.mjd)
-        
-        pass
 
     def __get_mask_bits(self, pfsSingle, mask_flags):
         if mask_flags is None:
@@ -489,6 +488,10 @@ class GA1DPipeline(Pipeline):
             for flag in mask_flags:
                 mask_bits |= pfsSingle.flags[flag]
             return mask_bits
+        
+    def __get_mask_flags(self, pfsSingle, mask_flags):
+        # For now, ignore mask_flags and copy all flags
+        return { v: k for k, v in pfsSingle.flags.flags.items() }
 
     #region v_corr
 
