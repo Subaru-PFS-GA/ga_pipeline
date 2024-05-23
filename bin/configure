@@ -1,0 +1,5 @@
+#!/bin/env bash
+
+# Generate the configuration file to process a given set of observations
+
+./bin/wrap "-m pfs.ga.pipeline.scripts.configure" "$@"

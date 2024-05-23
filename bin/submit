@@ -1,0 +1,5 @@
+#!/bin/env bash
+
+# Generate configuration files and schedule the pipeline
+
+./bin/wrap "-m pfs.ga.pipeline.scripts.run" "$@"
