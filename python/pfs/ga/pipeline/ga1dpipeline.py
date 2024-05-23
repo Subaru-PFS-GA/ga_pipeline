@@ -534,21 +534,23 @@ class GA1DPipeline(Pipeline):
     #region RVFIT
         
     def __step_rvfit(self):
+        """
+        Perform the RV fitting step.
+        """
+        
         if not self.config.run_rvfit:
             logger.info('RV fitting is disabled, skipping step.')
-            
-        # Run RV fitting
-
-        logger.info(f'Starting RVFit...')
-        start_time = time.perf_counter()
 
         # Collect arms that can be used for fitting
         avail_arms = set(self.__spectra.keys())
         fit_arms = set(self.config.rvfit.fit_arms)
         use_arms = avail_arms.intersection(fit_arms)
 
+        # Load template grids and PSFs
         template_grids = self.__rvfit_load_grid(use_arms)
         template_psfs = self.__rvfit_load_psf(use_arms, template_grids)
+
+        # Initialize the RVFit object
         self.__rvfit = self.__rvfit_init(template_grids, template_psfs)
 
         # Collect spectra in a format that can be passed to RVFit
@@ -566,9 +568,6 @@ class GA1DPipeline(Pipeline):
         self.__rvfit_results = self.__rvfit.fit_rv(spectra)
 
         self.__rvfit_cleanup()
-
-        stop_time = time.perf_counter()
-        logger.info(f'Successfully executed RVFit in {stop_time - start_time:.3f} s.')
     
     def __rvfit_validate(self):
         # Find a unique set of available arms in the pfsSingle files
