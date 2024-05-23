@@ -8,8 +8,8 @@ class PipelineConfig(Config):
 
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory, must be writable         
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
-        self.logdir = self._get_env('GAPIPE_WORKDIR')         # Log directory, must be writable
-        self.figdir = self._get_env('GAPIPE_WORKDIR')         # Figure directory, must be writable
+        self.logdir = None                                    # Log directory, must be writable
+        self.figdir = None                                    # Figure directory, must be writable
         self.outdir = self._get_env('GAPIPE_WORKDIR')         # Directory for output data files, must be writable
 
         self.loglevel = logging.INFO
