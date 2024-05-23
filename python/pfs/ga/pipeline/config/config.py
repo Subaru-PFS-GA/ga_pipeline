@@ -25,23 +25,39 @@ class Config():
             self._load_impl(config=source)
         elif isinstance(source, str):
             # Configuration to be loaded from a file
-            # Depending on the file extension, load the configuration file
-            dir, filename = os.path.split(source)
-            _, ext = os.path.splitext(filename)
-            if ext == '.py':
-                config = self.__load_config_py(source)
-            elif ext == '.json':
-                config = self.__load_config_json(source)
-            elif ext == '.yaml':
-                config = self.__load_config_yaml(source)
-            else:
-                raise ValueError(f'Unknown configuration file extension `{ext}`')
-            
+            config = Config.load_dict(source)
             self._load_impl(config=config)
         else:
             raise NotImplementedError()
         
-    def __load_config_py(self, filename):
+    def save(self, path):
+        # Save configuration to a file
+
+        config = self._save_impl()
+        Config.save_dict(config, path)
+
+    def as_dict(self):
+        # Return the configuration as a dictionary
+        return self._save_impl()
+        
+    @staticmethod
+    def load_dict(path):
+        # Depending on the file extension, load the configuration file
+        dir, filename = os.path.split(path)
+        _, ext = os.path.splitext(filename)
+        if ext == '.py':
+            config = Config.__load_dict_py(path)
+        elif ext == '.json':
+            config = Config.__load_dict_json(path)
+        elif ext == '.yaml':
+            config = Config.__load_dict_yaml(path)
+        else:
+            raise ValueError(f'Unknown configuration file extension `{ext}`')
+        
+        return config
+        
+    @staticmethod
+    def __load_dict_py(filename):
         # Load a python file with the configuration and execute it to get
         # the configuration dictionary
 
@@ -57,21 +73,55 @@ class Config():
         else:
             raise ValueError(f'Configuration not found in file `{filename}`')
     
-    def __load_config_json(self, filename):
+    @staticmethod
+    def __load_dict_json(filename):
         # Load configuration from a JSON file with comments
 
         with open(filename, 'r') as f:
             config = commentjson.load(f)
         return config
     
-    def __load_config_yaml(self, filename):
+    @staticmethod
+    def __load_dict_yaml(filename):
         # Load configuration from a YAML file
 
         with open(filename, 'r') as f:
             config = yaml.safe_load(f)
         return config
+    
+    @staticmethod
+    def save_dict(config, path):
+        # Depending on the file extension, save the configuration file
+        dir, filename = os.path.split(path)
+        _, ext = os.path.splitext(filename)
+        if ext == 'py':
+            Config.__save_dict_py(config, path)
+        if ext == '.json':
+            Config.__save_dict_json(config, path)
+        elif ext == '.yaml':
+            Config.__save_dict_yaml(config, path)
+        else:
+            raise ValueError(f'Unknown configuration file extension `{ext}`')
         
-    def __merge_dict(self, a: dict, b: dict, ignore_collisions=False):
+    @staticmethod
+    def __save_dict_py(config, filename):
+        # Save a python file with the configuration
+        raise NotImplementedError()
+
+    @staticmethod
+    def __save_dict_json(config, filename):
+        # Save configuration to a JSON file with comments
+        with open(filename, 'w') as f:
+            commentjson.dump(config, f)
+
+    @staticmethod
+    def __save_dict_yaml(config, filename):
+        # Save configuration to a YAML file
+        with open(filename, 'w') as f:
+            yaml.dump(config, f)
+        
+    @staticmethod
+    def merge_dict(a: dict, b: dict, ignore_collisions=False):
         """
         Deep-merge two dictionaries. This function will merge the two dictionaries
         recursively. If a key is present in both dictionaries, the value will be 
@@ -84,7 +134,7 @@ class Config():
         for k in kk:
             # Both are dictionaries, merge them
             if k in a and isinstance(a[k], dict) and k in b  and isinstance(b[k], dict):
-                r[k] = self.__merge_dict(a[k], b[k], ignore_collisions=ignore_collisions)
+                r[k] = Config.merge_dict(a[k], b[k], ignore_collisions=ignore_collisions)
             elif k in a and k in b:
                 if ignore_collisions:
                     r[k] = a[k]
@@ -95,6 +145,19 @@ class Config():
             elif k in b:
                 r[k] = b[k]
 
+        return r
+    
+    @staticmethod
+    def copy_dict(a: dict):
+        # Make a deep copy of a dictionary
+        r = {}
+        for k in a.keys():
+            if isinstance(a[k], dict):
+                r[k] = Config.copy_dict(a[k])
+            elif isinstance(a[k], list):
+                r[k] = [ Config.copy_dict(c) for c in a[k] ]
+            else:
+                r[k] = a[k]
         return r
         
     def _load_config_from_dict(self, config=None, type_map=None):
@@ -121,7 +184,7 @@ class Config():
                     setattr(self, k, self.map_config_class(type_map[k], config=config[k]))
                 elif isinstance(c, dict) and isinstance(config[k], dict):
                     # This member is a dictionary, merge with the config dict
-                    setattr(self, k, self.__merge_dict(c, config[k]))
+                    setattr(self, k, self.merge_dict(c, config[k]))
                 else:
                     # This is a regular member, just set its value
                     setattr(self, k, config[k])
@@ -137,3 +200,28 @@ class Config():
             return [ type(config=c) for c in config ]
         else:
             return type(config=config)
+        
+    @staticmethod
+    def _save_config_to_dict(obj):
+        # Save configuration to a dictionary
+
+        config = {}
+        for k in obj.__dict__:
+            if not k.startswith('_'):
+                v = getattr(obj, k)
+                config[k] = Config.__save_obj_to_dict(v)
+        return config
+
+    @staticmethod
+    def __save_obj_to_dict(obj):
+        if isinstance(obj, Config):
+            return Config._save_config_to_dict(obj)
+        elif isinstance(obj, dict):
+            return { k: Config.__save_obj_to_dict(v) for k, v in obj.items() }
+        elif isinstance(obj, list):
+            return [ Config.__save_obj_to_dict(v) for v in obj ]
+        else:
+            return obj
+
+    def _save_impl(self):
+        return self._save_config_to_dict(self)
