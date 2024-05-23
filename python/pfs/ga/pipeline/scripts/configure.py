@@ -27,11 +27,11 @@ class Configure(Script):
         self.__rerundir = None
         self.__outdir = None
 
-        self.__catId = IntIDFilter(format='{:05d}')
-        self.__tract = IntIDFilter(format='{:05d}')
+        self.__catId = IntIDFilter('catid', format='{:05d}')
+        self.__tract = IntIDFilter('tract', format='{:05d}')
         self.__patch = None
-        self.__objId = HexIDFilter(format='{:016x}')
-        self.__visit = IntIDFilter(format='{:06d}')
+        self.__objId = HexIDFilter('objid', format='{:016x}')
+        self.__visit = IntIDFilter('visit', format='{:06d}')
 
     def _add_args(self):
         super()._add_args()
@@ -77,8 +77,6 @@ class Configure(Script):
         # Find all the pfsSingle files that match the filters
         targets = self.__get_pfsSingle_targets()
 
-        # TODO: update config with directory names?
-
         # Generate a config file for each of the inputs
         for objId in sorted(targets.keys()):
             # Update the config with the ids
@@ -90,12 +88,22 @@ class Configure(Script):
             # TODO: the empty dict here is a placeholder for per visit configuration
             self.__config.target.visits = { v: {} for v in targets[objId].visits }
 
-            # Save the config to a file
-            dir = Constants.PFSGACONFIG_DIR_FORMAT.format(
+            identity = dict(
                 catId = targets[objId].catId,
                 tract = targets[objId].tract,
                 patch = targets[objId].patch,
+                objId = targets[objId].objId,
+                nVisit = wraparoundNVisit(len(targets[objId].visits)),
+                pfsVisitHash = calculatePfsVisitHash(targets[objId].visits),
             )
+
+            # TODO: update config with directory names?
+            self.__config.workdir = self.__workdir.format(**identity)
+            self.__config.datadir = self.__datadir.format(**identity)
+            self.__config.rerundir = self.__rerundir.format(**identity)
+            self.__config.outdir = self.__outdir.format(**identity)
+
+            # Save the config to a file
             filename = Constants.PFSGACONFIG_FILENAME_FORMAT.format(
                 catId = targets[objId].catId,
                 tract = targets[objId].tract,
@@ -105,7 +113,7 @@ class Configure(Script):
                 pfsVisitHash = calculatePfsVisitHash(targets[objId].visits),
             )
 
-            path = os.path.join(self.__outdir, dir, filename)
+            path = os.path.join(self.__config.outdir, filename)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             self.__config.save(path)
 
@@ -147,13 +155,10 @@ class Configure(Script):
             objId = self.__objId.parse_value(match.group(4))
             visit = self.__visit.parse_value(match.group(5))
 
-            # TODO: objId filter doesn't work!
-            raise NotImplementedError()
-
             if match is not None and \
                 self.__catId.match(catId) and \
                 self.__tract.match(tract) and \
-                self.__patch is None or self.__patch == patch and \
+                (self.__patch is None or self.__patch == patch) and \
                 self.__objId.match(objId) and \
                 self.__visit.match(visit):
                     

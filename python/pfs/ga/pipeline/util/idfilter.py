@@ -4,13 +4,23 @@ class IDFilter():
     ranges of IDs within file names.
     """
 
-    def __init__(self, format=None, orig=None):
+    def __init__(self, name, format=None, orig=None):
         if not isinstance(orig, IDFilter):
+            self.__name = name
             self.__format = format if format is not None else '{}'
         else:
+            self.__name = name if name is not None else orig.__name
             self.__format = format if format is not None else orig.__format
 
         self.__values = None
+
+    def __get_name(self):
+        return self.__name
+    
+    def __set_name(self, value):
+        self.__name = value
+
+    name = property(__get_name, __set_name)
 
     def __get_format(self):
         return self.__format
