@@ -1,7 +1,7 @@
 from .config import Config
 from .visitconfig import VisitConfig
 
-class GAObjectConfig(Config):
+class GATargetConfig(Config):
     """
     Galactic Archeology pipeline target object configuration.
     """

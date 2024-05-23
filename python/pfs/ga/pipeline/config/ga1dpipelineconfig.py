@@ -1,5 +1,5 @@
 from .pipelineconfig import PipelineConfig
-from .gaobjectconfig import GAObjectConfig
+from .gatargetconfig import GATargetConfig
 from .rvfitconfig import RVFitConfig
 from .chemfitconfig import ChemfitConfig
 from .coaddconfig import CoaddConfig
@@ -16,7 +16,7 @@ class GA1DPipelineConfig(PipelineConfig):
         self.rerundir = self._get_env('GAPIPE_RERUNDIR')
 
         # GA target object configuration
-        self.object = GAObjectConfig()
+        self.target = GATargetConfig()
 
         # GA pipeline configuration
 
@@ -80,7 +80,7 @@ class GA1DPipelineConfig(PipelineConfig):
     def _load_impl(self, config=None):
         self._load_config_from_dict(config=config,
                                     type_map={ 
-                                        'object': GAObjectConfig,
+                                        'object': GATargetConfig,
                                         'rvfit': RVFitConfig,
                                         'coadd': CoaddConfig,
                                         'chemfit': ChemfitConfig,
