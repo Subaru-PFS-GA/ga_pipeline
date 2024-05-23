@@ -2,11 +2,13 @@
 
 import os
 
-from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
-from pfs.ga.pipeline.config import GA1DPipelineConfig
 from .script import Script
 
-class Process(Script):
+class Run(Script):
+    """
+    Run the pipeline from a configuration file.
+    """
+
     def __init__(self):
         super().__init__()
 
@@ -28,6 +30,8 @@ class Process(Script):
 
     def run(self):
         # Create the pipeline object and initialize it from a config file
+        from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
+        from pfs.ga.pipeline.config import GA1DPipelineConfig
 
         config = GA1DPipelineConfig()
         config.load(self.__config)
@@ -49,7 +53,7 @@ class Process(Script):
         pipeline.execute()
 
 def main():
-    script = Process()
+    script = Run()
     script.execute()
 
 if __name__ == "__main__":
