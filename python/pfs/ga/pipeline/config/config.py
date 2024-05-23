@@ -112,13 +112,13 @@ class Config():
     def __save_dict_json(config, filename):
         # Save configuration to a JSON file with comments
         with open(filename, 'w') as f:
-            commentjson.dump(config, f)
+            commentjson.dump(config, f, sort_keys=False)
 
     @staticmethod
     def __save_dict_yaml(config, filename):
         # Save configuration to a YAML file
         with open(filename, 'w') as f:
-            yaml.dump(config, f)
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
         
     @staticmethod
     def merge_dict(a: dict, b: dict, ignore_collisions=False):
