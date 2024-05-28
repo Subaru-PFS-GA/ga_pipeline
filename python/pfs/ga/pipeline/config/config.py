@@ -16,17 +16,17 @@ class Config():
 
     # TODO: add json/yaml dump and load functions
 
-    def load(self, source):
+    def load(self, source, ignore_collisions=False):
         # Load configuration from a dictionary or other sources (files)
 
         if source is None:
             pass
         elif isinstance(source, dict):
-            self._load_impl(config=source)
+            self._load_impl(config=source, ignore_collisions=ignore_collisions)
         elif isinstance(source, str):
             # Configuration to be loaded from a file
             config = Config.load_dict(source)
-            self._load_impl(config=config)
+            self._load_impl(config=config, ignore_collisions=ignore_collisions)
         else:
             raise NotImplementedError()
         
@@ -137,9 +137,9 @@ class Config():
                 r[k] = Config.merge_dict(a[k], b[k], ignore_collisions=ignore_collisions)
             elif k in a and k in b:
                 if ignore_collisions:
-                    r[k] = a[k]
+                    r[k] = b[k]
                 else:
-                    raise ValueError(f"Collision detected for key {k}")
+                    raise ValueError(f"Collision detected for key `{k}`.")
             elif k in a:
                 r[k] = a[k]
             elif k in b:
@@ -160,7 +160,7 @@ class Config():
                 r[k] = a[k]
         return r
         
-    def _load_config_from_dict(self, config=None, type_map=None):
+    def _load_config_from_dict(self, config=None, type_map=None, ignore_collisions=False):
         # Load configuration from a dictionary
 
         if config is not None:
@@ -178,20 +178,20 @@ class Config():
                 c = getattr(self, k)
                 if isinstance(c, Config):
                     # This is a config class, it can initialize itself from the config dict
-                    c._load_impl(config[k])
+                    c._load_impl(config[k], ignore_collisions=ignore_collisions)
                 elif type_map is not None and k in type_map:
                     # This member is part of the type_map, instantiate type and initialize
                     setattr(self, k, self.map_config_class(type_map[k], config=config[k]))
                 elif isinstance(c, dict) and isinstance(config[k], dict):
                     # This member is a dictionary, merge with the config dict
-                    setattr(self, k, self.merge_dict(c, config[k]))
+                    setattr(self, k, self.merge_dict(c, config[k], ignore_collisions=ignore_collisions))
                 else:
                     # This is a regular member, just set its value
                     setattr(self, k, config[k])
 
-    def _load_impl(self, config=None):
+    def _load_impl(self, config=None, ignore_collisions=False):
         # The default is not to use type mapping
-        self._load_config_from_dict(config=config)
+        self._load_config_from_dict(config=config, ignore_collisions=ignore_collisions)
 
     def map_config_class(self, type, config=None):
         if isinstance(config, dict):

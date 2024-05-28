@@ -77,11 +77,13 @@ class GA1DPipelineConfig(PipelineConfig):
         
         super().__init__(config=config)
 
-    def _load_impl(self, config=None):
+    def _load_impl(self, config=None, ignore_collisions=False):
         self._load_config_from_dict(config=config,
                                     type_map={ 
                                         'object': GATargetConfig,
                                         'rvfit': RVFitConfig,
                                         'coadd': CoaddConfig,
                                         'chemfit': ChemfitConfig,
-                                    })
+                                    },
+                                    ignore_collisions=ignore_collisions)
+        
