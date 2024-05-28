@@ -1,5 +1,144 @@
 #!/bin/env bash
 
-# Generate configuration files and schedule the pipeline
+# Submit processing jobs to slurm
 
-./bin/wrap "-m pfs.ga.pipeline.scripts.run" "$@"
+# Usage:
+
+
+# Constants
+
+PFSGACONFIG_REGEX='pfsGAConfig-([0-9]{5})-([0-9]{5})-(.*)-([0-9a-f]{16})-([0-9]{3})-0x([0-9a-f]{16})\.(yaml|json|py)'
+
+# Parse positional arguments
+
+CONFIG_ROOT="$1"                              # Root directory of the configuration files
+shift
+
+# Parse slurm and other parameters
+
+PARAMS=()
+
+RUNMODE="run"
+DRY_RUN=0
+PYTHON_DEBUG=0
+SBATCH_DEPENDENCY=""
+SBATCH_PARTITION="default"
+SBATCH_MEM="16G"
+SBATCH_TIME="12:00:00"
+SBATCH_GPUS=0
+SBATCH_CPUS_PER_TASK=8
+
+while (( "$#" )); do
+    case "$1" in
+        --dry-run)                                  # Dry run
+            DRY_RUN=1
+            shift
+            ;;
+        --debug)                                    # Run python script in debug mode
+            PYTHON_DEBUG=1
+            shift
+            ;;
+        --sbatch)                                   # Submit task as sbatch job
+            RUNMODE="sbatch"
+            shift
+            ;;
+        --dependency)                               # Add dependency to sbatch job
+            SBATCH_DEPENDENCY="--dependency $2"
+            shift 2
+            ;;
+        --srun)                                     # Run task interactively with srun
+            RUNMODE="srun"
+            shift
+            ;;
+        -p|--partition)                             # Slurm partition
+            SBATCH_PARTITION="$2"
+            shift 2
+            ;;
+        --mem)                                      # Slurm memory limit
+            SBATCH_MEM="$2"
+            shift 2
+            ;;
+        -t|--time)                                  # Slurm time limit
+            SBATCH_TIME="$2"
+            shift 2
+            ;;
+        -G|--gpus)                                  # Number of GPUs per slurm job
+            if [[ $RUNMODE != "run" ]]; then
+                SBATCH_GPUS="$2"
+            else
+                PARAMS="$PARAMS $1 $2"
+            fi
+            shift 2
+            ;;
+        -c|--cpus-per-task|--cpus)                  # Number of CPUs per slurm job
+            SBATCH_CPUS_PER_TASK="$2"
+            shift 2
+            ;;
+        --)                                         # End argument parsing
+            shift
+            break
+            ;;
+        -*|--*=)                                    # Unsupported flags
+            echo "Error: Unsupported flag $1" >&2
+            exit 1
+            ;;
+        *) # preserve all other arguments with quotes
+            PARAMS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ $PYTHON_DEBUG == "1" ]]; then
+    PARAMS+=("--debug")
+fi
+
+# Find all pfsGAConfig files in the configuration root directory recursively
+files=$(find $CONFIG_ROOT -regextype posix-egrep -regex ".*$PFSGACONFIG_REGEX")
+
+# Submit a job for each configuration file
+
+function submit_run() {
+    if [[ $DRY_RUN == "1" ]]; then
+        echo "$command"
+    else
+        exec $command
+    fi
+}
+
+function submit_srun() {
+    echo
+}
+
+function submit_sbatch() {
+    sbatch <<EOF
+#!/bin/env bash
+#SBATCH --partition $SBATCH_PARTITION
+#SBATCH --gres gpu:$SBATCH_GPUS
+#SBATCH --cpus-per-task $SBATCH_CPUS_PER_TASK
+#SBATCH --mem $SBATCH_MEM
+#SBATCH --time $SBATCH_TIME
+
+set -e
+
+out=slurm-\$SLURM_JOB_ID.out
+srun $command
+outdir=\$(cat \$out | grep -Po 'Output directory is (\K.+)')
+mv \$out \$outdir/slurm.out
+EOF
+}
+
+set -o noglob
+for file in $files; do
+    echo "Processing $file"
+    command="./bin/run --config $file"
+
+    if [[ $RUNMODE == "run" ]]; then
+        submit_run
+    elif [[ $RUNMODE == "srun" ]]; then
+        submit_srun
+    elif [[ $RUNMODE == "sbatch" ]]; then
+        submit_sbatch
+    fi
+done
+set +o noglob
