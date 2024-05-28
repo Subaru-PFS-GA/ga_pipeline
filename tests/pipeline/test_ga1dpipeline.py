@@ -3,7 +3,7 @@ from unittest import TestCase
 
 from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
 from pfs.ga.pipeline.config import GA1DPipelineConfig
-from pipeline.config.configs import *
+from tests.pipeline.config.configs import *
 
 class TestGA1DPipeline(TestCase):
     def get_test_config(self):
@@ -29,7 +29,7 @@ class TestGA1DPipeline(TestCase):
     def test_validate_config(self):
         config = self.get_test_config()
         pipeline = self.create_test_pipeline(config)
-        pipeline._validate_config()
+        pipeline.validate_config()
 
     def test_start_stop_logging(self):
         config = self.get_test_config()

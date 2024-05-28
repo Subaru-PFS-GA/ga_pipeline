@@ -1,5 +1,4 @@
 import os
-import time
 import traceback
 import logging
 try:
@@ -8,6 +7,7 @@ except ModuleNotFoundError:
     debugpy = None
 
 from .setup_logger import logger
+from .util import Timer
 from .scripts.script import Script
 from .constants import *
 from .config.pipelineconfig import PipelineConfig
@@ -55,7 +55,7 @@ class Pipeline():
     
     tracebacks = property(__get_tracebacks)
     
-    def _validate_config(self):
+    def validate_config(self):
         raise NotImplementedError()
     
     def execute(self):
@@ -75,12 +75,34 @@ class Pipeline():
         self.__stop_tracing()
         self.__stop_logging()
 
-    def _create_dir(self, dir, name):
+    def _create_dir(self, name, dir):
         if not os.path.isdir(dir):
             os.makedirs(dir, exist_ok=True)
             logger.debug(f'Created {name} directory `{dir}`.')
         else:
             logger.debug(f'Found existing {name} directory `{dir}`.')
+
+    def _test_dir(self, name, dir, must_exist=True):
+        """Verify that a directory exists and is accessible."""
+
+        if not os.path.isdir(dir):
+            if must_exist:
+                raise FileNotFoundError(f'{name.title()} directory `{dir}` does not exist.')
+            else:
+                logger.info(f'{name.title()} directory `{dir}` does not exist, will be automatically created.')
+        else:
+            logger.info(f'Using {name} directory `{dir}`.')
+
+    def _test_file(self, name, filename, must_exists=True):
+        """Verify that a file exists and is accessible."""
+        
+        if not os.path.isfile(filename):
+            if must_exists:
+                raise FileNotFoundError(f'{name.title()} file `{filename}` does not exist.')
+            else:
+                logger.info(f'{name.title()} file `{filename}` does not exist, will be automatically created.')
+        else:
+            logger.info(f'Using {name} file `{filename}`.')
 
     def _get_log_filename(self):
         raise NotImplementedError()
@@ -97,7 +119,7 @@ class Pipeline():
         return loglevel
 
     def __start_logging(self):
-        self._create_dir(self.__config.logdir, 'log')
+        self._create_dir('log', self.__config.logdir)
 
         self.__logfile = os.path.join(self.__config.logdir, self._get_log_filename())
         self.__logFormatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
@@ -150,30 +172,33 @@ class Pipeline():
         execution succeeded.
         """
 
-        try:
-            logger.info(self._get_log_message_step_start(name))
-            start_time = time.perf_counter()
-            step()
-            stop_time = time.perf_counter()
-            logger.info(self._get_log_message_step_stop(name, stop_time - start_time))
-            return True
-        except Exception as ex:
-            # Break into debugger if available
-            if debugpy is not None and debugpy.is_client_connected():
-                raise ex
+        with Timer() as timer:
+            start_message = self._get_log_message_step_start(name)
+            stop_message = self._get_log_message_step_stop(name)
 
-            logger.info(self._get_log_message_step_error(name, ex))
-            logger.exception(ex)
-            
-            self.__exceptions.append(ex)
-            self.__tracebacks.append(traceback.format_tb(ex.__traceback__))
-            return False
+            try:
+                logger.info(start_message)
+                step()
+                logger.info(timer.format_message(stop_message))
+                return True
+            except Exception as ex:
+                # Break into debugger if available
+                if debugpy is not None and debugpy.is_client_connected():
+                    raise ex
+
+                error_message = self._get_log_message_step_error(name, ex)
+                logger.error(timer.format_message(error_message))
+                logger.exception(ex)
+                
+                self.__exceptions.append(ex)
+                self.__tracebacks.append(traceback.format_tb(ex.__traceback__))
+                return False
 
     def _get_log_message_step_start(self, name):
         return f'Executing pipeline step `{name}`'
 
-    def _get_log_message_step_stop(self, name, elapsed_time):
-        return f'Pipeline step `{name}` completed successfully.'
+    def _get_log_message_step_stop(self, name):
+        return f'Pipeline step `{name}` completed successfully in {{:.3f}} sec.'
 
     def _get_log_message_step_error(self, name, ex):
         return f'Pipeline step `{name}` failed with error `{type(ex).__name__}`.'

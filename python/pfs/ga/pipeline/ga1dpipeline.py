@@ -15,6 +15,7 @@ from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.rvfit import RVFit, ModelGridRVFit, ModelGridRVFitTrace
 from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 
+from .constants import Constants
 from .setup_logger import logger
 from .scripts.script import Script
 from .pipeline import Pipeline
@@ -23,13 +24,13 @@ from .config import GA1DPipelineConfig
 from .ga1dpipelinetrace import GA1DPipelineTrace
 from .ga1dspectrum import GA1DSpectrum
 
-
 class GA1DPipeline(Pipeline):
     """
     Implements the Galactic Archeology Spectrum Processing Pipeline.
 
     Inputs are the `PfsSingle` files of all individual exposures belonging to the same
-    `objId` as a dictionary indexed by `visit`.
+    `objId` as a dictionary indexed by `visit`. If the inputs are not provided on initialization,
+    the files will be loaded based on the configuration object.
 
     The pipeline processes all exposures of a single object at a time and produces a
     PfsGAObject file which contains the measured parameters, their errors and full covariance
@@ -55,6 +56,8 @@ class GA1DPipeline(Pipeline):
             Configuration of the GA pipeline
         objId: :int:
             Unique object identifier
+        trace: :obj:`GA1DPipelineTrace`
+            Trace object for logging and plotting
         pfsSingle : :dict:`int`,`PfsSingle`
             Dictionary of PfsSingle object containing the individual exposures,
             keyed by ˙visit˙.
@@ -105,8 +108,12 @@ class GA1DPipeline(Pipeline):
             },
         ]
 
-        self.__pfsSingle = pfsSingle
-        self.__identity = None
+        self.__pfsSingle = pfsSingle            # dict of pfsSingle, indexed by visit
+
+        self.__target = None                    # Target object, from PFS data model
+        self.__observations = None              # Observations object, from PFS data model
+        self.__identity = None                  # Identity of the object, PFS style
+        self.__id = None                        # Identity represented as string
 
         self.__spectra = None                   # spectra in PFSSPEC class for each class and visit
         self.__v_corr = None                    # velocity correction for each visit
@@ -120,24 +127,32 @@ class GA1DPipeline(Pipeline):
 
         self.__pfsGAObject = None
 
+    def __get_id(self):
+        return self.__id
+    
+    def __set_id(self, value):
+        self.__id = value
+
+    id = property(__get_id, __set_id)
+
     def __get_pfsGAObject(self):
         return self.__pfsGAObject
     
     pfsGAObject = property(__get_pfsGAObject)
 
     def _get_log_filename(self):
-        return f'gapipe_{self.config.object.objId:016x}.log'
+        return f'gapipe_{self.__id}.log'
     
     def _get_log_message_step_start(self, name):
-        return f'Executing GA pipeline step `{name}` for objID={self.config.object.objId:016x}.'
+        return f'Executing GA pipeline step `{name}` for {self.__id}'
 
-    def _get_log_message_step_stop(self, name, elapsed_time):
-        return f'GA pipeline step `{name}` for objID={self.config.object.objId:016x} completed successfully in {elapsed_time:.3f} seconds.'
+    def _get_log_message_step_stop(self, name):
+        return f'GA pipeline step `{name}` for {self.__id} completed successfully in {{elapsed_time:.3f}} seconds.'
 
     def _get_log_message_step_error(self, name, ex):
-        return f'GA pipeline step `{name}` for objID={self.config.object.objId:016x} failed with error `{type(ex).__name__}`.'
+        return f'GA pipeline step `{name}` for {self.__id} failed with error `{type(ex).__name__}`.'
 
-    def _validate_config(self):
+    def validate_config(self):
         """
         Validates the configuration and the existence of all necessary input data. Returns
         `True` if the pipeline can proceed or 'False' if it cannot.
@@ -148,28 +163,15 @@ class GA1DPipeline(Pipeline):
             `True` if the pipeline can proceed or 'False' if it cannot.
         """
 
-        # TODO: put this back but check if outdir is to be created automatically
-        #       also add option to test if outfile exists
-        # if not os.path.isdir(self.config.workdir):
-        #     raise FileNotFoundError(f'Working directory `{self.config.workdir}` does not exist.')
+        # Verify output and log directories
+        self._test_dir('output', self.config.outdir, must_exist=False)
+        self._test_dir('work', self.config.workdir, must_exist=False)
+        self._test_dir('log', self.config.logdir, must_exist=False)
+        self._test_dir('figure', self.config.figdir, must_exist=False)
         
-        if not os.path.isdir(self.config.datadir):
-            raise FileNotFoundError(f'Data directory `{self.config.datadir}` does not exist.')
-
-        if not os.path.isdir(os.path.join(self.config.datadir, self.config.rerundir)):
-            raise FileNotFoundError(f'Rerun directory `{self.config.rerundir}` does not exist.')
+        self._test_dir('data', self.config.datadir)
+        self._test_dir('rerun', os.path.join(self.config.datadir, self.config.rerundir))
         
-        if self.config.run_rvfit:
-            for arm in self.config.arms:
-                fn = self.config.rvfit.model_grid_path.format(arm=arm)
-                if not os.path.isfile(fn):
-                    raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
-                
-                if self.config.rvfit.psf_path is not None:
-                    fn = self.config.rvfit.psf_path.format(arm=arm)
-                    if not os.path.isfile(fn):
-                        raise FileNotFoundError(f'PSF file `{fn}` not found.')
-
         return True
     
     def validate_libs(self):
@@ -224,40 +226,66 @@ class GA1DPipeline(Pipeline):
         identity.update(observations.getIdentity())
 
         return target, observations, identity
+    
+    def __enumerate_visits(self):
+        """
+        Enumerate the visits in the configs and return an identity for each.
+        """
+
+        for i, visit in enumerate(sorted(self.config.target.visits)):
+            identity = self.config.target.get_identity(visit)
+            yield i, visit, identity
+
+    def __get_pfsSingle_dir_filename(self, identity):
+        dir = os.path.join(self.config.datadir,
+                           self.config.rerundir,
+                           Constants.PFSSIGNLE_DIR_FORMAT.format(**identity))
+        fn = PfsSingle.filenameFormat % identity
+
+        return dir, fn
 
     #endregion
 
     def __step_init(self):
+        # Verify stellar template grids and PSF files
+        if self.config.run_rvfit:
+            for arm in self.config.arms:
+                fn = self.config.rvfit.model_grid_path.format(arm=arm)
+                if not os.path.isfile(fn):
+                    raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
+                else:
+                    logger.info(f'Using synthetic spectrum grid `{fn}` for arm `{arm}`.')
+                
+                if self.config.rvfit.psf_path is not None:
+                    fn = self.config.rvfit.psf_path.format(arm=arm)
+                    if not os.path.isfile(fn):
+                        raise FileNotFoundError(f'PSF file `{fn}` not found.')
+                    else:
+                        logger.info(f'Using PSF file `{fn}` for arm `{arm}`.')
+
+        # Verify pfsSingle files
+        if self.__pfsSingle is None: 
+            for i, visit, identity in self.__enumerate_visits():
+                dir, fn = self.__get_pfsSingle_dir_filename(identity)
+                self._test_file('pfsSingle', os.path.join(dir, fn), must_exists=True)
+
+        # TODO: add validation steps for CHEMFIT
+
         # Create output directories
-        self._create_dir(self.config.outdir, 'output')
-        self._create_dir(self.config.figdir, 'figure')
+        self._create_dir('output', self.config.outdir)
+        self._create_dir('figure', self.config.figdir)
 
     def __step_load(self):
         # Load each PfsSingle file.
+        # Skip loading files if the object are already passed to the pipeline
+        # from the outside
+        if self.__pfsSingle is None: 
+            self.__pfsSingle = {}
+            for i, visit, identity in self.__enumerate_visits():
+                self.__pfsSingle[visit] = self.__load_pfsSingle(identity)
 
-        # TODO: skip loading files if the object are already passed to the pipeline
-        #       from the outside
-
-        self.__pfsSingle = {}
-
-        start_time = time.perf_counter()
-
-        for i, visit in enumerate(sorted(self.config.object.visits.keys())):
-            identity = {
-                'objId': self.config.object.objId,
-                'catId': self.config.object.catId,
-                'tract': self.config.object.tract,
-                'patch': self.config.object.patch,
-                'visit': visit
-            }            
-            self.__pfsSingle[visit] = self.__load_pfsSingle(identity)
-
+        # Get various objects from the first PfsSingle file
         self.__target, self.__observations, self.__identity = self.__get_identity()
-        self.__id = ('{catId:05d}-{tract:05d}-{patch}-{objId:016x}' + \
-                    '-{nVisit:03d}-0x{pfsVisitHash:016x}').format(**self.__identity)
-        
-        if self.trace is not None:
-            self.trace.id = self.__id
 
         # Extract the spectra of individual arms from the pfsSingle objects
         avail_arms = self.__get_avail_arms()
@@ -267,7 +295,7 @@ class GA1DPipeline(Pipeline):
 
         if len(use_arms) < len(fit_arms):
             # TODO: list missing arms, include visit IDs
-            logger.warning(f'Not all arms required to run the pipeline are available in the observations for Object ID `{self.config.object.objId}.')
+            logger.warning(f'Not all arms required to run the pipeline are available in the observations for `{self.__id}.')
 
         # TODO: do we want to load arms that we don't fit?
         #       consider taking the intersection of avail_arms and fit_arms
@@ -277,18 +305,14 @@ class GA1DPipeline(Pipeline):
 
         self.__load_validate()
 
-        stop_time = time.perf_counter()
-        logger.info(f'PFS data files loaded successfully for {len(self.__pfsSingle)} exposures in {stop_time - start_time:.3f} s.')
+        logger.info(f'PFS data files loaded successfully of {len(self.__pfsSingle)} for {self.__id}.')
 
         if self.trace is not None:
             spectra = self.__rvfit_collect_spectra(use_arms)
             self.trace.on_load(spectra)
 
     def __load_pfsSingle(self, identity):
-        dir = os.path.join(self.config.datadir,
-                           self.config.rerundir,
-                           'pfsSingle/{catId:05d}/{tract:05d}/{patch}'.format(**identity))
-        fn = PfsSingle.filenameFormat % identity
+        dir, fn = self.__get_pfsSingle_dir_filename(identity)
         
         logger.info(f'Loading PfsSingle from `{os.path.join(dir, fn)}`.')
 
@@ -331,11 +355,11 @@ class GA1DPipeline(Pipeline):
         if visit not in pfsSingle.observations.visit:
             raise PipelineError(f'Visit does not match visit ID found in `{fn}`.')
         
-        if pfsSingle.target.catId != self.config.object.catId:
-            raise PipelineError(f'catId in config `{self.config.object.catId}` does not match catID in `{fn}`.')
+        if pfsSingle.target.catId != self.config.target.catId:
+            raise PipelineError(f'catId in config `{self.config.target.catId}` does not match catID in `{fn}`.')
 
-        if pfsSingle.target.objId != self.config.object.objId:
-            raise PipelineError(f'objId in config `{self.config.object.objId}` does not match objID in `{fn}`.')
+        if pfsSingle.target.objId != self.config.target.objId:
+            raise PipelineError(f'objId in config `{self.config.target.objId}` does not match objID in `{fn}`.')
         
         # TODO: compare flags and throw a warning if bits are not the same in every file
 
@@ -361,7 +385,6 @@ class GA1DPipeline(Pipeline):
     def __read_spectra(self, arms):
         # Extract spectra from the fluxtables of pfsSingle objects
 
-        start_time = time.perf_counter()
         read = 0
         skipped = 0
 
@@ -387,8 +410,7 @@ class GA1DPipeline(Pipeline):
 
                 spectra[arm][visit] = s
 
-        stop_time = time.perf_counter()
-        logger.info(f'Extracted {read} and skipped {skipped} spectra from PfsSingle files in {stop_time - start_time:.3f} s.')
+        logger.info(f'Extracted {read} and skipped {skipped} spectra from PfsSingle files.')
 
         return spectra
     
@@ -407,12 +429,21 @@ class GA1DPipeline(Pipeline):
         s.index = i
         s.arm = arm
         s.catId = pfsSingle.target.catId
-        s.objId = s.id = pfsSingle.target.objId
+        s.objId = pfsSingle.target.objId
         s.tract = pfsSingle.target.tract
         s.patch = pfsSingle.target.patch
         s.visit = pfsSingle.observations.visit[0]
         s.spectrograph = pfsSingle.observations.spectrograph[0]
         s.fiberid = pfsSingle.observations.fiberId[0]
+        s.id = Constants.PFSARM_ID_FORMAT.format(
+            catId=s.catId,
+            objId=s.objId,
+            tract=s.tract,
+            patch=s.patch,
+            visit=s.visit,
+            arm=s.arm,
+            spectrograph=s.spectrograph
+        )
 
         # TODO: where do we take these from?
         # s.exp_count = 1
@@ -465,7 +496,7 @@ class GA1DPipeline(Pipeline):
         # Write number of masked/unmasked pixels to log
         # TODO: review message and add IDs
         mm = s.mask_as_bool()
-        logger.info(f'Spectrum contains masked pixels, {np.sum(~mm)} unmasked pixels.')
+        logger.info(f'Spectrum {s.id} contains {np.sum(mm)} masked pixels and {np.sum(~mm)} unmasked pixels.')
 
         self.__calc_spectrum_params(s)
 
@@ -653,7 +684,7 @@ class GA1DPipeline(Pipeline):
 
         return rvfit
     
-    def __rvfit_collect_spectra(self, use_arms, skip_fully_masked=False, skip_mosly_masked=False, skip_none=False, mask_bits=None):
+    def __rvfit_collect_spectra(self, use_arms, skip_fully_masked=False, skip_mostly_masked=False, skip_none=False, mask_bits=None):
         # Collect spectra that will be used to fit the RV and stacking
         # Only add those arms where at least on spectrum is available
 
@@ -669,15 +700,15 @@ class GA1DPipeline(Pipeline):
                         mask = spec.mask_as_bool(bits=mask_bits)
 
                     if mask.sum() == 0:
-                        logger.warning(f'All pixels in arm `{arm}` for visit `{visit}` are masked.')
+                        logger.warning(f'All pixels in spectrum {spec.id} are masked.')
                         if skip_fully_masked:
                             continue
                         else:
                             # Skip this spectrum because it is fully masked
                             spec = None
                     elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
-                        logger.warning(f'Not enough unmasked pixels in arm `{arm}` for visit `{visit}`.')
-                        if skip_mosly_masked:
+                        logger.warning(f'Not enough unmasked pixels in spectrum {spec.id}.')
+                        if skip_mostly_masked:
                             continue
 
                 if not skip_none or spec is not None:

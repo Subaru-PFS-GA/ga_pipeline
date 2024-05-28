@@ -3,6 +3,7 @@
 import os
 
 from .script import Script
+from ..constants import Constants
 
 class Run(Script):
     """
@@ -22,7 +23,6 @@ class Run(Script):
         self._add_arg('--workdir', type=str, help='Working directory')
         self._add_arg('--rerundir', type=str, help='Rerun directory')
 
-
     def _init_from_args(self, args):
         super()._init_from_args(args)
 
@@ -34,22 +34,32 @@ class Run(Script):
         from pfs.ga.pipeline.config import GA1DPipelineConfig
 
         config = GA1DPipelineConfig()
-        config.load(self.__config)
+        config.load(self.__config, ignore_collisions=True)
+
+        identity = config.target.get_identity()
         
         # Override a few settings from the command line
-        config.datadir = self._get_arg('datadir', default=config.datadir)
-        config.workdir = self._get_arg('workdir', default=config.workdir)
+        config.datadir = self._get_arg('datadir', default=config.datadir).format(**identity)
+        config.workdir = self._get_arg('workdir', default=config.workdir).format(**identity)
         config.rerundir = self._get_arg('rerundir', default=config.rerundir)
-        config.outdir = self._get_arg('outdir', default=config.outdir)
+        config.outdir = self._get_arg('outdir', default=config.outdir).format(**identity)
         config.logdir = os.path.join(config.workdir, 'log')
         config.figdir = os.path.join(config.workdir, 'fig')
 
-        trace = GA1DPipelineTrace(figdir=config.figdir, logdir=config.logdir)
+        # Intialize the trace object used for logging and plotting
+        trace = GA1DPipelineTrace()
         trace.init_from_args(self, None, config.trace_args)
-
-        pipeline = GA1DPipeline(script=self, config=config, trace=trace)
         
-        pipeline._validate_config()
+        # Initialize the pipeline object
+        pipeline = GA1DPipeline(script=self, config=config, trace=trace)        
+        
+        # Set the object IDs
+        id = Constants.PFSOBJECT_ID_FORMAT.format(**identity)
+        pipeline.id = id
+        trace.id = id
+
+        # Validate and execute the pipeline
+        pipeline.validate_config()
         pipeline.execute()
 
 def main():

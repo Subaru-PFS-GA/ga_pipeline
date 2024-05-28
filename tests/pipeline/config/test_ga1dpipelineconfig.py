@@ -2,7 +2,7 @@ import os
 from unittest import TestCase
 
 from pfs.ga.pipeline.config import GA1DPipelineConfig
-from pipeline.config.configs import *
+from .configs import *
 
 class TestPipeline(TestCase):
     def test_init(self):
