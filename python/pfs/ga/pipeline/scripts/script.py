@@ -9,7 +9,7 @@ class Script():
 
     def __init__(self):
         self.__debug = False
-        self.__loglevel = logging.INFO
+        self.__log_level = logging.INFO
 
         self.__parser = ArgumentParser()
 
@@ -18,10 +18,10 @@ class Script():
     
     debug = property(__get_debug)
 
-    def __get_loglevel(self):
-        return self.__loglevel
+    def __get_log_level(self):
+        return self.__log_level
     
-    loglevel = property(__get_loglevel)
+    log_level = property(__get_log_level)
 
     def __parse_args(self):
         self.__args = self.__parser.parse_args().__dict__
@@ -39,9 +39,15 @@ class Script():
         
     def _add_args(self):
         self._add_arg('--debug', action='store_true', help='Enable debug mode')
+        self._add_arg('--log-level', type=str, help='Set log level')
 
     def _init_from_args(self, args):
         self.__debug = self._get_arg('debug', args, self.__debug)
+        self.__log_level = self._get_arg('log_level', args, self.__log_level)
+        if isinstance(self.__log_level, str) and hasattr(logging, self.__log_level.upper()):
+            self.__log_level = getattr(logging, self.__log_level.upper())
+        else:
+            self.__log_level = logging.INFO
 
     def execute(self):
         self._add_args()

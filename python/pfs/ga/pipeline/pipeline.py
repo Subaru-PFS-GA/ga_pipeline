@@ -108,8 +108,8 @@ class Pipeline():
     def _get_log_level(self):
         loglevel = self.__config.loglevel
 
-        if self.__script.loglevel is not None and self.__script.loglevel < loglevel:
-            loglevel = self.__script.loglevel
+        if self.__script.log_level is not None and self.__script.log_level < loglevel:
+            loglevel = self.__script.log_level
         
         if self.__script.debug and logging.DEBUG < loglevel:
             loglevel = logging.DEBUG
