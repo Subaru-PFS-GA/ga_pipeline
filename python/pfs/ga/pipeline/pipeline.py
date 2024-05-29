@@ -12,6 +12,7 @@ from .scripts.script import Script
 from .constants import *
 from .config.pipelineconfig import PipelineConfig
 from .pipelinetrace import PipelineTrace
+from .pipelineexception import PipelineException
 
 class Pipeline():
     def __init__(self, script: Script, config: PipelineConfig, trace: PipelineTrace = None):
@@ -66,11 +67,8 @@ class Pipeline():
 
         self.__start_logging()
         self.__start_tracing()
-        
-        for i, step in enumerate(self._steps):
-            success = self.__execute_step(step['name'], step['func'])
-            if not success and step['critical']:
-                break
+
+        self.__execute_steps(self._steps)
 
         self.__stop_tracing()
         self.__stop_logging()
@@ -166,7 +164,23 @@ class Pipeline():
         if self.__trace is not None:
             logger.info(f'Tracing stopped.')
 
-    def __execute_step(self, name, step):
+    def __execute_steps(self, steps):
+        """Execute a list of processing steps, and optionally any substeps"""
+
+        success = True
+        for i, step in enumerate(steps):
+            if 'func' in step:
+                success &= self.__execute_step(step['name'], step['func'], step['critical'])
+                if not success:
+                    break
+
+            # Call recursively for substeps
+            if success and 'substeps' in step:
+                success &= self.__execute_steps(step['substeps'])
+
+        return success
+
+    def __execute_step(self, name, func, critical):
         """
         Execute a single processing step. Handle exceptions and return `True` if the
         execution succeeded.
@@ -178,11 +192,15 @@ class Pipeline():
 
             try:
                 logger.info(start_message)
-                step()
+                
+                success = func()
+                if not success and critical:
+                    raise PipelineException(f'Pipeline step `{name}` failed and is critical. Stopping pipeline.')
+
                 logger.info(timer.format_message(stop_message))
-                return True
+                return success
             except Exception as ex:
-                # Break into debugger if available
+                # Break into debugger, if available
                 if debugpy is not None and debugpy.is_client_connected():
                     raise ex
 
