@@ -170,13 +170,15 @@ class Pipeline():
         success = True
         for i, step in enumerate(steps):
             if 'func' in step:
-                success &= self.__execute_step(step['name'], step['func'], step['critical'])
-                if not success:
+                suc, skip_remaining, skip_substeps = self.__execute_step(step['name'], step['func'], step['critical'])
+                success = success and suc
+                if skip_remaining:
                     break
 
             # Call recursively for substeps
-            if success and 'substeps' in step:
-                success &= self.__execute_steps(step['substeps'])
+            if not skip_substeps and 'substeps' in step:
+                suc = self.__execute_steps(step['substeps'])
+                success = success and suc
 
         return success
 
@@ -193,12 +195,12 @@ class Pipeline():
             try:
                 logger.info(start_message)
                 
-                success = func()
+                success, skip_remaining, skip_substeps = func()
                 if not success and critical:
                     raise PipelineException(f'Pipeline step `{name}` failed and is critical. Stopping pipeline.')
 
                 logger.info(timer.format_message(stop_message))
-                return success
+                return success, skip_remaining, skip_substeps
             except Exception as ex:
                 # Break into debugger, if available
                 if debugpy is not None and debugpy.is_client_connected():
@@ -210,7 +212,7 @@ class Pipeline():
                 
                 self.__exceptions.append(ex)
                 self.__tracebacks.append(traceback.format_tb(ex.__traceback__))
-                return False
+                return False, True, True
 
     def _get_log_message_step_start(self, name):
         return f'Executing pipeline step `{name}`'

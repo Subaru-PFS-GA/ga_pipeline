@@ -15,8 +15,10 @@ from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.rvfit import RVFit, ModelGridRVFit, ModelGridRVFitTrace
 from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 
-from .constants import Constants
 from .setup_logger import logger
+
+from .constants import Constants
+from .util import Timer
 from .scripts.script import Script
 from .pipeline import Pipeline
 from .pipelineerror import PipelineError
@@ -174,7 +176,7 @@ class GA1DPipeline(Pipeline):
     pfsGAObject = property(__get_pfsGAObject)
 
     def _get_log_filename(self):
-        return f'gapipe_{self.__id}.log'
+        return f'pfsGAObject-{self.__id}.log'
     
     def _get_log_message_step_start(self, name):
         return f'Executing GA pipeline step `{name}` for {self.__id}'
@@ -309,7 +311,7 @@ class GA1DPipeline(Pipeline):
         self._create_dir('output', self.config.outdir)
         self._create_dir('figure', self.config.figdir)
 
-        return True
+        return True, False, False
     
     #endregion
     #region Step: Load
@@ -335,18 +337,16 @@ class GA1DPipeline(Pipeline):
         if self.trace is not None:
             self.trace.on_load(self.__spectra)
 
-        return True
+        return True, False, False
 
     def __load_pfsSingle(self, identity):
         dir, fn = self.__get_pfsSingle_dir_filename(identity)
         
         logger.info(f'Loading PfsSingle from `{os.path.join(dir, fn)}`.')
 
-        start_time = time.perf_counter()
-        pfsSingle = PfsSingle.read(identity, dirName=dir)
-        stop_time = time.perf_counter()
-
-        logger.info(f'Loaded PfsSingle from `{os.path.join(dir, fn)}` in {stop_time - start_time:.3f} s.')
+        with Timer() as t:
+            pfsSingle = PfsSingle.read(identity, dirName=dir)
+            t.stamp(logger, message=f'Loaded PfsSingle from `{os.path.join(dir, fn)}` in {{elapsed_time:.3f}} s.')
 
         return pfsSingle
     
@@ -385,7 +385,7 @@ class GA1DPipeline(Pipeline):
 
         # TODO: add validation for chemfit
 
-        return True
+        return True, False, False
     
     def __load_validate_pfsSingle(self, visit, pfsSingle):
         fn = pfsSingle.filenameFormat % {**pfsSingle.getIdentity(), 'visit': visit}
@@ -576,10 +576,10 @@ class GA1DPipeline(Pipeline):
         if self.config.v_corr is not None and self.config.v_corr.lower() != 'none':
             self.__v_corr_calculate()
             self.__v_corr_apply()
-            return True
+            return True, False, False
         else:
             logger.info('Velocity correction for geocentric frame is set to `none`, skipping corrections.')
-            return False
+            return True, False, True
         
     def __v_corr_calculate(self):
         
@@ -617,7 +617,7 @@ class GA1DPipeline(Pipeline):
         
         if not self.config.run_rvfit:
             logger.info('RV fitting is disabled, skipping step.')
-            return False
+            return True, False, True
 
         # Collect arms that can be used for fitting
         avail_arms = self.__get_avail_arms()
@@ -631,13 +631,13 @@ class GA1DPipeline(Pipeline):
         # Collect spectra in a format that can be passed to RVFit
         self.__rvfit_spectra = self.__rvfit_collect_spectra(self.__rvfit_arms)
 
-        return True
+        return True, False, False
     
     def __step_rvfit_load(self):
         # Load template grids and PSFs
         self.__rvfit_grids = self.__rvfit_load_grid(self.__rvfit_arms)
         self.__rvfit_psfs = self.__rvfit_load_psf(self.__rvfit_arms, self.__rvfit_grids)
-        return True
+        return True, False, False
     
     def __rvfit_load_grid(self, arms):
         # Load template grids. Make sure each grid is only loaded once, if grid is
@@ -693,7 +693,7 @@ class GA1DPipeline(Pipeline):
         # TODO: validate available spectra here and throw warning if any of the arms are missing after
         #       filtering based on masks
         
-        return True
+        return True, False, False
 
     def __step_rvfit_fit(self):
         # Initialize the RVFit object
@@ -705,7 +705,7 @@ class GA1DPipeline(Pipeline):
         # Run the maximum likelihood fitting
         self.__rvfit_results = self.__rvfit.fit_rv(self.__rvfit_spectra)
 
-        return True
+        return True, False, False
     
     def __rvfit_init(self, template_grids, template_psfs):
         trace = ModelGridRVFitTrace(
@@ -762,7 +762,7 @@ class GA1DPipeline(Pipeline):
 
     def __step_rvfit_cleanup(self):
         # TODO: free up memory after rvfit
-        return True
+        return True, False, False
 
     #endregion
     #region Co-add
@@ -770,10 +770,10 @@ class GA1DPipeline(Pipeline):
     def __step_coadd(self):
         if not self.config.run_rvfit:
             logger.info('Spectrum stacking required RV fitting which is disabled, skipping step.')
-            return False
+            return True, True, True
         elif not self.config.run_coadd:
             logger.info('Spectrum stacking is disabled, skipping step.')
-            return False
+            return True, True, True
         
         # Coadd the spectra
 
@@ -831,7 +831,7 @@ class GA1DPipeline(Pipeline):
 
         # TODO: trace hook
         
-        return True
+        return True, False, False
     
     def __coadd_init(self):
         trace = StackerTrace(
@@ -883,7 +883,7 @@ class GA1DPipeline(Pipeline):
     def __step_chemfit(self):
         if not self.config.run_chemfit:
             logger.info('Chemical abundance fitting is disabled, skipping...')
-            return False
+            return True, False, True
         
         # TODO: run abundance fitting
         raise NotImplementedError()
@@ -934,6 +934,8 @@ class GA1DPipeline(Pipeline):
         id = self.__pfsGAObject.getIdentity()
         fn = os.path.join(self.config.outdir, PfsGAObject.filenameFormat % id)
         self.__pfsGAObject.writeFits(fn)
+
+        return True, False, False
     
     def __copy_flags(self, flags):
         return MaskHelper(**flags.flags)
@@ -1008,4 +1010,4 @@ class GA1DPipeline(Pipeline):
 
     def __step_cleanup(self):
         # TODO: Perform any cleanup
-        pass
+        return True, False, False
