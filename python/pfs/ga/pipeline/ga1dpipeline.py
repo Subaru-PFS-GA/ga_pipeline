@@ -69,12 +69,19 @@ class GA1DPipeline(Pipeline):
             {
                 'name': 'init',
                 'func': self.__step_init,
-                'critical': True
+                'critical': True,
             },
             {
                 'name': 'load',
                 'func': self.__step_load,
-                'critical': True
+                'critical': True,
+                'substeps': [
+                    {
+                        'name': 'load_validate',
+                        'func': self.__step_load_validate,
+                        'critical': True
+                    }
+                ]
             },
             {
                 'name': 'vcorr',
@@ -84,7 +91,29 @@ class GA1DPipeline(Pipeline):
             {
                 'name': 'rvfit',
                 'func': self.__step_rvfit,
-                'critical': False
+                'critical': False,
+                'substeps': [
+                    {
+                        'name': 'rvfit_load',
+                        'func': self.__step_rvfit_load,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'rvfit_preprocess',
+                        'func': self.__step_rvfit_preprocess,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'rvfit_fit',
+                        'func': self.__step_rvfit_fit,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'rvfit_cleanup',
+                        'func': self.__step_rvfit_cleanup,
+                        'critical': True,
+                    },
+                ]
             },
             {
                 'name': 'coadd',
@@ -119,6 +148,10 @@ class GA1DPipeline(Pipeline):
         self.__v_corr = None                    # velocity correction for each visit
 
         self.__rvfit = None                     # RVFit object
+        self.__rvfit_arms = None                # Arms used for RV fitting
+        self.__rvfit_spectra = None             # Spectra used for RV fitting
+        self.__rvfit_grids = None               # Template grids for RV fitting
+        self.__rvfit_psfs = None                # PSFs for RV fitting
         self.__rvfit_results = None             # Results from RVFit
 
         self.__stacking_results = None          # Results from stacking
@@ -245,6 +278,7 @@ class GA1DPipeline(Pipeline):
         return dir, fn
 
     #endregion
+    #region Step: Init
 
     def __step_init(self):
         # Verify stellar template grids and PSF files
@@ -275,6 +309,11 @@ class GA1DPipeline(Pipeline):
         self._create_dir('output', self.config.outdir)
         self._create_dir('figure', self.config.figdir)
 
+        return True
+    
+    #endregion
+    #region Step: Load
+
     def __step_load(self):
         # Load each PfsSingle file.
         # Skip loading files if the object are already passed to the pipeline
@@ -284,32 +323,19 @@ class GA1DPipeline(Pipeline):
             for i, visit, identity in self.__enumerate_visits():
                 self.__pfsSingle[visit] = self.__load_pfsSingle(identity)
 
+        logger.info(f'A total of {len(self.__pfsSingle)} PfsSingle data files loaded successfully for {self.__id}.')
+
         # Get various objects from the first PfsSingle file
         self.__target, self.__observations, self.__identity = self.__get_identity()
 
         # Extract the spectra of individual arms from the pfsSingle objects
         avail_arms = self.__get_avail_arms()
-        # TODO: union with abund use arms and coadd use arms?
-        fit_arms = set(self.config.rvfit.fit_arms)
-        use_arms = avail_arms.intersection(fit_arms)
-
-        if len(use_arms) < len(fit_arms):
-            # TODO: list missing arms, include visit IDs
-            logger.warning(f'Not all arms required to run the pipeline are available in the observations for `{self.__id}.')
-
-        # TODO: do we want to load arms that we don't fit?
-        #       consider taking the intersection of avail_arms and fit_arms
-        #       and raise a warning when an arm is missing
-
-        self.__spectra = self.__read_spectra(use_arms)
-
-        self.__load_validate()
-
-        logger.info(f'PFS data files loaded successfully of {len(self.__pfsSingle)} for {self.__id}.')
+        self.__spectra = self.__read_spectra(avail_arms)
 
         if self.trace is not None:
-            spectra = self.__rvfit_collect_spectra(use_arms)
-            self.trace.on_load(spectra)
+            self.trace.on_load(self.__spectra)
+
+        return True
 
     def __load_pfsSingle(self, identity):
         dir, fn = self.__get_pfsSingle_dir_filename(identity)
@@ -324,7 +350,7 @@ class GA1DPipeline(Pipeline):
 
         return pfsSingle
     
-    def __load_validate(self):
+    def __step_load_validate(self):
         # Extract info from pfsSingle objects one by one and perform
         # some validation steps
 
@@ -342,7 +368,24 @@ class GA1DPipeline(Pipeline):
 
         # TODO: Count spectra per arm and write report to log
 
-        self.__rvfit_validate()
+        if self.config.run_rvfit:
+            # Find a unique set of available arms in the pfsSingle files
+
+            # NOTE: for some reason, pfsSingle.observations.arm is a char array that contains a single string
+            #       in item 0 and not an array of characters
+
+            # Verify that all arms defined in the config are available
+            avail_arms = set(self.__spectra.keys())
+            fit_arms = set()
+            for arm in self.config.rvfit.fit_arms:
+                if self.config.rvfit.require_all_arms and arm not in avail_arms:
+                    raise PipelineError(f'RVFIT requires arm `{arm}` which is not observed.')
+                elif arm not in avail_arms:
+                    logger.warning(f'RVFIT requires arm `{arm}` which is not observed.')
+
+        # TODO: add validation for chemfit
+
+        return True
     
     def __load_validate_pfsSingle(self, visit, pfsSingle):
         fn = pfsSingle.filenameFormat % {**pfsSingle.getIdentity(), 'visit': visit}
@@ -524,7 +567,8 @@ class GA1DPipeline(Pipeline):
         # For now, ignore mask_flags and copy all flags
         return { v: k for k, v in pfsSingle.flags.flags.items() }
 
-    #region v_corr
+    #endregion
+    #region Step: vcorr
 
     # TODO: these have to be moved to the 2D pipeline
 
@@ -532,8 +576,10 @@ class GA1DPipeline(Pipeline):
         if self.config.v_corr is not None and self.config.v_corr.lower() != 'none':
             self.__v_corr_calculate()
             self.__v_corr_apply()
+            return True
         else:
             logger.info('Velocity correction for geocentric frame is set to `none`, skipping corrections.')
+            return False
         
     def __v_corr_calculate(self):
         
@@ -562,7 +608,7 @@ class GA1DPipeline(Pipeline):
                     s.apply_v_corr(z=z)
 
     #endregion     
-    #region RVFIT
+    #region Step: RVFIT
         
     def __step_rvfit(self):
         """
@@ -571,49 +617,27 @@ class GA1DPipeline(Pipeline):
         
         if not self.config.run_rvfit:
             logger.info('RV fitting is disabled, skipping step.')
+            return False
 
         # Collect arms that can be used for fitting
-        avail_arms = set(self.__spectra.keys())
+        avail_arms = self.__get_avail_arms()
         fit_arms = set(self.config.rvfit.fit_arms)
-        use_arms = avail_arms.intersection(fit_arms)
+        self.__rvfit_arms = avail_arms.intersection(fit_arms)
 
-        # Load template grids and PSFs
-        template_grids = self.__rvfit_load_grid(use_arms)
-        template_psfs = self.__rvfit_load_psf(use_arms, template_grids)
-
-        # Initialize the RVFit object
-        self.__rvfit = self.__rvfit_init(template_grids, template_psfs)
+        if len(self.__rvfit_arms) < len(fit_arms):
+            # TODO: list missing arms, include visit IDs
+            logger.warning(f'Not all arms required to run RVFit are available in the observations for `{self.__id}.')
 
         # Collect spectra in a format that can be passed to RVFit
-        spectra = self.__rvfit_collect_spectra(use_arms)
+        self.__rvfit_spectra = self.__rvfit_collect_spectra(self.__rvfit_arms)
 
-        # TODO: validate available spectra here and throw warning if any of the arms are missing after
-        #       filtering based on masks
-
-        self.__rvfit_preprocess(spectra)
-
-        # Determine the normalization factor to be used to keep continuum coefficients unity
-        self.__rvfit.spec_norm, self.__rvfit.temp_norm = self.__rvfit.get_normalization(spectra)
-
-        # Run the maximum likelihood fitting
-        self.__rvfit_results = self.__rvfit.fit_rv(spectra)
-
-        self.__rvfit_cleanup()
+        return True
     
-    def __rvfit_validate(self):
-        # Find a unique set of available arms in the pfsSingle files
-
-        # NOTE: for some reason, pfsSingle.observations.arm is a char array that contains a single string
-        #       in item 0 and not an array of characters
-
-        # Verify that all arms defined in the config are available
-        avail_arms = set(self.__spectra.keys())
-        fit_arms = set()
-        for arm in self.config.rvfit.fit_arms:
-            if self.config.rvfit.require_all_arms and arm not in avail_arms:
-                raise PipelineError(f'RVFIT requires arm `{arm}` which is not observed.')
-            elif arm not in avail_arms:
-                logger.warning(f'RVFIT requires arm `{arm}` which is not observed.')
+    def __step_rvfit_load(self):
+        # Load template grids and PSFs
+        self.__rvfit_grids = self.__rvfit_load_grid(self.__rvfit_arms)
+        self.__rvfit_psfs = self.__rvfit_load_psf(self.__rvfit_arms, self.__rvfit_grids)
+        return True
     
     def __rvfit_load_grid(self, arms):
         # Load template grids. Make sure each grid is only loaded once, if grid is
@@ -664,6 +688,24 @@ class GA1DPipeline(Pipeline):
             psfs[arm] = pca_psf
 
         return psfs
+    
+    def __step_rvfit_preprocess(self):
+        # TODO: validate available spectra here and throw warning if any of the arms are missing after
+        #       filtering based on masks
+        
+        return True
+
+    def __step_rvfit_fit(self):
+        # Initialize the RVFit object
+        self.__rvfit = self.__rvfit_init(self.__rvfit_grids, self.__rvfit_psfs)
+
+        # Determine the normalization factor to be used to keep continuum coefficients unity
+        self.__rvfit.spec_norm, self.__rvfit.temp_norm = self.__rvfit.get_normalization(self.__rvfit_spectra)
+
+        # Run the maximum likelihood fitting
+        self.__rvfit_results = self.__rvfit.fit_rv(self.__rvfit_spectra)
+
+        return True
     
     def __rvfit_init(self, template_grids, template_psfs):
         trace = ModelGridRVFitTrace(
@@ -717,12 +759,10 @@ class GA1DPipeline(Pipeline):
                     spectra[arm].append(spec)
 
         return spectra
-    
-    def __rvfit_preprocess(self, spectra):
-        pass
 
-    def __rvfit_cleanup(self):
-        pass
+    def __step_rvfit_cleanup(self):
+        # TODO: free up memory after rvfit
+        return True
 
     #endregion
     #region Co-add
@@ -730,10 +770,10 @@ class GA1DPipeline(Pipeline):
     def __step_coadd(self):
         if not self.config.run_rvfit:
             logger.info('Spectrum stacking required RV fitting which is disabled, skipping step.')
-            return
+            return False
         elif not self.config.run_coadd:
             logger.info('Spectrum stacking is disabled, skipping step.')
-            return
+            return False
         
         # Coadd the spectra
 
@@ -790,7 +830,8 @@ class GA1DPipeline(Pipeline):
                 self.__stacking_results[arm] = None
 
         # TODO: trace hook
-        pass
+        
+        return True
     
     def __coadd_init(self):
         trace = StackerTrace(
@@ -842,7 +883,7 @@ class GA1DPipeline(Pipeline):
     def __step_chemfit(self):
         if not self.config.run_chemfit:
             logger.info('Chemical abundance fitting is disabled, skipping...')
-            return
+            return False
         
         # TODO: run abundance fitting
         raise NotImplementedError()

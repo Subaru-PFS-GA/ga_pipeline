@@ -60,6 +60,7 @@ class Run(Script):
 
         # Validate and execute the pipeline
         pipeline.validate_config()
+        pipeline.validate_libs()
         pipeline.execute()
 
 def main():
