@@ -8,12 +8,14 @@ from pfs.datamodel import PfsSingle, Target, Observations, MaskHelper
 from pfs.ga.datamodel import PfsGAObject, PfsGAObjectNotes, StellarParams, VelocityCorrections, Abundances
 
 from pfs.ga.pfsspec.core import Physics, Astro
-from pfs.ga.pfsspec.core.obsmod.resampling import Binning, FluxConservingResampler, Interp1dResampler
+from pfs.ga.pfsspec.core.obsmod.resampling import FluxConservingResampler, Interp1dResampler
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
+from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.rvfit import RVFit, ModelGridRVFit, ModelGridRVFitTrace
-from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
+from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
+from pfs.ga.pfsspec.survey.pfs.io import PfsStellarSpectrumReader
 
 from .setup_logger import logger
 
@@ -24,7 +26,6 @@ from .pipeline import Pipeline
 from .pipelineerror import PipelineError
 from .config import GA1DPipelineConfig
 from .ga1dpipelinetrace import GA1DPipelineTrace
-from .ga1dspectrum import GA1DSpectrum
 
 class GA1DPipeline(Pipeline):
     """
@@ -478,24 +479,10 @@ class GA1DPipeline(Pipeline):
     def __read_spectrum(self, i, arm, visit, pfsSingle, arm_mask):
         # TODO: consider moving this routine to pfs.ga.pfsspec.survey
 
-        # TODO: What if the arms overlap?
+        r = PfsStellarSpectrumReader()
+        s = r.read_from_pfsSingle(pfsSingle, i, arm, arm_mask, self.config.ref_mag)
 
-        # TODO: What if arm doesn't exist for a certain exposure? How to tell?
-        #       Is metadata consistent with the fluxtable?
-        
-        s = GA1DSpectrum()
-
-        # Extract header information
-
-        s.index = i
-        s.arm = arm
-        s.catId = pfsSingle.target.catId
-        s.objId = pfsSingle.target.objId
-        s.tract = pfsSingle.target.tract
-        s.patch = pfsSingle.target.patch
-        s.visit = pfsSingle.observations.visit[0]
-        s.spectrograph = pfsSingle.observations.spectrograph[0]
-        s.fiberid = pfsSingle.observations.fiberId[0]
+        # Generate the ID string
         s.id = Constants.PFSARM_ID_FORMAT.format(
             catId=s.catId,
             objId=s.objId,
@@ -506,53 +493,16 @@ class GA1DPipeline(Pipeline):
             spectrograph=s.spectrograph
         )
 
-        # TODO: where do we take these from?
-        # s.exp_count = 1
-        # s.exp_time = 0
-        # s.seeing = 0
-        # s.obs_time
-
-        # Get coordinates, observation time, airmass
-        s.ra = pfsSingle.target.ra
-        s.dec = pfsSingle.target.dec
-
-        # Extract the spectrum
-        wave = Physics.nm_to_angstrom(pfsSingle.fluxTable.wavelength)
-        # nJy -> erg s-1 cm-2 A-1
-        flux = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.flux)
-        flux_err = 1e-32 * Physics.fnu_to_flam(wave, pfsSingle.fluxTable.error)
-        mask = pfsSingle.fluxTable.mask
-
-        s.wave = wave[arm_mask]
-        s.wave_edges = Binning.find_wave_edges(s.wave)
-        s.flux = flux[arm_mask]
-        s.flux_err = flux_err[arm_mask]
-
-        # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
-        s.mask = mask[arm_mask]
-
         # Consider using different mask bits for each pipeline step
         # TODO: are mask bits the same for a rerun or they vary from file to file?
         s.mask_bits = self.__get_mask_bits(pfsSingle, self.config.mask_flags)
         s.mask_flags = self.__get_mask_flags(pfsSingle, self.config.mask_flags)
-
-        # Make sure pixels with nan and inf are masked
-        s.mask = np.where(np.isnan(s.flux) | np.isinf(s.flux) | np.isnan(s.flux_err) | np.isinf(s.flux_err),
-                          s.mask | pfsSingle.flags['UNMASKEDNAN'],
-                          s.mask)
+        
+        # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
 
         # SNR
         # TODO: make this configurable?
         s.calculate_snr(QuantileSnr(0.75, binning=self.config.arms[arm]['pix_per_res']))
-
-        # Target PSF magnitude from metadata
-        if self.config.ref_mag in pfsSingle.target.fiberFlux:
-            # Convert nJy to ABmag
-            flux = 1e-9 * pfsSingle.target.fiberFlux[self.config.ref_mag]
-            mag = Physics.jy_to_abmag(flux)
-            s.mag = mag
-        else:
-            s.mag = np.nan
 
         # Write number of masked/unmasked pixels to log
         # TODO: review message and add IDs
@@ -836,7 +786,10 @@ class GA1DPipeline(Pipeline):
                 stacked_mask = np.where(stacked_weight == 0, stacked_mask | no_data_bit, stacked_mask)
 
                 # Create a spectrum
-                spec = GA1DSpectrum()
+                spec = PfsStellarSpectrum()
+
+                # TODO: fill in ids?
+
                 spec.wave = stacked_wave
                 spec.wave_edges = stacked_wave_edges
                 spec.flux = stacked_flux
