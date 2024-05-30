@@ -106,6 +106,7 @@ class Pipeline():
         raise NotImplementedError()
     
     def _get_log_level(self):
+        # Override log level from the command-line
         loglevel = self.__config.loglevel
 
         if self.__script.log_level is not None and self.__script.log_level < loglevel:

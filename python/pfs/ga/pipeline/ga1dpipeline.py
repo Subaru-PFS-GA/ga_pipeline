@@ -278,11 +278,29 @@ class GA1DPipeline(Pipeline):
         fn = PfsSingle.filenameFormat % identity
 
         return dir, fn
+    
+    def __get_pfsGAObject_dir_filename(self):
+        id = self.__pfsGAObject.getIdentity()
+        dir = self.config.outdir
+        fn = PfsGAObject.filenameFormat % id
+        return dir, fn
+
+    def __get_config_dir_filename(self):
+        id = self.config.target.get_identity()
+        dir = self.config.outdir
+        fn = PfsGAObject.filenameFormat % id
+        fn, ext = os.path.splitext(fn)
+        return dir, fn + '.yaml'
 
     #endregion
     #region Step: Init
 
     def __step_init(self):
+        # Save the configuration to the output directory
+        fn = os.path.join(*self.__get_config_dir_filename())
+        self.config.save(fn)
+        logger.info(f'Runtime configuration file saved to `{fn}`.')
+
         # Verify stellar template grids and PSF files
         if self.config.run_rvfit:
             for arm in self.config.arms:
@@ -931,9 +949,8 @@ class GA1DPipeline(Pipeline):
                                   notes)
 
         # Save output FITS file
-        id = self.__pfsGAObject.getIdentity()
-        fn = os.path.join(self.config.outdir, PfsGAObject.filenameFormat % id)
-        self.__pfsGAObject.writeFits(fn)
+        dir, fn = self.__get_pfsGAObject_dir_filename()
+        self.__pfsGAObject.writeFits(os.path.join(dir, fn))
 
         return True, False, False
     
