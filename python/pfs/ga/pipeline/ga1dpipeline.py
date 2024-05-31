@@ -5,7 +5,7 @@ import pytz
 import numpy as np
 
 from pfs.datamodel import PfsSingle, Target, Observations, MaskHelper
-from pfs.ga.datamodel import PfsGAObject, PfsGAObjectNotes, StellarParams, VelocityCorrections, Abundances
+from pfs.datamodel import PfsGAObject, PfsGAObjectNotes, StellarParams, VelocityCorrections, Abundances
 
 from pfs.ga.pfsspec.core import Physics, Astro
 from pfs.ga.pfsspec.core.obsmod.resampling import FluxConservingResampler, Interp1dResampler
