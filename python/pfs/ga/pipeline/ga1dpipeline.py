@@ -13,7 +13,7 @@ from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
 from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
-from pfs.ga.pfsspec.stellar.rvfit import RVFit, ModelGridRVFit, ModelGridRVFitTrace
+from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.io import PfsStellarSpectrumReader
 
@@ -493,10 +493,9 @@ class GA1DPipeline(Pipeline):
             spectrograph=s.spectrograph
         )
 
-        # Consider using different mask bits for each pipeline step
+        # TODO: Consider using different mask bits for each pipeline step
         # TODO: are mask bits the same for a rerun or they vary from file to file?
         s.mask_bits = self.__get_mask_bits(pfsSingle, self.config.mask_flags)
-        s.mask_flags = self.__get_mask_flags(pfsSingle, self.config.mask_flags)
         
         # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
 
@@ -530,10 +529,6 @@ class GA1DPipeline(Pipeline):
             for flag in mask_flags:
                 mask_bits |= pfsSingle.flags[flag]
             return mask_bits
-        
-    def __get_mask_flags(self, pfsSingle, mask_flags):
-        # For now, ignore mask_flags and copy all flags
-        return { v: k for k, v in pfsSingle.flags.flags.items() }
 
     #endregion
     #region Step: vcorr
@@ -676,7 +671,7 @@ class GA1DPipeline(Pipeline):
         return True, False, False
     
     def __rvfit_init(self, template_grids, template_psfs):
-        trace = ModelGridRVFitTrace(
+        trace = ModelGridTempFitTrace(
             id=self.__id,
             figdir=self.config.figdir,
             logdir=self.config.logdir)
@@ -684,7 +679,7 @@ class GA1DPipeline(Pipeline):
         if self.trace is not None:
             trace.figure_formats = self.trace.figure_formats
         
-        rvfit = ModelGridRVFit(trace)
+        rvfit = ModelGridTempFit(trace)
 
         rvfit.template_grids = template_grids
         rvfit.template_psf = template_psfs
@@ -836,7 +831,7 @@ class GA1DPipeline(Pipeline):
     def __coadd_eval_flux_corr(self, spectra, templates):
         # Evaluate the flux correction for every exposure of each arm.
 
-        flux_corr = RVFit.eval_flux_corr(
+        flux_corr = TempFit.eval_flux_corr(
             self.__rvfit,
             spectra,
             templates,
