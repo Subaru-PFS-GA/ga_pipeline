@@ -176,7 +176,7 @@ class GA1DPipeline(Pipeline):
     
     pfsGAObject = property(__get_pfsGAObject)
 
-    def _get_log_filename(self):
+    def get_log_filename(self):
         return f'pfsGAObject-{self.__id}.log'
     
     def _get_log_message_step_start(self, name):
@@ -480,7 +480,9 @@ class GA1DPipeline(Pipeline):
         # TODO: consider moving this routine to pfs.ga.pfsspec.survey
 
         r = PfsStellarSpectrumReader()
-        s = r.read_from_pfsSingle(pfsSingle, i, arm, arm_mask, self.config.ref_mag)
+        s = r.read_from_pfsSingle(pfsSingle, i,
+                                  arm=arm, arm_mask=arm_mask,
+                                  ref_mag=self.config.ref_mag)
 
         # Generate the ID string
         s.id = Constants.PFSARM_ID_FORMAT.format(

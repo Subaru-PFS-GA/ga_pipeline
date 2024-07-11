@@ -4,6 +4,7 @@ import os
 import re
 from glob import glob
 from types import SimpleNamespace
+import numpy as np
 
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
@@ -12,20 +13,27 @@ from .script import Script
 from ..util import IntIDFilter, HexIDFilter
 from ..config import GA1DPipelineConfig
 
+from ..setup_logger import logger
+
 class Configure(Script):
     """
     Generate the job configuration file for a set of observations.
+
+    The script works by finding all pfsSingle files that match the filters specified
+    on the command-line and then reads an existing configuration file which is used
+    as a template. The script then updates the configuration file with the IDs of the
+    pfsSingle files and saves the updated configuration file to the output directory.
     """
 
     def __init__(self):
         super().__init__()
 
-        self.__config = None
+        self.__config = None            # Pipeline configuration
 
-        self.__workdir = None
-        self.__datadir = None
-        self.__rerundir = None
-        self.__outdir = None
+        self.__workdir = None           # Working directory for the pipeline job
+        self.__datadir = None           # Data directory
+        self.__rerundir = None          # Directory of rerun, relative to datadir
+        self.__outdir = None            # 
 
         self.__catId = IntIDFilter('catid', format='{:05d}')
         self.__tract = IntIDFilter('tract', format='{:05d}')
@@ -73,20 +81,26 @@ class Configure(Script):
         self.__objId.parse(self._get_arg('objid', args))
         self.__visit.parse(self._get_arg('visit', args))
 
+    def prepare(self):
+        super().prepare()
+
+        # Override logging directory to use the same as the pipeline workdir
+        logfile = os.path.basename(self.logfile)
+        self.logfile = os.path.join(self.__workdir, 'log', logfile)
+
     def run(self):
+        """
+        Find all the pfsSingle files that match the filters and generate a config file for each.
+        """
+
         # Find all the pfsSingle files that match the filters
         targets = self.__get_pfsSingle_targets()
 
+        if len(targets) == 0:
+            return
+        
         # Generate a config file for each of the inputs
         for objId in sorted(targets.keys()):
-            # Update the config with the ids
-            self.__config.target.catId = targets[objId].catId
-            self.__config.target.tract = targets[objId].tract
-            self.__config.target.patch = targets[objId].patch
-            self.__config.target.objId = targets[objId].objId
-
-            # TODO: the empty dict here is a placeholder for per visit configuration
-            self.__config.target.visits = { v: {} for v in targets[objId].visits }
 
             identity = dict(
                 catId = targets[objId].catId,
@@ -97,6 +111,22 @@ class Configure(Script):
                 pfsVisitHash = calculatePfsVisitHash(targets[objId].visits),
             )
 
+            # Compose the filename
+            dir = Constants.PFSGACONFIG_DIR_FORMAT.format(**identity)
+            filename = Constants.PFSGACONFIG_FILENAME_FORMAT.format(**identity)
+            path = os.path.join(self.__outdir.format(**identity), dir, filename)
+
+            logger.info(f'Generating configuration file `{path}`.')
+
+            # Update the config with the ids
+            self.__config.target.catId = targets[objId].catId
+            self.__config.target.tract = targets[objId].tract
+            self.__config.target.patch = targets[objId].patch
+            self.__config.target.objId = targets[objId].objId
+
+            # TODO: the empty dict here is a placeholder for per visit configuration
+            self.__config.target.visits = { v: {} for v in targets[objId].visits }
+
             # TODO: update config with directory names?
             self.__config.workdir = self.__workdir.format(**identity)
             self.__config.datadir = self.__datadir.format(**identity)
@@ -104,16 +134,6 @@ class Configure(Script):
             self.__config.outdir = self.__outdir.format(**identity)
 
             # Save the config to a file
-            filename = Constants.PFSGACONFIG_FILENAME_FORMAT.format(
-                catId = targets[objId].catId,
-                tract = targets[objId].tract,
-                patch = targets[objId].patch,
-                objId = targets[objId].objId,
-                nVisit = wraparoundNVisit(len(targets[objId].visits)),
-                pfsVisitHash = calculatePfsVisitHash(targets[objId].visits),
-            )
-
-            path = os.path.join(self.__config.outdir, filename)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             self.__config.save(path)
 
@@ -140,12 +160,24 @@ class Configure(Script):
     
     def __get_pfsSingle_targets(self):
         """
-        Find all the pfsSingle files that match the filters
+        Find all the pfsSingle files that match the filters and parse the
+        filenames into a dictionary of targets.
         """
+
+        logger.info(f'Finding pfsSingle files matching the following filters:')
+        logger.info(f'    catId: {str(self.__catId)}')
+        logger.info(f'    tract: {str(self.__tract)}')
+        logger.info(f'    patch: {self.__patch}')
+        logger.info(f'    objId: {str(self.__objId)}')
+        logger.info(f'    visit: {str(self.__visit)}')
         
         glob_pattern = self.__get_pfsSingle_glob_pattern()
+        paths = glob(glob_pattern)
+
+        logger.info(f'Found {len(paths)} pfsSingle files matching pattern `{glob_pattern}`.')
+
         targets = {}
-        for path in glob(glob_pattern):
+        for path in paths:
             filename = os.path.basename(path)
             match = re.match(Constants.PFSSINGLE_FILENAME_REGEX, filename)
 
@@ -174,6 +206,9 @@ class Configure(Script):
                 
                 targets[objId].visits.append(visit)
                 targets[objId].files.append(path)
+
+        unique_visits = np.unique(np.concatenate([ target.visits for objid, target in targets.items() ]))
+        logger.info(f'Number of targets filtered down to {len(targets)} spanning {len(unique_visits)} unique visits.')
 
         for objId, obj in targets.items():
             obj.visits.sort()

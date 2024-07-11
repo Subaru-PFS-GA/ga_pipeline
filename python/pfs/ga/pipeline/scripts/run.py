@@ -28,7 +28,14 @@ class Run(Script):
 
         self.__config = self._get_arg('config', args, self.__config)
 
-    def run(self):
+    def _dump_settings(self):
+        # Do nothing here. This is to prevent saving the environment and arguments
+        # because we don't need them for the individual jobs.
+        pass
+
+    def prepare(self):
+        super().prepare()
+
         # Create the pipeline object and initialize it from a config file
         from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
         from pfs.ga.pipeline.config import GA1DPipelineConfig
@@ -51,17 +58,25 @@ class Run(Script):
         trace.init_from_args(self, None, config.trace_args)
         
         # Initialize the pipeline object
-        pipeline = GA1DPipeline(script=self, config=config, trace=trace)        
+        self.__pipeline = GA1DPipeline(script=self, config=config, trace=trace)        
         
         # Set the object IDs
         id = Constants.PFSOBJECT_ID_FORMAT.format(**identity)
-        pipeline.id = id
+        self.__pipeline.id = id
         trace.id = id
 
-        # Validate and execute the pipeline
-        pipeline.validate_config()
-        pipeline.validate_libs()
-        pipeline.execute()
+        # Override logging directory to use the same as the pipeline workdir
+        self.loglevel = self.__pipeline.get_log_level()
+        self.logfile = os.path.join(config.logdir, self.__pipeline.get_log_filename())
+
+    def run(self):
+        
+        # Validate the pipeline configuration
+        self.__pipeline.validate_config()
+        self.__pipeline.validate_libs()
+        
+        # Execute the pipeline
+        self.__pipeline.execute()
 
 def main():
     script = Run()

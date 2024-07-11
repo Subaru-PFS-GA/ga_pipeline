@@ -2,6 +2,12 @@ class IDFilter():
     """
     Implements and argument parser for ID filters and logic to match
     ranges of IDs within file names.
+
+    ID filters are used to select a subset of files based on their IDs and are
+    specified on the command-line as strings which are parsed into a list of strings
+    by `ArgParse`. The strings within a list can be single IDs or ranges of IDs
+    separated by a hyphen. For example, the argument `--visit 120 123-127` would be
+    parsed into the list `['123', ('123', '127')]`.
     """
 
     def __init__(self, name, format=None, orig=None):
@@ -13,6 +19,22 @@ class IDFilter():
             self.__format = format if format is not None else orig.__format
 
         self.__values = None
+
+    def __str__(self):
+        """
+        Convert the ID filter into a string.
+        """
+        
+        res = ''
+        for a in self.__values:
+            if res != '':
+                res += ' '
+
+            if isinstance(a, tuple):
+                res += '{}-{}'.format(self.__format.format(a[0]), self.__format.format(a[1]))
+            else:
+                res += self.__format.format(a)
+        return res
 
     def __get_name(self):
         return self.__name

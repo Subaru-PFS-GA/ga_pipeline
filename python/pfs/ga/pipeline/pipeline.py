@@ -21,11 +21,6 @@ class Pipeline():
         self.__config = config
         self.__trace = trace
 
-        self.__logfile = None
-        self.__logFormatter = None
-        self.__logFileHandler = None
-        self.__logConsoleHandler = None
-
         self.__exceptions = []
         self.__tracebacks = []
 
@@ -65,20 +60,14 @@ class Pipeline():
         the inferred parameters and the co-added spectrum.
         """
 
-        self.__start_logging()
         self.__start_tracing()
 
         self.__execute_steps(self._steps)
 
         self.__stop_tracing()
-        self.__stop_logging()
 
     def _create_dir(self, name, dir):
-        if not os.path.isdir(dir):
-            os.makedirs(dir, exist_ok=True)
-            logger.debug(f'Created {name} directory `{dir}`.')
-        else:
-            logger.debug(f'Found existing {name} directory `{dir}`.')
+        self.script._create_dir(name, dir, logger=logger)
 
     def _test_dir(self, name, dir, must_exist=True):
         """Verify that a directory exists and is accessible."""
@@ -102,10 +91,10 @@ class Pipeline():
         else:
             logger.info(f'Using {name} file `{filename}`.')
 
-    def _get_log_filename(self):
+    def get_log_filename(self):
         raise NotImplementedError()
     
-    def _get_log_level(self):
+    def get_log_level(self):
         # Override log level from the command-line
         loglevel = self.__config.loglevel
 
@@ -116,45 +105,6 @@ class Pipeline():
             loglevel = logging.DEBUG
         
         return loglevel
-
-    def __start_logging(self):
-        self._create_dir('log', self.__config.logdir)
-
-        self.__logfile = os.path.join(self.__config.logdir, self._get_log_filename())
-        self.__logFormatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
-        self.__logFileHandler = logging.FileHandler(self.__logfile)
-        self.__logFileHandler.setFormatter(self.__logFormatter)
-        self.__logConsoleHandler = logging.StreamHandler()
-        self.__logConsoleHandler.setFormatter(self.__logFormatter)
-
-        # Configure root logger
-        root = logging.getLogger()
-        root.handlers = []
-        root.setLevel(self._get_log_level())
-        root.addHandler(self.__logFileHandler)
-        root.addHandler(self.__logConsoleHandler)
-
-        # Filter out log messages from matplotlib
-        logging.getLogger('matplotlib').setLevel(logging.WARNING)
- 
-        # Configure pipeline logger
-        logger.propagate = True
-        logger.setLevel(self._get_log_level())
-
-        logger.info(f'Logging started to `{self.__logfile}`.')
-
-    def __stop_logging(self):
-        logger.info(f'Logging finished to `{self.__logfile}`.')
-
-        # Disconnect file logger and re-assign stderr
-        root = logging.getLogger()
-        root.handlers = []
-        root.addHandler(logging.StreamHandler())
-
-        # Destroy logging objects (but keep last filename)
-        self.__logFormatter = None
-        self.__logFileHandler = None
-        self.__logConsoleHandler = None
 
     def __start_tracing(self):
         if self.__trace is not None:
