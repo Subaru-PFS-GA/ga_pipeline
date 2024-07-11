@@ -1,5 +1,5 @@
 import os
-import commentjson
+import commentjson as json
 import yaml
 
 class Config():
@@ -78,7 +78,7 @@ class Config():
         # Load configuration from a JSON file with comments
 
         with open(filename, 'r') as f:
-            config = commentjson.load(f)
+            config = json.load(f)
         return config
     
     @staticmethod
@@ -112,7 +112,7 @@ class Config():
     def __save_dict_json(config, filename):
         # Save configuration to a JSON file with comments
         with open(filename, 'w') as f:
-            commentjson.dump(config, f, sort_keys=False)
+            json.dump(config, f, sort_keys=False)
 
     @staticmethod
     def __save_dict_yaml(config, filename):
