@@ -25,6 +25,7 @@ class Script():
         self.__logConsoleHandler = None             # Log console handler
 
         self.__parser = ArgumentParser()
+        self.__profiler = None
         self.__timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
 
     def __get_debug(self):
@@ -131,6 +132,42 @@ class Script():
         self.__logFileHandler = None
         self.__logConsoleHandler = None
 
+    def __start_profiler(self):
+        """
+        Start the profiler session
+        """
+
+        if self.__profile:
+            import cProfile
+            import pstats
+            import io
+
+            self.__profiler = cProfile.Profile()
+            self.__profiler.enable()
+        else:
+            self.__profiler = None
+
+    def __stop_profiler(self):
+        """
+        Stop the profiler session and save the results
+        """
+
+        if self.__profiler is not None:
+            import pstats
+
+            self.__profiler.disable()
+
+            # Save profiler data to file
+            with open(os.path.join('profile.cum.stats'), 'w') as f:
+                ps = pstats.Stats(self.__profiler, stream=f).sort_stats('cumulative')
+                ps.print_stats()
+
+            with open(os.path.join('profile.tot.stats'), 'w') as f:
+                ps = pstats.Stats(self.__profiler, stream=f).sort_stats('time')
+                ps.print_stats()
+
+            self.__profiler = None
+
     def __dump_env(self, filename):
         with open(filename, 'w') as f:
             for key, value in os.environ.items():
@@ -193,31 +230,11 @@ class Script():
 
         self.__start_logging()    
         self._dump_settings()
-
-        if self.__profile:
-            import cProfile
-            import pstats
-            import io
-
-            pr = cProfile.Profile()
-            pr.enable()
-        else:
-            pr = None
+        self.__start_profiler()
 
         self.run()
 
-        if pr is not None:
-            pr.disable()
-
-            # Save profiler data to file
-            with open(os.path.join('profile.cum.stats'), 'w') as f:
-                ps = pstats.Stats(pr, stream=f).sort_stats('cumulative')
-                ps.print_stats()
-
-            with open(os.path.join('profile.tot.stats'), 'w') as f:
-                ps = pstats.Stats(pr, stream=f).sort_stats('time')
-                ps.print_stats()
-
+        self.__stop_profiler()
         self.__stop_logging()
 
     def prepare(self):
