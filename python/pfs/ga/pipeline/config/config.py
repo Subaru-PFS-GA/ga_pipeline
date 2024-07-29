@@ -6,7 +6,15 @@ class Config():
     """Base class for configurations"""
 
     def __init__(self, config=None):
+
+        self.__config_files = None                # List of configuration files loaded
+
         self.load(config)
+
+    def __get_config_files(self):
+        return self.__config_files
+
+    config_files = property(__get_config_files)
 
     def _get_env(self, name, default=None):
         if name in os.environ and os.environ[name] is not None and os.environ[name] != '':
@@ -22,11 +30,21 @@ class Config():
         if source is None:
             pass
         elif isinstance(source, dict):
+            # Configuration is a dictionary, no need to read from a file
             self._load_impl(config=source, ignore_collisions=ignore_collisions)
-        elif isinstance(source, str):
-            # Configuration to be loaded from a file
-            config = Config.load_dict(source)
-            self._load_impl(config=config, ignore_collisions=ignore_collisions)
+        elif isinstance(source, str) or isinstance(source, list):
+            # Configuration to be loaded from a single file or from a list of files
+            # When loading from a list of files, the configuration is merged
+
+            # Keep track of config files used
+            if self.__config_files is None:
+                self.__config_files = []
+
+            source = source if isinstance(source, list) else [ source ]
+            for s in source:
+                config = Config.load_dict(s)
+                self._load_impl(config=config, ignore_collisions=ignore_collisions)
+                self.__config_files.append(os.path.abspath(s))
         else:
             raise NotImplementedError()
         

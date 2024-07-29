@@ -5,6 +5,8 @@ import os
 from .script import Script
 from ..constants import Constants
 
+from ..setup_logger import logger
+
 class Run(Script):
     """
     Run the pipeline from a configuration file.
@@ -26,6 +28,7 @@ class Run(Script):
     def _init_from_args(self, args):
         super()._init_from_args(args)
 
+        # Store the path to the config file for now, which will be loaded and later
         self.__config = self._get_arg('config', args, self.__config)
 
     def _dump_settings(self):
@@ -70,6 +73,8 @@ class Run(Script):
         self.logfile = os.path.join(config.logdir, self.__pipeline.get_log_filename())
 
     def run(self):
+
+        logger.info('Using configuration file(s) `{self.__config.config_files}`.')
         
         # Validate the pipeline configuration
         self.__pipeline.validate_config()

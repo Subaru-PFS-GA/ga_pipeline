@@ -28,6 +28,7 @@ class Configure(Script):
     def __init__(self):
         super().__init__()
 
+        self.__config_file = None       # Path of the configuration file
         self.__config = None            # Pipeline configuration
 
         self.__workdir = None           # Working directory for the pipeline job
@@ -44,7 +45,7 @@ class Configure(Script):
     def _add_args(self):
         super()._add_args()
 
-        self._add_arg('--config', type=str, help='Configuration file')
+        self._add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
 
         self._add_arg('--workdir', type=str, help='Working directory')
         self._add_arg('--datadir', type=str, help='Data directory')
@@ -60,14 +61,10 @@ class Configure(Script):
     def _init_from_args(self, args):
         super()._init_from_args(args)
 
-        # Load the default configuration file into a dict
-        config_file = self._get_arg('config', args)
-        if config_file is not None:
-            config = GA1DPipelineConfig.load_dict(config_file)
-        else:
-            config = None
-        self.__config = GA1DPipelineConfig(config)
-        
+        # Load the configuration file
+        self.__config = self._get_arg('config', args)
+        self.__config = GA1DPipelineConfig(self.__config)
+
         # Command-line arguments override the configuration file
         self.__workdir = self._get_arg('workdir', args, self.__config.workdir)
         self.__datadir = self._get_arg('datadir', args, self.__config.datadir)
@@ -92,6 +89,8 @@ class Configure(Script):
         """
         Find all the pfsSingle files that match the filters and generate a config file for each.
         """
+
+        logger.info('Using configuration template file(s) `{self.__config.config_files}`.')
 
         # Find all the pfsSingle files that match the filters
         targets = self.__get_pfsSingle_targets()
