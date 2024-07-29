@@ -49,7 +49,7 @@ class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
         
         pass
 
-    def on_coadd_eval_flux_corr(self, spectra, templates, flux_corr, spec_norm, temp_norm):
+    def on_coadd_eval_correction(self, spectra, templates, flux_corr, spec_norm, temp_norm):
         """Fired when the flux correction is evaluated."""
 
         if self.plot_flux_correction or self.plot_level >= Trace.PLOT_LEVEL_DEBUG:
@@ -61,6 +61,8 @@ class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
             p.plot_mask = False
             p.plot_flux_err = False
             p.plot_cont = False
+
+            # TODO: update this to allow for continumm fitting and flux correction
 
             for arm, specs in spectra.items():
                 for i, spec in enumerate(specs):

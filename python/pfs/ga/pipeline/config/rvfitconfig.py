@@ -12,10 +12,22 @@ class RVFitConfig(Config):
         self.model_grid_mmap = True               # Memory map model grid files (only on supported file systems)
         self.model_grid_preload = False           # Preload model grid into memory (requires large memory)
         self.psf_path = None                      # Line spread function path, use {arm} for wildcard
-        self.wave_resampler = "interp"
+
         self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
 
-        # RVFIT parameter priors - arguments to pass to ModelGridRVFit
+        # Correction model to use, either 'fluxcorr' or 'contnorm'. Use 'fluxcorr' for
+        # flux correcting the fluxed stellar templates and 'contnorm' to continuum-normalize the
+        # observations when fitting with normalized templates.
+        self.correction_model = 'fluxcorr'
+        self.correction_model_args = {
+            'flux_corr': True,
+            'flux_corr_deg': 10,
+            'flux_corr_per_arm': True,
+            'flux_corr_per_exp': True,
+        }
+
+        # Arguments to pass to ModelGridTempFit
+        # This is where we can set the parameter priors, etc.
         self.rvfit_args = {
             "M_H": [ -2.5, 0.0 ],
             "M_H_dist": [ "normal", -1.5, 0.5 ],
@@ -25,9 +37,6 @@ class RVFitConfig(Config):
             "log_g_dist": [ "normal", 3.5, 1.0 ],
             "a_M": 0.0,
             "rv": [-300, 300],
-
-            "flux_corr": True,
-            "flux_corr_deg": 10,
 
             "resampler": "interp",              # Resampler to use for resampling model grid
         }

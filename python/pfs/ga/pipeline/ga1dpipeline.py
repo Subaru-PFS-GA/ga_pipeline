@@ -13,7 +13,7 @@ from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
 from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
-from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace
+from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.io import PfsStellarSpectrumReader
 
@@ -673,21 +673,34 @@ class GA1DPipeline(Pipeline):
         return True, False, False
     
     def __rvfit_init(self, template_grids, template_psfs):
+        """
+        Initialize the RV fit object.
+        """
+
+        # Initialize the trace that will be used for logging and plotting
         trace = ModelGridTempFitTrace(
             id=self.__id,
             figdir=self.config.figdir,
             logdir=self.config.logdir)
         
+        # Set the figure output file format
         if self.trace is not None:
             trace.figure_formats = self.trace.figure_formats
+
+        # Create the correction model which determines if we apply flux correction to
+        # the templates or continuum-normalize the observations.
+        correction_model = CORRECTION_MODELS[self.config.rvfit.correction_model]()
         
-        rvfit = ModelGridTempFit(trace)
+        # Create the template fit object that will perform the RV fitting
+        rvfit = ModelGridTempFit(correction_model=correction_model, trace=trace)
 
         rvfit.template_grids = template_grids
         rvfit.template_psf = template_psfs
 
+        # Initialize the components from the configuration
         rvfit.init_from_args(None, None, self.config.rvfit.rvfit_args)
         rvfit.trace.init_from_args(None, None, self.config.rvfit.trace_args)
+        rvfit.correction_model.init_from_args(None, None, self.config.rvfit.correction_model_args)
 
         return rvfit
     
@@ -768,7 +781,7 @@ class GA1DPipeline(Pipeline):
         #       we want to process spectra that overlap between arms
 
         templates = self.__coadd_get_templates(spectra)
-        flux_corr = self.__coadd_eval_flux_corr(spectra, templates)
+        flux_corr = self.__coadd_eval_correction(spectra, templates)
 
         self.__stacking_results = {}
         for arm in spectra:
@@ -830,20 +843,22 @@ class GA1DPipeline(Pipeline):
 
         return templates
     
-    def __coadd_eval_flux_corr(self, spectra, templates):
-        # Evaluate the flux correction for every exposure of each arm.
+    def __coadd_eval_correction(self, spectra, templates):
+        # Evaluate the correction correction for every exposure of each arm.
+        # Depending on the configuration, the correction is either a multiplicative
+        # flux correction, or a model fitted to continuum pixels. The correction model
+        # is used to normalize the spectra before coadding.
 
-        flux_corr = TempFit.eval_flux_corr(
-            self.__rvfit,
+        corr = self.__rvfit.eval_correction(
             spectra,
             templates,
             self.__rvfit_results.rv_fit,
             a=self.__rvfit_results.a_fit)
         
         if self.trace is not None:
-            self.trace.on_coadd_eval_flux_corr(spectra, templates, flux_corr, self.__rvfit.spec_norm, self.__rvfit.temp_norm)
+            self.trace.on_coadd_eval_correction(spectra, templates, corr, self.__rvfit.spec_norm, self.__rvfit.temp_norm)
         
-        return flux_corr
+        return corr
 
     #endregion
     #region CHEMFIT
@@ -973,6 +988,8 @@ class GA1DPipeline(Pipeline):
             covarId = np.array([], dtype=np.int8),
             value = np.array([], dtype=np.float32),
             valueErr = np.array([], dtype=np.float32),
+            flag = np.array([], dtype=bool),
+            status = np.array([], dtype=str),
         )
 
     def __step_cleanup(self):
