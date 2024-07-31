@@ -8,14 +8,14 @@ class GATargetConfig(Config):
     Galactic Archeology pipeline target object configuration.
     """
 
-    def __init__(self, config=None):
+    def __init__(self):
         self.objId = None
         self.catId = None
         self.tract = None
         self.patch = None
         self.visits = None
 
-        super().__init__(config=config)
+        super().__init__()
 
     def _load_impl(self, config, ignore_collisions=False):
         self._load_config_from_dict(config=config,

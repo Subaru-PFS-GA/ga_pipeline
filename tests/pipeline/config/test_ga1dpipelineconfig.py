@@ -7,4 +7,5 @@ from .configs import *
 class TestPipeline(TestCase):
     def test_init(self):
         config = GA1DPipelineConfig()
-        config = GA1DPipelineConfig(config=TEST_CONFIG_EDR2_90006)
+        config = GA1DPipelineConfig()
+        config.load(TEST_CONFIG_EDR2_90006)

@@ -1,7 +1,32 @@
 from .config import Config
 
 class RVFitConfig(Config):
-    def __init__(self, config=None):
+    """
+    Configuration class for the RV fit step of the pipeline
+
+    Parameters
+    ----------
+    fit_arms: list of str
+        List of arm names to fit the RV for.
+    require_all_arms: bool
+        Require all arms to run the fitting. If False, a subset of the arms can be used.
+    model_grid_path: str
+        Path to the model grid files. Use {arm} for wildcard.
+    model_grid_args: dict
+        Extra arguments to pass to the model grid. Use this to limit the parameter space.
+    model_grid_mmap: bool
+        Memory map the model grid files. Only works on supported file systems.
+    model_grid_preload: bool
+        Preload the model grid into memory. Requires large memory.
+    psf_path: str
+        Path to the line spread function files. Use {arm} for wildcard.
+    min_unmasked_pixels: int
+        Minimum number of unmasked pixels required to run the fitting.
+    correction_model: str
+        Correction model to use. Either 'fluxcorr' or 'contnorm'.
+    """
+
+    def __init__(self):
 
         # RVFIT global parameters
         
@@ -25,6 +50,10 @@ class RVFitConfig(Config):
             'flux_corr_per_arm': True,
             'flux_corr_per_exp': True,
         }
+
+        # TODO: Example configuration with `contnomr`, which currently has no arguments
+        # self.correction_model = 'contnorm'
+        # self.correction_model_args = {}
 
         # Arguments to pass to ModelGridTempFit
         # This is where we can set the parameter priors, etc.
@@ -61,4 +90,4 @@ class RVFitConfig(Config):
             'plot_params_cov': True
         }
 
-        super().__init__(config=config)
+        super().__init__()

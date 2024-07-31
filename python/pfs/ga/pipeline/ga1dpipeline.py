@@ -304,8 +304,12 @@ class GA1DPipeline(Pipeline):
 
         # Verify stellar template grids and PSF files
         if self.config.run_rvfit:
-            for arm in self.config.arms:
-                fn = self.config.rvfit.model_grid_path.format(arm=arm)
+            for arm in self.config.rvfit.fit_arms:
+                if isinstance(self.config.rvfit.model_grid_path, dict):
+                    fn = self.config.rvfit.model_grid_path[arm].format(arm=arm)
+                else:
+                    fn = self.config.rvfit.model_grid_path.format(arm=arm)
+                
                 if not os.path.isfile(fn):
                     raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
                 else:
@@ -610,7 +614,11 @@ class GA1DPipeline(Pipeline):
 
         grids = {}
         for arm in arms:
-            fn = self.config.rvfit.model_grid_path.format(arm)
+            if isinstance(self.config.rvfit.model_grid_path, dict):
+                fn = self.config.rvfit.model_grid_path[arm].format(arm=arm)
+            else:
+                fn = self.config.rvfit.model_grid_path.format(arm=arm)
+
             skip = False
             for _, ˇgrid in grids.items():
                 if ˇgrid.filename == fn:

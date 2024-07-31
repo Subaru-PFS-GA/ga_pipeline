@@ -7,7 +7,8 @@ from tests.pipeline.config.configs import *
 
 class TestGA1DPipeline(TestCase):
     def get_test_config(self):
-        config = GA1DPipelineConfig(config=TEST_CONFIG_EDR2_90006)
+        config = GA1DPipelineConfig()
+        config.load(TEST_CONFIG_EDR2_90006)
 
         workdir = os.path.expandvars(os.path.join('${GAPIPE_WORKDIR}', f'{config.target.objId:016x}'))
 

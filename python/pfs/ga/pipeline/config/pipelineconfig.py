@@ -3,7 +3,7 @@ import logging
 from .config import Config
 
 class PipelineConfig(Config):
-    def __init__(self, config=None):
+    def __init__(self):
         self.trace_args = {}
 
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory, must be writable         
@@ -14,4 +14,4 @@ class PipelineConfig(Config):
 
         self.loglevel = logging.INFO
 
-        super().__init__(config=config)
+        super().__init__()

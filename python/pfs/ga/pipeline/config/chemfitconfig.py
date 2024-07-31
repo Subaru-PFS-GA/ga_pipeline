@@ -1,5 +1,9 @@
 from .config import Config
 
 class ChemfitConfig(Config):
-    def __init__(self, config=None):
-        super().__init__(config=config)
+    """
+    Configuration class for the chemfit step of the pipeline.
+    """
+
+    def __init__(self):
+        super().__init__()

@@ -2,14 +2,13 @@ import os
 import commentjson as json
 import yaml
 
+from ..setup_logger import logger
+
 class Config():
     """Base class for configurations"""
 
-    def __init__(self, config=None):
-
+    def __init__(self):
         self.__config_files = None                # List of configuration files loaded
-
-        self.load(config)
 
     def __get_config_files(self):
         return self.__config_files
@@ -154,10 +153,12 @@ class Config():
             if k in a and isinstance(a[k], dict) and k in b  and isinstance(b[k], dict):
                 r[k] = Config.merge_dict(a[k], b[k], ignore_collisions=ignore_collisions)
             elif k in a and k in b:
+                msg = f"Collision detected in the configuration for key `{k}`."
                 if ignore_collisions:
                     r[k] = b[k]
+                    logger.debug(msg)
                 else:
-                    raise ValueError(f"Collision detected for key `{k}`.")
+                    raise ValueError(msg)
             elif k in a:
                 r[k] = a[k]
             elif k in b:
@@ -179,7 +180,19 @@ class Config():
         return r
         
     def _load_config_from_dict(self, config=None, type_map=None, ignore_collisions=False):
-        # Load configuration from a dictionary
+        """
+        Load configuration from a dictionary.
+
+        This function iterates over the dictionary passed as `config` and sets the members
+        of the configuration class to the values found in the dictionary. If a member is a subclass
+        of `Config`, the value found in the dictionary (usually a sub-dictionary) is passed to the class
+        for further processing. If key in the dictionary matches a key in `type_map`, then the value
+        is passed to the class defined in the map.
+        
+        If the member is a dictionary and the value in the dictionary is also a dictionary, the two
+        dictionaries are merged. If the member is a dictionary and the value in the dictionary is not
+        a dictionary, the value is set as is. If the member is not a dictionary, the value is set as is.
+        """
 
         if config is not None:
             # Iterate over all keys of the configuration and see if the keys match up with
@@ -199,7 +212,7 @@ class Config():
                     c._load_impl(config[k], ignore_collisions=ignore_collisions)
                 elif type_map is not None and k in type_map:
                     # This member is part of the type_map, instantiate type and initialize
-                    setattr(self, k, self.map_config_class(type_map[k], config=config[k]))
+                    setattr(self, k, self.map_config_class(type_map[k], config=config[k], ignore_collisions=ignore_collisions))
                 elif isinstance(c, dict) and isinstance(config[k], dict):
                     # This member is a dictionary, merge with the config dict
                     setattr(self, k, self.merge_dict(c, config[k], ignore_collisions=ignore_collisions))
@@ -208,16 +221,38 @@ class Config():
                     setattr(self, k, config[k])
 
     def _load_impl(self, config=None, ignore_collisions=False):
+        """
+        Config class specific implementation of how to load the configuration from
+        a dictionary.
+        
+        When the dictionary is hierarchical, some entries might need to
+        be converted into their own classes, while others can be left as is. To allow
+        control of this behavior, derived classes can override this function and
+        pass a `type_map` to `_load_config_from_dict`.
+        """
+
         # The default is not to use type mapping
         self._load_config_from_dict(config=config, ignore_collisions=ignore_collisions)
 
-    def map_config_class(self, type, config=None):
+    def map_config_class(self, type, config=None, ignore_collisions=False):
         if isinstance(config, dict):
-            return { k: type(config=c) for k, c in config.items() }
+            res = {}
+            for k, c in config.items():
+                v = type()
+                v.load(c, ignore_collisions=ignore_collisions)
+                res[k] = v
+            return res
         elif isinstance(config, list):
-            return [ type(config=c) for c in config ]
+            res = []
+            for c in config:
+                v = type()
+                v.load(c, ignore_collisions=ignore_collisions)
+                res.append(c)
+            return res
         else:
-            return type(config=config)
+            v = type()
+            v.load(config, ignore_collisions=ignore_collisions)
+            return v
         
     @staticmethod
     def _save_config_to_dict(obj):

@@ -11,7 +11,7 @@ class GA1DPipelineConfig(PipelineConfig):
 
     # TODO: Maybe split it into ObjectConfig, RVFitConfig, ChemFitConfig
 
-    def __init__(self, config=None):
+    def __init__(self):
         # Path to rerun data, absolute or relative to `datadir`
         self.rerundir = self._get_env('GAPIPE_RERUNDIR')
 
@@ -75,7 +75,7 @@ class GA1DPipelineConfig(PipelineConfig):
         self.chemfit = ChemfitConfig()
         self.run_chemfit = False
         
-        super().__init__(config=config)
+        super().__init__()
 
     def _load_impl(self, config=None, ignore_collisions=False):
         self._load_config_from_dict(config=config,

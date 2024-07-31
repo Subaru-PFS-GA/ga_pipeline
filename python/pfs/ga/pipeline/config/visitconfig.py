@@ -3,10 +3,20 @@ from .config import Config
 class VisitConfig(Config):
     """
     Galactic Archeology pipeline target visit configuration.
+
+    Parameters
+    ----------
+    date: str
+        Date of the observation.
+    pfsDesignId: int
+        PFS design identifier.
+    fiberId: int
+        Fiber identifier.
     """
-    def __init__(self, config=None):
+
+    def __init__(self):
         self.date = None
         self.pfsDesignId = None
         self.fiberId = None
 
-        super().__init__(config=config)
+        super().__init__()

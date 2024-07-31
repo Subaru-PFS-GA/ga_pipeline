@@ -63,7 +63,9 @@ class Configure(Script):
 
         # Load the configuration file
         self.__config = self._get_arg('config', args)
-        self.__config = GA1DPipelineConfig(self.__config)
+        c = GA1DPipelineConfig()
+        c.load(self.__config, ignore_collisions=True)
+        self.__config = c
 
         # Command-line arguments override the configuration file
         self.__workdir = self._get_arg('workdir', args, self.__config.workdir)
@@ -90,7 +92,8 @@ class Configure(Script):
         Find all the pfsSingle files that match the filters and generate a config file for each.
         """
 
-        logger.info('Using configuration template file(s) `{self.__config.config_files}`.')
+        files = ' '.join(self.__config.config_files)
+        logger.info(f'Using configuration template file(s) {files}.')
 
         # Find all the pfsSingle files that match the filters
         targets = self.__get_pfsSingle_targets()
@@ -124,6 +127,8 @@ class Configure(Script):
             self.__config.target.objId = targets[objId].objId
 
             # TODO: the empty dict here is a placeholder for per visit configuration
+            # TODO: figure out designID and fiberID and create a VisitConfig object instead
+            #       of the empty {}
             self.__config.target.visits = { v: {} for v in targets[objId].visits }
 
             # TODO: update config with directory names?
