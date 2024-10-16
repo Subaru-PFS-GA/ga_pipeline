@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 class IDFilter():
     """
     Implements and argument parser for ID filters and logic to match
@@ -10,15 +12,34 @@ class IDFilter():
     parsed into the list `['123', ('123', '127')]`.
     """
 
-    def __init__(self, name, format=None, orig=None):
+    def __init__(self, *values, name=None, format=None, orig=None):
         if not isinstance(orig, IDFilter):
             self.__name = name
             self.__format = format if format is not None else '{}'
+            self.__values = self.__normalize_values(values)
         else:
             self.__name = name if name is not None else orig.__name
             self.__format = format if format is not None else orig.__format
+            self.__values = self.__normalize_values(values if values is not None else orig.__values)
 
-        self.__values = None
+    def __normalize_values(self, values):
+        """
+        Normalize the values of the filter.
+        """
+
+        if values is None:
+            return None
+        elif isinstance(values, IDFilter):
+            return values.values
+        elif isinstance(values, Iterable):
+            if len(values) == 0:
+                return None
+            elif len(values) == 1 and isinstance(values[0], IDFilter):
+                return values[0].values
+            else: # list of scalars, hopefully
+                return list(values)
+        else: # scalar, hopefully
+            return [values]
 
     def __str__(self):
         """
@@ -55,7 +76,20 @@ class IDFilter():
     def __get_values(self):
         return self.__values
     
-    values = property(__get_values)
+    def __set_values(self, value):
+        self.__values = self.__normalize_values(value)
+    
+    values = property(__get_values, __set_values)
+
+    def __get_value(self):
+        if self.__values is None:
+            return None
+        elif len(self.__values) == 1 and not isinstance(self.__values[0], tuple):
+            return self.__values[0]
+        else:
+            raise ValueError('Filter has multiple values')
+        
+    value = property(__get_value)
 
     def _parse_value(self, value):
         raise NotImplementedError()
@@ -104,6 +138,8 @@ class IDFilter():
         Return a glob pattern that matches all IDs in the filter.
         """
 
+        if self.__values is None:
+            return '*'
         if len(self.__values) == 1 and not isinstance(self.__values[0], tuple):
             return self.__format.format(self.__values[0])
         else:
