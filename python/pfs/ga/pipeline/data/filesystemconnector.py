@@ -98,6 +98,17 @@ class FileSystemConnector():
 
     #endregion
 
+    def __parse_filename_params(self, path: str, params: SimpleNamespace, regex: str):
+        # Unwrap the parameters
+        params = params.__dict__
+
+        # Match the filename pattern to find the IDs
+        match = re.search(regex, path)
+        if match is not None:
+            return SimpleNamespace(**{ k: p.parse_value(match.group(k)) for k, p in params.items() })
+        else:
+            raise ValueError(f'Filename does not match expected format: {path}')
+
     def __find_files_and_match_params(self, *patterns, params: SimpleNamespace, regex: str):
         """
         Given a list of directory name glob pattern template strings, substitute the parameters
@@ -222,8 +233,33 @@ class FileSystemConnector():
             reference_path = reference_path)
         return self.__get_single_file(files, ids)
     
-    def load_pfsDesign(self, files, ids):
-        raise NotImplementedError()
+    def load_pfsDesign(self, path=None, identity=None):
+            
+        if sum([1 for x in [path, identity] if x is not None]) > 1:
+            raise ValueError('Only one of filename or identity can be specified.')
+        
+        if path is not None:
+            # PfsConfig cannot read from a file directly, so figure out parameters
+            # from the filename
+            dir, basename = os.path.split(path)
+
+            # Extract pfsDesignId and visit from the filename
+            identity = self.__parse_filename_params(
+                basename,
+                params = SimpleNamespace(
+                    pfsDesignId = HexFilter(),
+                ),
+                regex = Constants.PFSDESIGN_FILENAME_REGEX
+            )
+        elif identity is not None:
+            dir = ''
+
+        dir = os.path.join(
+            self.__datadir,
+            Constants.PFSDESIGN_DIR_FORMAT.format(**identity.__dict__),
+            dir)
+
+        return PfsDesign.read(identity.pfsDesignId, dirName=dir,)
     
     def find_pfsConfig(self, pfsDesignId=None, visit=None, date=None, reference_path=None):
         """
@@ -251,7 +287,7 @@ class FileSystemConnector():
                 date = DateFilter(date if date is not None else self.__date)
             ))
     
-    def get_pfsConfig(self, pfsDesignId, visit, reference_path=None):
+    def get_pfsConfig(self, visit, pfsDesignId=None, reference_path=None):
         """
         Find a specific PfsConfig file.
 
@@ -269,13 +305,40 @@ class FileSystemConnector():
         """
 
         files, ids = self.find_pfsConfig(
-            pfsDesignId = pfsDesignId,
             visit = visit,
+            pfsDesignId = pfsDesignId,
             reference_path = reference_path)
         return self.__get_single_file(files, ids)
     
-    def load_pfsConfig(self, files, ids):
-        raise NotImplementedError()
+    def load_pfsConfig(self, path=None, identity=None):
+        
+        if sum([1 for x in [path, identity] if x is not None]) > 1:
+            raise ValueError('Only one of path or identity can be specified.')
+        
+        if path is not None:
+            # PfsConfig cannot read from a file directly, so figure out parameters
+            # from the filename
+            dir, basename = os.path.split(path)
+
+            # Extract pfsDesignId and visit from the filename
+            identity = self.__parse_filename_params(
+                path,
+                params = SimpleNamespace(
+                    pfsDesignId = HexFilter(),
+                    visit = IntFilter(),
+                    date = DateFilter(),
+                ),
+                regex = Constants.PFSCONFIG_PATH_REGEX
+            )
+        elif identity is not None:
+            dir = ''
+
+        dir = os.path.join(
+            self.__datadir,
+            Constants.PFSCONFIG_DIR_FORMAT.format(**identity.__dict__),
+            dir)
+
+        return PfsConfig.read(identity.pfsDesignId, identity.visit, dirName=dir,)
         
     def find_pfsArm(self, catId, tract, patch, objId, visit, arm):
         raise NotImplementedError()

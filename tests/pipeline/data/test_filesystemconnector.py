@@ -50,6 +50,14 @@ class TestFileSystemConnector(TestCase):
         self.assertIsNotNone(file)
         self.assertEqual(0x6d832ca291636984, id.pfsDesignId)
 
+    def test_load_pfsDesign(self):
+        connector = self.get_test_connector()
+
+        filename, identity = connector.get_pfsDesign(0x6d832ca291636984)
+
+        pfsDesign = connector.load_pfsDesign(path=filename)
+        pfsDesign = connector.load_pfsDesign(identity=identity)
+
     def test_find_pfsConfig(self):
         connector = self.get_test_connector()
 
@@ -73,3 +81,11 @@ class TestFileSystemConnector(TestCase):
         connector = self.get_test_connector()
 
         files = connector.get_pfsConfig(0x6d832ca291636984, 111636)
+
+    def test_load_pfsConfig(self):
+        connector = self.get_test_connector()
+
+        filename, identity = connector.get_pfsConfig(visit=111483)
+        
+        pfsConfig = connector.load_pfsConfig(path=filename)
+        pfsConfig = connector.load_pfsConfig(identity=identity)
