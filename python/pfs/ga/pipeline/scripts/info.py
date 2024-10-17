@@ -43,7 +43,7 @@ class Info(Script):
             ]
         }
 
-        self.__discovery = FileSystemConnector()
+        self.__connector = None
         self.__filename = None          # Path of the input file
 
     def _add_args(self):
@@ -81,6 +81,18 @@ class Info(Script):
                 func(self.__filename)
         else:
             raise NotImplementedError(f'File type not recognized: {basename}')
+        
+    def __get_data_connector(self, reference_path=None):
+        """
+        Create a connector to the file system.
+        """
+
+        if self.__connector is None:
+            self.__connector = FileSystemConnector()
+            self.__connector.datadir = self.__connector.find_datadir(reference_path=reference_path)
+            self.__connector.rerundir = self.__connector.find_rerundir(reference_path=reference_path)
+
+        return self.__connector
 
     def __print_info(self, object, filename):
         print(f'File type: {type(object).__name__}')
@@ -106,33 +118,24 @@ class Info(Script):
         pass
 
     def __print_pfsConfig(self, filename):
-        # TODO: move this to discovery
-        # PfsConfig cannot read from a file directly, so figure out parameters
-        # from the filename
-        dir, basename = os.path.split(filename)
+        connector = self.__get_data_connector(filename)
+        pfsConfig = connector.load_pfsConfig(filename)
 
-        # Extract pfsDesignId and visit from the filename
-        # Format is "pfsConfig-0x%016x-%06d.fits"
-        match = re.match(r'pfsConfig-0x([0-9a-f]{16})-(\d{6}).fits', basename)
-        if match is None:
-            raise ValueError(f'Filename does not match expected format: {basename}')
-        pfsDesignId = int(match.group(1), 16)
-        visit = int(match.group(2))
-        
-        config = PfsConfig.read(pfsDesignId, visit, dirName=dir)
-
-        self.__print_info(config, filename)
-        print(f'  DesignName: {config.designName}')
-        print(f'  PfsDesignId: 0x{config.pfsDesignId:016x}')
-        print(f'  Visit: {config.visit}')
-        print(f'  Center: {config.raBoresight:0.5f}, {config.decBoresight:0.5f}')
-        print(f'  PosAng: {config.posAng:0.5f}')
-        print(f'  Arms: {config.arms:0.5f}')
-        print(f'  Tract, patch: {config.tract:0.5f}, {config.patch}')
-        print(f'  CatId: {np.unique(config.catId)}')
-        print(f'  ProposalId: {np.unique(config.proposalId)}')
+        self.__print_info(pfsConfig, filename)
+        print(f'  DesignName: {pfsConfig.designName}')
+        print(f'  PfsDesignId: 0x{pfsConfig.pfsDesignId:016x}')
+        print(f'  Visit: {pfsConfig.visit}')
+        print(f'  Center: {pfsConfig.raBoresight:0.5f}, {pfsConfig.decBoresight:0.5f}')
+        print(f'  PosAng: {pfsConfig.posAng:0.5f}')
+        print(f'  Arms: {pfsConfig.arms}')
+        print(f'  Tract: {np.unique(pfsConfig.tract)}')
+        print(f'  Patch: {np.unique(pfsConfig.patch)}')
+        print(f'  CatId: {np.unique(pfsConfig.catId)}')
+        print(f'  ProposalId: {np.unique(pfsConfig.proposalId)}')
 
     def __print_pfsMerged(self, filename):
+        connector = self.__get_data_connector(filename)
+        # TODO: use connector here
         merged = PfsMerged.readFits(filename)
 
         self.__print_info(merged, filename)
@@ -143,10 +146,11 @@ class Info(Script):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            config_file = self.__discovery.find_pfsConfig(
-                merged.identity.pfsDesignId, merged.identity.visit,
-                reference_path=filename)
-            self.__print_pfsConfig(config_file)
+            filename, identity = connector.get_pfsConfig(
+                visit = merged.identity.visit,
+                pfsDesignId = merged.identity.pfsDesignId,
+            )
+            self.__print_pfsConfig(filename=filename)
         except Exception as e:
             raise e
 
