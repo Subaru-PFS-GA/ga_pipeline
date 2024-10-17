@@ -18,11 +18,12 @@ class Script():
         self.__debug = False                        # If True, script is running in debug mode
         self.__profile = False                      # If True, the profiler is enabled
         
-        self.__logLevel = logging.INFO              # Default log level
-        self.__logFile = None                       # Log file name
-        self.__logFormatter = None                  # Log formatter
-        self.__logFileHandler = None                # Log file handler
-        self.__logConsoleHandler = None             # Log console handler
+        self.__log_level = logging.INFO             # Default log level
+        self.__log_file = None                      # Log file name
+        self.__log_formatter = None                 # Log formatter
+        self.__log_file_handler = None              # Log file handler
+        self.__log_to_console = True                # Log to console
+        self.__log_console_handler = None           # Log console handler
 
         self.__parser = ArgumentParser()
         self.__profiler = None
@@ -38,18 +39,29 @@ class Script():
     
     profile = property(__get_profile)
 
-    def __get_loglevel(self):
-        return self.__logLevel
+    def __get_log_level(self):
+        return self.__log_level
     
-    log_level = property(__get_loglevel)
+    def __set_log_level(self, value):
+        self.__log_level = value
+    
+    log_level = property(__get_log_level, __set_log_level)
 
-    def __get_logfile(self):
-        return self.__logFile
+    def __get_log_file(self):
+        return self.__log_file
     
-    def __set_logfile(self, value):
-        self.__logFile = value
+    def __set_log_file(self, value):
+        self.__log_file = value
     
-    logfile = property(__get_logfile, __set_logfile)
+    log_file = property(__get_log_file, __set_log_file)
+
+    def __get_log_to_console(self):
+        return self.__log_to_console
+    
+    def __set_log_to_console(self, value):
+        self.__log_to_console = value
+
+    log_to_console = property(__get_log_to_console, __set_log_to_console)
 
     def __parse_args(self):
         self.__args = self.__parser.parse_args().__dict__
@@ -74,14 +86,14 @@ class Script():
         self.__debug = self._get_arg('debug', args, self.__debug)
         self.__profile = self._get_arg('profile', args, self.__profile)
         
-        self.__logLevel = self._get_arg('log_level', args, self.__logLevel)
-        if isinstance(self.__logLevel, str) and hasattr(logging, self.__logLevel.upper()):
-            self.__logLevel = getattr(logging, self.__logLevel.upper())
+        self.__log_level = self._get_arg('log_level', args, self.__log_level)
+        if isinstance(self.__log_level, str) and hasattr(logging, self.__log_level.upper()):
+            self.__log_level = getattr(logging, self.__log_level.upper())
         else:
-            self.__logLevel = logging.INFO
+            self.__log_level = logging.INFO
 
-        if self.__debug and self.__logLevel > logging.DEBUG:
-            self.__logLevel = logging.DEBUG
+        if self.__debug and self.__log_level > logging.DEBUG:
+            self.__log_level = logging.DEBUG
         
 
     def _create_dir(self, name, dir, logger=logger):
@@ -94,33 +106,45 @@ class Script():
 
     def __start_logging(self):
 
-        logdir = os.path.dirname(self.__logFile)
-        self._create_dir('log', logdir)
-
-        self.__logFormatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
-        self.__logFileHandler = logging.FileHandler(self.__logFile)
-        self.__logFileHandler.setFormatter(self.__logFormatter)
-        self.__logConsoleHandler = logging.StreamHandler()
-        self.__logConsoleHandler.setFormatter(self.__logFormatter)
-
+        # Allow overriding logging configuration
+        self._configure_logging()
+        
         # Configure root logger
         root = logging.getLogger()
         root.handlers = []
-        root.setLevel(self.__logLevel)
-        root.addHandler(self.__logFileHandler)
-        root.addHandler(self.__logConsoleHandler)
+        root.setLevel(self.__log_level)
+
+        self.__log_formatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
+        
+        if self.__log_file is not None:
+            logdir = os.path.dirname(self.__log_file)
+            self._create_dir('log', logdir)
+            
+            self.__log_file_handler = logging.FileHandler(self.__log_file)
+            self.__log_file_handler.setFormatter(self.__log_formatter)
+
+            root.addHandler(self.__log_file_handler)
+        
+        if self.__log_to_console:
+            self.__log_console_handler = logging.StreamHandler()
+            self.__log_console_handler.setFormatter(self.__log_formatter)
+
+            root.addHandler(self.__log_console_handler)
 
         # Filter out log messages from matplotlib
         logging.getLogger('matplotlib').setLevel(logging.WARNING)
  
         # Configure pipeline logger
         logger.propagate = True
-        logger.setLevel(self.__logLevel)
+        logger.setLevel(self.__log_level)
 
-        logger.info(f'Logging started to `{self.__logFile}`.')
+        logger.info(f'Logging started to `{self.__log_file}`.')
+
+    def _configure_logging(self):
+        pass
 
     def __stop_logging(self):
-        logger.info(f'Logging finished to `{self.__logFile}`.')
+        logger.info(f'Logging finished to `{self.__log_file}`.')
 
         # Disconnect file logger and re-assign stderr
         root = logging.getLogger()
@@ -128,9 +152,9 @@ class Script():
         root.addHandler(logging.StreamHandler())
 
         # Destroy logging objects (but keep last filename)
-        self.__logFormatter = None
-        self.__logFileHandler = None
-        self.__logConsoleHandler = None
+        self.__log_formatter = None
+        self.__log_file_handler = None
+        self.__log_console_handler = None
 
     def __start_profiler(self):
         """
@@ -214,10 +238,11 @@ class Script():
 
     def _dump_settings(self):
         # Save environment, arguments and command-line to files next to the log file
-        logdir = os.path.dirname(self.__logFile)
-        self.__dump_env(os.path.join(logdir, f'env_{self.__timestamp}.sh'))
-        self.__dump_args(os.path.join(logdir, f'args_{self.__timestamp}.json'))
-        self.__dump_cmdline(os.path.join(logdir, f'command_{self.__timestamp}.sh'))
+        if self.__log_file is not None:
+            logdir = os.path.dirname(self.__log_file)
+            self.__dump_env(os.path.join(logdir, f'env_{self.__timestamp}.sh'))
+            self.__dump_args(os.path.join(logdir, f'args_{self.__timestamp}.json'))
+            self.__dump_cmdline(os.path.join(logdir, f'command_{self.__timestamp}.sh'))
 
     def execute(self):
         self._add_args()
@@ -245,7 +270,7 @@ class Script():
         
         name = self.__class__.__name__.lower()
         time = self.__timestamp
-        self.__logFile = f'{name}_{time}.log'
+        self.__log_file = f'{name}_{time}.log'
 
     def run(self):
         raise NotImplementedError()
