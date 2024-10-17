@@ -1,7 +1,7 @@
-from .idfilter import IDFilter
+from .searchfilter import SearchFilter
 from datetime import date
 
-class DateFilter(IDFilter):
+class DateFilter(SearchFilter):
     """
     Implements an argument parser for date filters and logic to match
     ranges of dates within file names.

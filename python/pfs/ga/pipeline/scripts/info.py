@@ -10,7 +10,7 @@ from pfs.datamodel import PfsDesign, PfsConfig, PfsObject, PfsSingle, PfsMerged
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from ..constants import Constants
-from ..discovery import FileSystemDiscovery
+from ..data import FileSystemConnector
 from .script import Script
 
 from ..setup_logger import logger
@@ -43,7 +43,7 @@ class Info(Script):
             ]
         }
 
-        self.__discovery = FileSystemDiscovery()
+        self.__discovery = FileSystemConnector()
         self.__filename = None          # Path of the input file
 
     def _add_args(self):

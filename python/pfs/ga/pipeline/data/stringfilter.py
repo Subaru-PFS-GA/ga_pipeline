@@ -1,8 +1,8 @@
 from collections.abc import Iterable
 
-from .idfilter import IDFilter
+from .searchfilter import SearchFilter
 
-class StringFilter(IDFilter):
+class StringFilter(SearchFilter):
     """
     Implemented an argument parser for string filters and logic to match strings
     within file names.

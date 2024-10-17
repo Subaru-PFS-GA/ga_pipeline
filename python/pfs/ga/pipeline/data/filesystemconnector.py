@@ -6,9 +6,12 @@ from types import SimpleNamespace
 from pfs.datamodel import *
 
 from ..constants import Constants
-from ..util import IntIDFilter, HexIDFilter, DateFilter, StringFilter
+from .intfilter import IntFilter
+from .hexfilter import HexFilter
+from .datefilter import DateFilter
+from .stringfilter import StringFilter
 
-class FileSystemDiscovery():
+class FileSystemConnector():
     """
     Implements routines to find data products in the file system.
     This is a replacement of Butler for local development.
@@ -19,16 +22,16 @@ class FileSystemDiscovery():
                  rerundir=None,
                  orig=None):
         
-        if not isinstance(orig, FileSystemDiscovery):
+        if not isinstance(orig, FileSystemConnector):
             self.__datadir = datadir
             self.__rerundir = rerundir
 
-            self.__pfsDesignId = HexIDFilter(name='pfsDesignId', format='{:016x}')
-            self.__catId = IntIDFilter(name='catid', format='{:05d}')
-            self.__tract = IntIDFilter(name='tract', format='{:05d}')
+            self.__pfsDesignId = HexFilter(name='pfsDesignId', format='{:016x}')
+            self.__catId = IntFilter(name='catid', format='{:05d}')
+            self.__tract = IntFilter(name='tract', format='{:05d}')
             self.__patch = StringFilter(name='patch')
-            self.__objId = HexIDFilter(name='objid', format='{:016x}')
-            self.__visit = IntIDFilter(name='visit', format='{:06d}')
+            self.__objId = HexFilter(name='objid', format='{:016x}')
+            self.__visit = IntFilter(name='visit', format='{:06d}')
             self.__date = DateFilter(name='date')
         else:
             self.__datadir = datadir if datadir is not None else orig.__datadir
@@ -198,7 +201,7 @@ class FileSystemDiscovery():
             Constants.PFSDESIGN_FILENAME_GLOB,
             regex = Constants.PFSDESIGN_FILENAME_REGEX,
             params = SimpleNamespace(
-                pfsDesignId = HexIDFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId)
+                pfsDesignId = HexFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId)
             ))
     
     def get_pfsDesign(self, pfsDesignId, reference_path=None):
@@ -243,8 +246,8 @@ class FileSystemDiscovery():
             Constants.PFSCONFIG_FILENAME_GLOB,
             regex = Constants.PFSCONFIG_PATH_REGEX,
             params = SimpleNamespace(
-                pfsDesignId = HexIDFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId),
-                visit = IntIDFilter(visit if visit is not None else self.__visit),
+                pfsDesignId = HexFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId),
+                visit = IntFilter(visit if visit is not None else self.__visit),
                 date = DateFilter(date if date is not None else self.__date)
             ))
     

@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 
-class IDFilter():
+class SearchFilter():
     """
     Implements an argument parser for ID filters and logic to match
     ranges of IDs within file names.
@@ -13,7 +13,7 @@ class IDFilter():
     """
 
     def __init__(self, *values, name=None, format=None, orig=None):
-        if not isinstance(orig, IDFilter):
+        if not isinstance(orig, SearchFilter):
             self._name = name
             self._format = format if format is not None else '{}'
             self._values = self._normalize_values(values)
@@ -29,12 +29,12 @@ class IDFilter():
 
         if values is None:
             return None
-        elif isinstance(values, IDFilter):
+        elif isinstance(values, SearchFilter):
             return values.values
         elif isinstance(values, Iterable):
             if len(values) == 0:
                 return None
-            elif len(values) == 1 and isinstance(values[0], IDFilter):
+            elif len(values) == 1 and isinstance(values[0], SearchFilter):
                 return values[0].values
             else: # list of scalars, hopefully
                 return list(values)

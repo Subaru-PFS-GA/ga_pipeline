@@ -1,14 +1,14 @@
 import os
 from unittest import TestCase
 
-from pfs.ga.pipeline.util import IntIDFilter
+from pfs.ga.pipeline.data import IntFilter
 
-class TestIntIDFilter(TestCase):
+class TestIntFilter(TestCase):
     def test_init(self):
         pass
 
     def test_parse(self):
-        filter = IntIDFilter()
+        filter = IntFilter()
 
         filter.parse(['12345'])
         self.assertEqual([12345], filter.values)

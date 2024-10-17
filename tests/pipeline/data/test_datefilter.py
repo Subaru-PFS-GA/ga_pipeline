@@ -2,7 +2,7 @@ import os
 from datetime import date
 from unittest import TestCase
 
-from pfs.ga.pipeline.util import DateFilter
+from pfs.ga.pipeline.data import DateFilter
 
 class TestDateFilter(TestCase):
     def test_init(self):

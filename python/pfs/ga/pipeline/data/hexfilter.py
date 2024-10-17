@@ -1,6 +1,6 @@
-from .idfilter import IDFilter
+from .searchfilter import SearchFilter
 
-class HexIDFilter(IDFilter):
+class HexFilter(SearchFilter):
     """
     Implements an argument parser for hex ID filters and logic to match
     ranges of hex IDs within file names.

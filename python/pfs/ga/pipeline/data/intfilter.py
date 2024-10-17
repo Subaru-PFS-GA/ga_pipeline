@@ -1,6 +1,6 @@
-from .idfilter import IDFilter
+from .searchfilter import SearchFilter
 
-class IntIDFilter(IDFilter):
+class IntFilter(SearchFilter):
     """
     Implements an argument parser for integer ID filters and logic to match
     ranges of integer IDs within file names.
