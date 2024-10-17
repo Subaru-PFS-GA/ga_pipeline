@@ -56,6 +56,9 @@ class SearchFilter():
             else:
                 res += self._format.format(a)
         return res
+    
+    def __repr__(self):
+        return str(self)
 
     def __get_name(self):
         return self._name

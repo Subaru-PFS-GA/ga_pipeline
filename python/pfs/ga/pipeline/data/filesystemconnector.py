@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 from pfs.datamodel import *
 
+from ..setup_logger import logger
+
 from ..constants import Constants
 from .intfilter import IntFilter
 from .hexfilter import HexFilter
@@ -23,8 +25,8 @@ class FileSystemConnector():
                  orig=None):
         
         if not isinstance(orig, FileSystemConnector):
-            self.__datadir = datadir
-            self.__rerundir = rerundir
+            self.__datadir = datadir if datadir is not None else self.__get_envvar('GAPIPE_DATADIR')
+            self.__rerundir = rerundir if rerundir is not None else self.__get_envvar('GAPIPE_RERUNDIR')
 
             self.__pfsDesignId = HexFilter(name='pfsDesignId', format='{:016x}')
             self.__catId = IntFilter(name='catid', format='{:05d}')
@@ -46,6 +48,12 @@ class FileSystemConnector():
             self.__date = orig.__date
 
     #region Properties
+
+    def __get_envvar(self, key):
+        if key in os.environ:
+            return os.environ[key]
+        else:
+            return None
 
     def __get_datadir(self):
         return self.__datadir
@@ -98,7 +106,13 @@ class FileSystemConnector():
 
     #endregion
 
-    def __parse_filename_params(self, path: str, params: SimpleNamespace, regex: str):
+    def __throw_or_warn(self, message, required, exception_type=ValueError):
+        if required:
+            raise exception_type(message)
+        else:
+            logger.warning(message)
+
+    def __parse_filename_params(self, path: str, params: SimpleNamespace, regex: str, required=True):
         # Unwrap the parameters
         params = params.__dict__
 
@@ -107,7 +121,8 @@ class FileSystemConnector():
         if match is not None:
             return SimpleNamespace(**{ k: p.parse_value(match.group(k)) for k, p in params.items() })
         else:
-            raise ValueError(f'Filename does not match expected format: {path}')
+            self.__throw_or_warn(f'Filename does not match expected format: {path}', required)
+            return None
 
     def __find_files_and_match_params(self, *patterns, params: SimpleNamespace, regex: str):
         """
@@ -159,7 +174,30 @@ class FileSystemConnector():
         else:
             return files[0], SimpleNamespace(**{ k: v[0] for k, v in ids.__dict__.items() })
 
-    def find_datadir(self, reference_path=None):
+    def get_datadir(self, reference_path=None, required=False):
+        """
+        Returns the path to the data directory. If the reference path is provided, the path
+        to the data directory is inferred from the reference path, if possible. If `required`
+        is True and the data directory cannot be inferred, an exception is raised. Otherwise,
+        a warning is logged and the default data directory is returned.
+
+        Arguments
+        ---------
+        reference_path : str
+            Path to a file referencing the data directory. The path will be used to
+            discover the path to the data directory.
+        required : bool
+            If True, an exception is raised if the data directory cannot be inferred from
+            the reference path. Otherwise, a warning is logged and the default data directory
+            is returned.
+
+        Returns
+        -------
+        str
+            Path to the data directory.
+        """
+
+        rerun_index = -1
         if reference_path is not None:
             # Split path into list of directories
             dirs = reference_path.split(os.sep)
@@ -167,28 +205,57 @@ class FileSystemConnector():
             # Find the parent directory of data in filename
             if 'rerun' in dirs:
                 rerun_index = dirs.index('rerun')
+            elif 'pfsConfig' in dirs:
+                rerun_index = dirs.index('pfsConfig')
+            elif 'pfsDesign' in dirs:
+                rerun_index = dirs.index('pfsDesign')
             else:
-                raise ValueError('Data directory cannot be found based on reference path.')
-
+                self.__throw_or_warn('Data directory cannot be inferred from reference path.', required)
+            
+        if rerun_index != -1:
             return os.path.abspath(os.sep.join(dirs[:rerun_index]))
         else:
             return os.path.abspath(self.__datadir)
 
-    def find_rerundir(self, reference_path=None):      
+    def get_rerundir(self, reference_path=None, required=False):  
+        """
+        Returns the path to the rerun directory. If the reference path is provided, the path
+        to the rerun directory is inferred from the reference path, if possible. If `required`
+        is True and the rerun directory cannot be inferred, an exception is raised. Otherwise,
+        a warning is logged and the default rerun directory is returned.
+
+        Arguments
+        ---------
+        reference_path : str
+            Path to a file referencing the rerun directory. The path will be used to
+            discover the path to the rerun directory.
+        required : bool
+            If True, an exception is raised if the rerun directory cannot be inferred from
+            the reference path. Otherwise, a warning is logged and the default rerun directory
+            is returned.
+
+        Returns
+        -------
+        str
+            Path to the rerun directory.
+        """
+
+        rerun_index = -1
         if reference_path is not None:
             # Split path into list of directories
             dirs = reference_path.split(os.sep)
 
             # Find the parent directory of any of the PFS products
-            rerun_index = -1
+            # TODO: extend list
             for product in [ 'pfsArm', 'pfsMerged', 'pfsSingle', 'pfsObject', 'pfsGAObject' ]:
                 if product in dirs:
                     rerun_index = dirs.index(product)
                     break
 
             if rerun_index == -1:
-                raise ValueError('Rerun directory cannot be found based on reference path.')
+                self.__throw_or_warn('Rerun directory cannot be inferred from reference path.', required)
 
+        if rerun_index != -1:
             return os.path.abspath(os.sep.join(dirs[:rerun_index]))
         else:
             return os.path.abspath(os.path.join(self.__datadir, self.__rerundir))
@@ -207,7 +274,7 @@ class FileSystemConnector():
         """
 
         return self.__find_files_and_match_params(
-            self.find_datadir(reference_path=reference_path),
+            self.get_datadir(reference_path=reference_path),
             Constants.PFSDESIGN_DIR_GLOB,
             Constants.PFSDESIGN_FILENAME_GLOB,
             regex = Constants.PFSDESIGN_FILENAME_REGEX,
@@ -215,7 +282,7 @@ class FileSystemConnector():
                 pfsDesignId = HexFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId)
             ))
     
-    def get_pfsDesign(self, pfsDesignId, reference_path=None):
+    def locate_pfsDesign(self, pfsDesignId, reference_path=None):
         """
         Find a specific PfsDesign file.
 
@@ -259,7 +326,39 @@ class FileSystemConnector():
             Constants.PFSDESIGN_DIR_FORMAT.format(**identity.__dict__),
             dir)
 
-        return PfsDesign.read(identity.pfsDesignId, dirName=dir,)
+        return PfsDesign.read(identity.pfsDesignId, dirName=dir,), identity
+    
+    #region PfsConfig
+
+    def parse_pfsConfig(self, path):
+        # PfsConfig cannot read from a file directly, so figure out parameters
+        # from the filename
+        dir, basename = os.path.split(path)
+
+        # Extract pfsDesignId and visit from the filename
+        # First attempt to parse the observation date (it is in the path, when provided),
+        # then fall back to using the filename only.
+        if dir is not None and dir != '':
+            identity = self.__parse_filename_params(
+                path,
+                params = SimpleNamespace(
+                    pfsDesignId = HexFilter(),
+                    visit = IntFilter(),
+                    date = DateFilter(),
+                ),
+                regex = Constants.PFSCONFIG_PATH_REGEX,
+            )
+        else:
+            identity = self.__parse_filename_params(
+                basename,
+                params = SimpleNamespace(
+                    pfsDesignId = HexFilter(),
+                    visit = IntFilter(),
+                ),
+                regex = Constants.PFSCONFIG_FILENAME_REGEX
+            )
+
+        return identity
     
     def find_pfsConfig(self, pfsDesignId=None, visit=None, date=None, reference_path=None):
         """
@@ -277,7 +376,7 @@ class FileSystemConnector():
         """
 
         return self.__find_files_and_match_params(
-            self.find_datadir(reference_path=reference_path),
+            self.get_datadir(reference_path=reference_path),
             Constants.PFSCONFIG_DIR_GLOB,
             Constants.PFSCONFIG_FILENAME_GLOB,
             regex = Constants.PFSCONFIG_PATH_REGEX,
@@ -287,7 +386,7 @@ class FileSystemConnector():
                 date = DateFilter(date if date is not None else self.__date)
             ))
     
-    def get_pfsConfig(self, visit, pfsDesignId=None, reference_path=None):
+    def locate_pfsConfig(self, visit, pfsDesignId=None, date=None, reference_path=None):
         """
         Find a specific PfsConfig file.
 
@@ -307,38 +406,31 @@ class FileSystemConnector():
         files, ids = self.find_pfsConfig(
             visit = visit,
             pfsDesignId = pfsDesignId,
+            date = date,
             reference_path = reference_path)
         return self.__get_single_file(files, ids)
     
     def load_pfsConfig(self, path=None, identity=None):
         
-        if sum([1 for x in [path, identity] if x is not None]) > 1:
+        if sum([1 for x in [path, identity] if x is not None]) != 1:
             raise ValueError('Only one of path or identity can be specified.')
         
         if path is not None:
-            # PfsConfig cannot read from a file directly, so figure out parameters
-            # from the filename
-            dir, basename = os.path.split(path)
+            # PfsConfig cannot accept the file name directly, so figure out parameters
+            # from the filename and then load via the parameters
+            identity = self.parse_pfsConfig(path)
 
-            # Extract pfsDesignId and visit from the filename
-            identity = self.__parse_filename_params(
-                path,
-                params = SimpleNamespace(
-                    pfsDesignId = HexFilter(),
-                    visit = IntFilter(),
-                    date = DateFilter(),
-                ),
-                regex = Constants.PFSCONFIG_PATH_REGEX
-            )
+            # If the observation date is not provided, we need to search for the file
+            path, identity = self.locate_pfsConfig(**identity.__dict__, reference_path=path)
+            dir = os.path.dirname(path)
         elif identity is not None:
-            dir = ''
+            dir = os.path.join(
+                self.get_datadir(),
+                Constants.PFSCONFIG_DIR_FORMAT.format(**identity.__dict__))
 
-        dir = os.path.join(
-            self.__datadir,
-            Constants.PFSCONFIG_DIR_FORMAT.format(**identity.__dict__),
-            dir)
-
-        return PfsConfig.read(identity.pfsDesignId, identity.visit, dirName=dir,)
+        return PfsConfig.read(identity.pfsDesignId, identity.visit, dirName=dir), identity
+    
+    #endregion
         
     def find_pfsArm(self, catId, tract, patch, objId, visit, arm):
         raise NotImplementedError()
