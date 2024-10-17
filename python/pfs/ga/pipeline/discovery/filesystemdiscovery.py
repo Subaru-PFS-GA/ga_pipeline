@@ -1,11 +1,12 @@
 import os
 import re
 from glob import glob
+from types import SimpleNamespace
 
 from pfs.datamodel import *
 
 from ..constants import Constants
-from ..util import IntIDFilter, HexIDFilter
+from ..util import IntIDFilter, HexIDFilter, DateFilter, StringFilter
 
 class FileSystemDiscovery():
     """
@@ -25,9 +26,10 @@ class FileSystemDiscovery():
             self.__pfsDesignId = HexIDFilter(name='pfsDesignId', format='{:016x}')
             self.__catId = IntIDFilter(name='catid', format='{:05d}')
             self.__tract = IntIDFilter(name='tract', format='{:05d}')
-            self.__patch = None
+            self.__patch = StringFilter(name='patch')
             self.__objId = HexIDFilter(name='objid', format='{:016x}')
             self.__visit = IntIDFilter(name='visit', format='{:06d}')
+            self.__date = DateFilter(name='date')
         else:
             self.__datadir = datadir if datadir is not None else orig.__datadir
             self.__rerundir = rerundir if rerundir is not None else orig.__rerundir
@@ -38,6 +40,7 @@ class FileSystemDiscovery():
             self.__patch = orig.__patch
             self.__objId = orig.__objId
             self.__visit = orig.__visit
+            self.__date = orig.__date
 
     #region Properties
 
@@ -92,6 +95,56 @@ class FileSystemDiscovery():
 
     #endregion
 
+    def __find_files_and_match_params(self, *patterns, params: SimpleNamespace, regex: str):
+        """
+        Given a list of directory name glob pattern template strings, substitute the parameters
+        and find files that match the glob pattern. Match IDs is in the file names with the
+        parameters and return the matched IDs, as well as the paths to the files.
+        """
+
+        # Unwrap the parameters
+        params = params.__dict__
+
+        # Evaluate the glob patterns for each filter parameter
+        glob_patterns = { k: p.get_glob_pattern() for k, p in params.items() }
+
+        # Compose the full glob pattern
+        glob_pattern = os.path.join(*[ p.format(**glob_patterns) for p in patterns ])
+
+        # Find the files that match the glob pattern
+        paths = glob(glob_pattern)
+
+        # Match the IDs in the files found
+        ids = { k: [] for k in params.keys() }
+        values = { k: None for k in params.keys() }
+        filenames = []
+
+        for path in paths:
+            # Match the filename pattern to find the IDs
+            match = re.search(regex, path)
+            
+            if match is not None:
+                # If all parameters match the param filters, add the IDs to the list
+                good = True
+                for k, param in params.items():
+                    values[k] = param.parse_value(match.group(k))
+                    good &= param.match(values[k])
+
+                if good:
+                    filenames.append(path)
+                    for k, v in values.items():
+                        ids[k].append(v)
+
+        return filenames, SimpleNamespace(**ids)
+    
+    def __get_single_file(self, files, ids):
+        if len(files) == 0:
+            raise FileNotFoundError(f'No file found matching the query.')
+        elif len(files) > 1:
+            raise FileNotFoundError(f'Multiple files found matching the query.')
+        else:
+            return files[0], SimpleNamespace(**{ k: v[0] for k, v in ids.__dict__.items() })
+
     def find_datadir(self, reference_path=None):
         if reference_path is not None:
             # Split path into list of directories
@@ -129,31 +182,47 @@ class FileSystemDiscovery():
     def find_pfsDesign(self, pfsDesignId=None, reference_path=None):
         """
         Find PfsDesign files.
+
+        Arguments
+        ---------
+        pfsDesignId : HexIDFilter or int or None
+            PfsDesign identifier.
+        reference_path : str
+            Path to a file referencing the PfsDesign file. The path will be used to
+            discover the path to the PfsDesign file.
         """
 
-        pfsDesignId = HexIDFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId)
-
-        pattern = os.path.join(
+        return self.__find_files_and_match_params(
             self.find_datadir(reference_path=reference_path),
             Constants.PFSDESIGN_DIR_GLOB,
-            Constants.PFSDESIGN_FILENAME_GLOB.format(
-                pfsDesignId=pfsDesignId.get_glob_pattern()))
-
-        return glob(pattern)
+            Constants.PFSDESIGN_FILENAME_GLOB,
+            regex = Constants.PFSDESIGN_FILENAME_REGEX,
+            params = SimpleNamespace(
+                pfsDesignId = HexIDFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId)
+            ))
     
     def get_pfsDesign(self, pfsDesignId, reference_path=None):
-        pfsDesignId = pfsDesignId if pfsDesignId is not None else self.__pfsDesignId.value
+        """
+        Find a specific PfsDesign file.
 
-        files = self.find_pfsDesign(pfsDesignId=pfsDesignId, reference_path=reference_path)
+        Arguments
+        ---------
+        pfsDesignId : int
+            PfsDesign identifier.
+        reference_path : str
+            Path to a file referencing the PfsDesign file. The path will be used to
+            discover the path to the PfsDesign file.
+        """
 
-        if len(files) == 0:
-            raise FileNotFoundError(f'No pfsConfig file found for pfsDesignId {str(pfsDesignId)}.')
-        elif len(files) > 1:
-            raise FileNotFoundError(f'Multiple pfsConfig files found for pfsDesignId {str(pfsDesignId)}.')
-        else:
-            return files[0]
+        files, ids = self.find_pfsDesign(
+            pfsDesignId = pfsDesignId,
+            reference_path = reference_path)
+        return self.__get_single_file(files, ids)
     
-    def find_pfsConfig(self, pfsDesignId=None, visit=None, reference_path=None):
+    def load_pfsDesign(self, files, ids):
+        raise NotImplementedError()
+    
+    def find_pfsConfig(self, pfsDesignId=None, visit=None, date=None, reference_path=None):
         """
         Find PfsConfig files.
 
@@ -168,17 +237,16 @@ class FileSystemDiscovery():
             discover the path to the PfsConfig file.
         """
 
-        pfsDesignId = HexIDFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId)
-        visit = IntIDFilter(visit if visit is not None else self.__visit)
-
-        pattern = os.path.join(
+        return self.__find_files_and_match_params(
             self.find_datadir(reference_path=reference_path),
             Constants.PFSCONFIG_DIR_GLOB,
-            Constants.PFSCONFIG_FILENAME_GLOB.format(
-                pfsDesignId=pfsDesignId.get_glob_pattern(),
-                visit=visit.get_glob_pattern()))
-        
-        return glob(pattern)
+            Constants.PFSCONFIG_FILENAME_GLOB,
+            regex = Constants.PFSCONFIG_PATH_REGEX,
+            params = SimpleNamespace(
+                pfsDesignId = HexIDFilter(pfsDesignId if pfsDesignId is not None else self.__pfsDesignId),
+                visit = IntIDFilter(visit if visit is not None else self.__visit),
+                date = DateFilter(date if date is not None else self.__date)
+            ))
     
     def get_pfsConfig(self, pfsDesignId, visit, reference_path=None):
         """
@@ -197,17 +265,14 @@ class FileSystemDiscovery():
             Name of the file to find. If None, the first file found is returned.
         """
 
-        pfsDesignId = pfsDesignId if pfsDesignId is not None else self.__pfsDesignId.value
-        visit = visit if visit is not None else self.__visit.value
-
-        files = self.find_pfsConfig(pfsDesignId=pfsDesignId, visit=visit, reference_path=reference_path)
-
-        if len(files) == 0:
-            raise FileNotFoundError(f'No pfsConfig file found for pfsDesignId {str(pfsDesignId)} and visit {str(visit)}')
-        elif len(files) > 1:
-            raise FileNotFoundError(f'Multiple pfsConfig files found for pfsDesignId {str(pfsDesignId)} and visit {str(visit)}')
-        else:
-            return files[0]
+        files, ids = self.find_pfsConfig(
+            pfsDesignId = pfsDesignId,
+            visit = visit,
+            reference_path = reference_path)
+        return self.__get_single_file(files, ids)
+    
+    def load_pfsConfig(self, files, ids):
+        raise NotImplementedError()
         
     def find_pfsArm(self, catId, tract, patch, objId, visit, arm):
         raise NotImplementedError()
