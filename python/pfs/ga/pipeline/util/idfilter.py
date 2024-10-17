@@ -2,7 +2,7 @@ from collections.abc import Iterable
 
 class IDFilter():
     """
-    Implements and argument parser for ID filters and logic to match
+    Implements an argument parser for ID filters and logic to match
     ranges of IDs within file names.
 
     ID filters are used to select a subset of files based on their IDs and are
@@ -14,15 +14,15 @@ class IDFilter():
 
     def __init__(self, *values, name=None, format=None, orig=None):
         if not isinstance(orig, IDFilter):
-            self.__name = name
-            self.__format = format if format is not None else '{}'
-            self.__values = self.__normalize_values(values)
+            self._name = name
+            self._format = format if format is not None else '{}'
+            self._values = self._normalize_values(values)
         else:
-            self.__name = name if name is not None else orig.__name
-            self.__format = format if format is not None else orig.__format
-            self.__values = self.__normalize_values(values if values is not None else orig.__values)
+            self._name = name if name is not None else orig._name
+            self._format = format if format is not None else orig._format
+            self._values = self._normalize_values(values if values is not None else orig._values)
 
-    def __normalize_values(self, values):
+    def _normalize_values(self, values):
         """
         Normalize the values of the filter.
         """
@@ -47,45 +47,45 @@ class IDFilter():
         """
         
         res = ''
-        for a in self.__values:
+        for a in self._values:
             if res != '':
                 res += ' '
 
             if isinstance(a, tuple):
-                res += '{}-{}'.format(self.__format.format(a[0]), self.__format.format(a[1]))
+                res += '{}-{}'.format(self._format.format(a[0]), self._format.format(a[1]))
             else:
-                res += self.__format.format(a)
+                res += self._format.format(a)
         return res
 
     def __get_name(self):
-        return self.__name
+        return self._name
     
     def __set_name(self, value):
-        self.__name = value
+        self._name = value
 
     name = property(__get_name, __set_name)
 
     def __get_format(self):
-        return self.__format
+        return self._format
     
     def __set_format(self, value):
-        self.__format = value
+        self._format = value
 
     format = property(__get_format, __set_format)
 
     def __get_values(self):
-        return self.__values
+        return self._values
     
     def __set_values(self, value):
-        self.__values = self.__normalize_values(value)
+        self._values = self._normalize_values(value)
     
     values = property(__get_values, __set_values)
 
     def __get_value(self):
-        if self.__values is None:
+        if self._values is None:
             return None
-        elif len(self.__values) == 1 and not isinstance(self.__values[0], tuple):
-            return self.__values[0]
+        elif len(self._values) == 1 and not isinstance(self._values[0], tuple):
+            return self._values[0]
         else:
             raise ValueError('Filter has multiple values')
         
@@ -97,20 +97,23 @@ class IDFilter():
     def parse_value(self, value):
         return self._parse_value(value)
 
-    def parse(self, arg: list):
+    def _parse(self, arg: list):
         """
         Parse a list of arguments into individual IDs and ID ranges.
         """
 
-        self.__values = []
+        self._values = []
 
         if arg is not None:
             for a in arg:
                 if '-' in a:
                     start, end = a.split('-')
-                    self.__values.append((self._parse_value(start), self._parse_value(end)))
+                    self._values.append((self._parse_value(start), self._parse_value(end)))
                 else:
-                    self.__values.append(self._parse_value(a))
+                    self._values.append(self._parse_value(a))
+
+    def parse(self, arg: list):
+        self._parse(arg)
 
     def match(self, arg):
         # The filter matches the value if the filter is empty or the value
@@ -122,10 +125,10 @@ class IDFilter():
         else:
             value = arg
 
-        if len(self.__values) == 0:
+        if self._values is None or len(self._values) == 0:
             return True
         else:
-            for v in self.__values:
+            for v in self._values:
                 if isinstance(v, tuple) and value >= v[0] and value <= v[1]:
                         return True
                 elif value == v:
@@ -138,10 +141,8 @@ class IDFilter():
         Return a glob pattern that matches all IDs in the filter.
         """
 
-        if self.__values is None:
-            return '*'
-        if len(self.__values) == 1 and not isinstance(self.__values[0], tuple):
-            return self.__format.format(self.__values[0])
+        if self._values is not None and len(self._values) == 1 and not isinstance(self._values[0], tuple):
+            return self._format.format(self._values[0])
         else:
             return '*'
         

@@ -4,6 +4,9 @@ from unittest import TestCase
 from pfs.ga.pipeline.util import IntIDFilter
 
 class TestIntIDFilter(TestCase):
+    def test_init(self):
+        pass
+
     def test_parse(self):
         filter = IntIDFilter()
 
