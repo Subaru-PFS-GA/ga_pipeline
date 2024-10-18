@@ -31,6 +31,8 @@ class SearchFilter():
             return None
         elif isinstance(values, SearchFilter):
             return values.values
+        elif isinstance(values, str):
+            return [values]
         elif isinstance(values, Iterable):
             if len(values) == 0:
                 return None
@@ -46,19 +48,30 @@ class SearchFilter():
         Convert the ID filter into a string.
         """
         
-        res = ''
-        for a in self._values:
-            if res != '':
-                res += ' '
+        if self._values is not None:
+            r = ''
+            for a in self._values:
+                if r != '':
+                    r += ' '
 
-            if isinstance(a, tuple):
-                res += '{}-{}'.format(self._format.format(a[0]), self._format.format(a[1]))
-            else:
-                res += self._format.format(a)
-        return res
+                if isinstance(a, tuple):
+                    r += '{}-{}'.format(self._format.format(a[0]), self._format.format(a[1]))
+                else:
+                    r += self._format.format(a)
+            return r
+        else:
+            return ''
     
     def __repr__(self):
-        return str(self)
+        if self._values is not None:
+            r = ', '.join(repr(a) for a in self._values)
+        else:
+            r = ''
+
+        if self._name is not None:
+            r += f', name=\'{self._name}\''
+
+        return f'{self.__class__.__name__}({r})'
 
     def __get_name(self):
         return self._name

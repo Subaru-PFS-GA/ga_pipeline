@@ -8,7 +8,7 @@ class HexFilter(SearchFilter):
 
     def __init__(self, *values, name=None, format=None, orig=None):
 
-        format = format if format is not None else '0x{:x}'
+        format = format if format is not None else '{:x}'
 
         super().__init__(*values, name=name, format=format, orig=orig)
 
