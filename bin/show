@@ -1,5 +1,0 @@
-#!/bin/env bash
-
-# Give summary information about a PFS data file
-
-./bin/wrap "-m pfs.ga.pipeline.scripts.info" "$@"
