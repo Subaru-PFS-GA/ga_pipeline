@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import re
-from glob import glob
 from types import SimpleNamespace
 import numpy as np
 
-import pfs.datamodel
 from pfs.datamodel import *
-from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from ..constants import Constants
 from ..data import FileSystemConnector
@@ -16,11 +12,12 @@ from .script import Script
 
 from ..setup_logger import logger
 
-class Show(Script):
+class Data(Script):
     """
-    Print useful info about a PFS data file.
+    Search PFS data files and print useful information about them.
 
-    This script works by reading the contents of FITS files only, without relying on Butler.
+    This script works by reading the file system and contents of FITS files only,
+    without relying on Butler.
     """
 
     def __init__(self):
@@ -44,33 +41,46 @@ class Show(Script):
             ),
         }
 
-        self.__connector = self.__create_data_connector()
+        self.__command = None           # Command to execute
         self.__filename = None          # Path of the input file
         self.__product = None           # Product to be processed
 
+        self.__connector = self.__create_data_connector()
+
     def _add_args(self):
-        # Optional positional argument
-        self.add_arg('in', type=str, nargs='?', help='Input file')
+        self.add_arg('command', type=str, choices=['info', 'search', 'show'], help='Command')
+        self.add_arg('in', type=str, nargs='?', help='Product type or filename')
         self.__connector.add_args(self)
 
         super()._add_args()
 
     def _init_from_args(self, args):
+        self.__command = self.get_arg('command')
+
         # See if the very first argument can be interpreted as a product type.
         # If not, interpret it as a filename
-        inarg = self.get_arg('in')
-        try:
-            self.__product = self.__connector.parse_product_type(inarg)
-        except ValueError:
-            self.__filename = inarg
+        if self.is_arg('in'):
+            try:
+                self.__product = self.__connector.parse_product_type(self.get_arg('in'))
+            except ValueError:
+                self.__filename = self.get_arg('in')
         
         self.__connector.init_from_args(self)
 
         super()._init_from_args(args)
 
+    def __create_data_connector(self):
+        """
+        Create a connector to the file system.
+        """
+
+        connector = FileSystemConnector()
+        return connector
+
     def _configure_logging(self):
         super()._configure_logging()
 
+        # Do to clutter the command-line
         self.log_file = None
         self.log_to_console = False
 
@@ -78,6 +88,28 @@ class Show(Script):
         return super().prepare()
     
     def run(self):
+        if self.__command == 'info':
+            self.__run_info()
+        elif self.__command == 'search':
+            self.__run_search()
+        elif self.__command == 'show':
+            self.__run_show()
+
+    def __run_info(self):
+        root = self.__connector.get_data_root()
+        print(f'Data root: {root}')
+
+    def __run_search(self):
+        if self.__product is None:
+            raise ValueError('Product type not provided')
+        
+        filenames, identities = self.__connector.find_product(self.__product)
+        for i, filename in enumerate(filenames):
+            print(filename)
+
+        print(f'Found {len(filenames)} files.')
+
+    def __run_show(self):
         """
         Depending on the type of file being processed, print different types of information.
         """
@@ -99,14 +131,6 @@ class Show(Script):
 
         for func in self.__file_types[type(product)].print:
             func(product, identity, filename)
-        
-    def __create_data_connector(self):
-        """
-        Create a connector to the file system.
-        """
-
-        connector = FileSystemConnector()
-        return connector
 
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')
@@ -225,7 +249,7 @@ class Show(Script):
             raise e
 
 def main():
-    script = Show()
+    script = Data()
     script.execute()
 
 if __name__ == "__main__":

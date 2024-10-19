@@ -76,14 +76,9 @@ EOF
 
 # Register entrypoint functions
 
-# Show information about PFS data products
-function gapipe-show() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.show" "$@"
-}
-
-# Search for PFS data products
-function gapipe-search() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.search" "$@"
+# Search and show information about PFS data products
+function gapipe-data() {
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.data" "$@"
 }
 
 # Configure GA 1D pipeline tasks for a list of data products

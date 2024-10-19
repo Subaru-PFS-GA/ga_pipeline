@@ -308,6 +308,13 @@ class FileSystemConnector():
     #endregion
     #region Products
 
+    def get_data_root(self):
+        """
+        Returns the data root directory.
+        """
+
+        return os.path.abspath(os.path.expandvars(self.__config.root))
+
     def parse_product_type(self, product):
         """
         Based on a string, figure out the product type.
@@ -361,7 +368,7 @@ class FileSystemConnector():
     
     def find_product(self, product=None, **kwargs):
         """
-        Finds profuct files that match the specified filters.
+        Finds product files that match the specified filters.
 
         Arguments
         ---------
@@ -381,6 +388,10 @@ class FileSystemConnector():
 
         product = product if product is not None else self.__product
 
+        # Use all specified filters with function arguments taking precedence
+        params = { k: p.copy() for k, p in self.__all_params.items() if p.value is not None }
+        params.update(kwargs)
+
         return self.__find_files_and_match_params(
             patterns = [
                 self.__config.products[product].dir_format,
@@ -388,7 +399,7 @@ class FileSystemConnector():
             ],
             params_regex = self.__config.products[product].params_regex,
             params = self.__config.products[product].params,
-            param_values = kwargs)
+            param_values = params)
     
     def locate_product(self, product=None, **kwargs):
         """
