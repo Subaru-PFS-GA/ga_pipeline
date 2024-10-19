@@ -16,7 +16,7 @@ from .script import Script
 
 from ..setup_logger import logger
 
-class Info(Script):
+class Show(Script):
     """
     Print useful info about a PFS data file.
 
@@ -225,7 +225,7 @@ class Info(Script):
             raise e
 
 def main():
-    script = Info()
+    script = Show()
     script.execute()
 
 if __name__ == "__main__":
