@@ -8,8 +8,8 @@ from .datefilter import DateFilter
 from .stringfilter import StringFilter
 
 config = SimpleNamespace(
-    root = '$GAPIPE_DATADIR',
     variables = {
+        'root': '$GAPIPE_DATADIR',
         'rerun': '$GAPIPE_RERUNDIR',
     },
     products = {
@@ -51,7 +51,7 @@ config = SimpleNamespace(
             params_regex = [
                 r'pfsSingle-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$',
             ],
-            dir_format = '$rerun/pfsSingle/{catId}/{tract}/{patch}',
+            dir_format = 'rerun/$rerun/pfsSingle/{catId}/{tract}/{patch}',
             filename_format = 'pfsSingle-{catId}-{tract}-{patch}-{objId}-{visit}.fits',
             load = lambda identity, filename, dir:
                 PfsSingle.read(identity.__dict__, dirName=dir),
@@ -68,7 +68,7 @@ config = SimpleNamespace(
             params_regex = [
                 r'pfsObject-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$',
             ],
-            dir_format = '$rerun/pfsObject/{catId}/{tract}/{patch}',
+            dir_format = 'rerun/$rerun/pfsObject/{catId}/{tract}/{patch}',
             filename_format = 'pfsObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
             load = lambda identity, filename, dir:
                 PfsObject.read(identity.__dict__, dirName=dir),

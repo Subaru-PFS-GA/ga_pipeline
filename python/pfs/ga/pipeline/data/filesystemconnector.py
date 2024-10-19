@@ -27,24 +27,15 @@ class FileSystemConnector():
 
     Variables
     ---------
-    datadir : str
-        Path to the data directory. Set to GAPIPE_DATADIR by default.
-    rerundir : str
-        Path to the rerun directory. Set to GAPIPE_RERUNDIR by default.
-    PfsDesignId : HexFilter
-        Filter for PfsDesign identifier.
-    catId : IntFilter
-        Filter for catalog identifier.
-    tract : IntFilter
-        Filter for tract number.
-    patch : StringFilter
-        Filter for patch identifier.
-    objId : HexFilter
-        Filter for object identifier.
-    visit : IntFilter
-        Filter for visit number.
-    date : DateFilter
-        Filter for observation date.
+    config : SimpleNamespace
+        Configuration object that contains the product definitions.
+    product : type
+        Type of the product to work with.
+    variables : dict
+        Dictionary of variables that can be expanded in the file paths.
+    params : dict
+        Dictionary of all parameters that appear in the config and can be
+        used to filter the products.
     """
 
     __expandvars_regex = re.compile(r'\$(\w+|\{[^}]*\})', re.ASCII)
@@ -56,13 +47,23 @@ class FileSystemConnector():
         if not isinstance(orig, FileSystemConnector):
             self.__config = config if config is not None else default_config
             self.__product = None
-            self.__all_params = self.__init_all_params()
+            self.__variables = self.__init_variables()
+            self.__params = self.__init_params()
         else:
             self.__config = config if config is not None else orig.__config
             self.__product = orig.__product
-            self.__all_params = self.__init_all_params()
+            self.__variables = orig.__variables
+            self.__params = self.__init_params()
 
-    def __init_all_params(self):
+    def __init_variables(self):
+        # Enumerate all variables that appear in the config and make a 
+        # unique dictionary of them
+        all_vars = {}
+        for k, v in self.__config.variables.items():
+            all_vars[k] = v
+        return all_vars
+
+    def __init_params(self):
         # Enumerate all parameters that appear in the config and make a 
         # unique dictionary of them
         all_params = {}
@@ -85,11 +86,6 @@ class FileSystemConnector():
         self.__product = value
     
     product = property(__get_product)
-
-    def __get_all_params(self):
-        return self.__all_params
-    
-    all_params = property(__get_all_params)
 
     def __get_pfsDesignId(self):
         return self.__pfsDesignId
@@ -128,12 +124,21 @@ class FileSystemConnector():
     #region Command-line arguments
 
     def add_args(self, script):
-        for k, p in self.__all_params.items():
+        script.add_arg('--root', type=str, help='Root directory of the data repository')
+        script.add_arg('--rerun', type=str, help='Rerun directory, relative to the root')
+
+        for k, p in self.__params.items():
             script.add_arg(f'--{k.lower()}', type=str, nargs='*', help=f'Filter on {k}')
 
     def init_from_args(self, script):
+        if script.is_arg('root'):
+            self.__variables['root'] = script.get_arg('root')
+
+        if script.is_arg('rerun'):
+            self.__variables['rerun'] = script.get_arg('rerun')
+
         # Parse the filter parameters
-        for k, p in self.__all_params.items():
+        for k, p in self.__params.items():
             if script.is_arg(k.lower()):
                 p.parse(script.get_arg(k.lower()))
 
@@ -273,17 +278,17 @@ class FileSystemConnector():
             if k in params:
                 if v is not None:
                     params[k].values = v
-                elif k in self.__all_params:
-                    params[k].values = self.__all_params[k]
+                elif k in self.__params:
+                    params[k].values = self.__params[k]
 
         # Evaluate the glob pattern for each filter parameter
         glob_pattern_parts = { k: p.get_glob_pattern() for k, p in params.items() }
 
         # Compose the full glob pattern
-        glob_pattern = os.path.join(self.__config.root, *[ p.format(**glob_pattern_parts) for p in patterns ])
+        glob_pattern = os.path.join(self.__variables['root'], *[ p.format(**glob_pattern_parts) for p in patterns ])
 
         # Substitute config variables into the glob pattern
-        glob_pattern = self.__expandvars(glob_pattern, self.__config.variables)
+        glob_pattern = self.__expandvars(glob_pattern, self.__variables)
         glob_pattern = self.__expandvars(glob_pattern, os.environ)
 
         # Find the files that match the glob pattern
@@ -352,14 +357,14 @@ class FileSystemConnector():
         Returns the data root directory.
         """
 
-        return os.path.abspath(self.__expandvars(self.__config.root, os.environ))
+        return os.path.abspath(self.__expandvars(self.__variables['root'], os.environ))
     
     def get_rerun_dir(self):
         """
         Returns the rerun directory.
         """
 
-        return os.path.abspath(self.__expandvars(self.__config.variables['rerun'], os.environ))
+        return os.path.abspath(self.__expandvars(self.__variables['rerun'], os.environ))
 
     def parse_product_type(self, product):
         """
@@ -435,8 +440,10 @@ class FileSystemConnector():
         product = product if product is not None else self.__product
 
         # Use all specified filters with function arguments taking precedence
-        params = { k: p.copy() for k, p in self.__all_params.items() if p.value is not None }
+        params = { k: p.copy() for k, p in self.__params.items() if p.value is not None }
         params.update(kwargs)
+
+        # Set variables that are overwritten
 
         return self.__find_files_and_match_params(
             patterns = [
@@ -496,7 +503,7 @@ class FileSystemConnector():
         elif identity is not None:
             params = identity.__dict__
         else:
-            params = { k: p.copy() for k, p in self.__all_params.items() if p.value is not None }
+            params = { k: p.copy() for k, p in self.__params.items() if p.value is not None }
            
         # The file name might not contain all information necessary to load the
         # product, so given the parsed identity, we need to locate the file.
