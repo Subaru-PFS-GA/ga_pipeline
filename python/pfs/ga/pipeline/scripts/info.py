@@ -26,30 +26,36 @@ class Info(Script):
         super().__init__()
 
         self.__file_types = {
-            'pfsSingle': [
-                self.__print_pfsSingle
-            ],
-            'pfsObject': [
-                self.__print_pfsObject
-            ],
-            'pfsDesign': [
-                self.__print_pfsDesign
-            ],
-            'pfsConfig': [
-                self.__print_pfsConfig
-            ],
-            'pfsMerged': [
-                self.__print_pfsMerged
-            ]
+            'pfsSingle': SimpleNamespace(
+                type = PfsSingle,
+                print = [ self.__print_pfsSingle ]
+            ),
+            'pfsObject': SimpleNamespace(
+                type = PfsObject,
+                print = [ self.__print_pfsObject ]
+            ),
+            'pfsDesign': SimpleNamespace(
+                type = PfsDesign,
+                print = [ self.__print_pfsDesign ]
+            ),
+            'pfsConfig': SimpleNamespace(
+                type = PfsConfig,
+                print = [ self.__print_pfsConfig ]
+            ),
+            'pfsMerged': SimpleNamespace(
+                type = PfsMerged,
+                print = [ self.__print_pfsMerged ]
+            ),
         }
 
         self.__connector = None
         self.__filename = None          # Path of the input file
+        self.__file_type = None
 
     def _add_args(self):
-        super()._add_args()
+        self._add_arg('in', type=str, help='Input file')
 
-        self._add_arg('--in', type=str, help='Input file')
+        super()._add_args()
 
     def _init_from_args(self, args):
         super()._init_from_args(args)
@@ -70,33 +76,32 @@ class Info(Script):
         Depending on the type of file being processed, print different types of information.
         """
 
+        self.__connector = self.__create_data_connector()
+
         # Split filename into path, basename and extension
         path, basename = os.path.split(self.__filename)
         name, ext = os.path.splitext(basename)
+        t = name.split('-')[0]
 
-        self.__filetype = name.split('-')[0]
-
-        if self.__filetype in self.__file_types:
-            for func in self.__file_types[self.__filetype]:
-                func(self.__filename)
+        if t in self.__file_types:
+            product_type = self.__file_types[t].type
+            product, identity, filename = self.__connector.load_product(product_type, filename=self.__filename)
+            for func in self.__file_types[t].print:
+                func(product, identity, filename)
         else:
             raise NotImplementedError(f'File type not recognized: {basename}')
         
-    def __get_data_connector(self, reference_path=None):
+    def __create_data_connector(self):
         """
         Create a connector to the file system.
         """
 
-        if self.__connector is None:
-            self.__connector = FileSystemConnector()
-            self.__connector.datadir = self.__connector.find_datadir(reference_path=reference_path)
-            self.__connector.rerundir = self.__connector.find_rerundir(reference_path=reference_path)
-
-        return self.__connector
+        connector = FileSystemConnector()
+        return connector
 
     def __print_info(self, object, filename):
-        print(f'File type: {type(object).__name__}')
-        print(f'Filename: {filename}')
+        print(f'{type(object).__name__}')
+        print(f'  Full path: {filename}')
 
     def __print_identity(self, identity):
         print(f'Identity')
@@ -108,34 +113,90 @@ class Info(Script):
             else:
                 print(f'  {key}: {d[key]}')
 
-    def __print_pfsSingle(self, filename):
-        pass
+    def __print_identity(self, identity):
+        print(f'Identity')
+        d = identity.__dict__
+        for key in d:
+            # Check if pfsDesignId is in the key
+            if 'pfsdesignid' in key.lower() or 'objid' in key.lower():
+                print(f'  {key}: 0x{d[key]:016x}')
+            else:
+                print(f'  {key}: {d[key]}')
 
-    def __print_pfsObject(self, filename):
-        pass
+    def __print_target(self, target):
+        print(f'Target')
+        d = target.__dict__
+        for key in d:
+            # Check if pfsDesignId is in the key
+            if 'objid' in key.lower() or 'pfsdesignid' in key.lower():
+                print(f'  {key}: 0x{d[key]:016x}')
+            else:
+                print(f'  {key}: {d[key]}')
+
+    def __print_observations(self, observations, s=()):
+        print(f'Observations')
+        print(f'  num: {observations.num}')
+        d = observations.__dict__
+        for key in d:
+            # Check if pfsDesignId is in the key
+            if key == 'num':
+                pass
+            elif key == 'arm':
+                print(f'  {key}: {d[key]}')
+            elif 'objid' in key.lower() or 'pfsdesignid' in key.lower():
+                v = ' '.join(f'{x:016x}' for x in d[key][s])
+                print(f'  {key}: {v}')
+            else:
+                v = ' '.join(str(x) for x in d[key][s])
+                print(f'  {key}: {v}')
 
     def __print_pfsDesign(self, filename):
         pass
 
-    def __print_pfsConfig(self, filename):
-        connector = self.__get_data_connector(filename)
-        pfsConfig = connector.load_pfsConfig(filename)
+    def __print_pfsConfig(self, product, identity, filename):
+        self.__print_info(product, filename)
+        print(f'  DesignName: {product.designName}')
+        print(f'  PfsDesignId: 0x{product.pfsDesignId:016x}')
+        print(f'  Variant: {product.variant}')
+        print(f'  Visit: {product.visit}')
+        print(f'  Date: {identity.date:%Y-%m-%d}')
+        print(f'  Center: {product.raBoresight:0.5f}, {product.decBoresight:0.5f}')
+        print(f'  PosAng: {product.posAng:0.5f}')
+        print(f'  Arms: {product.arms}')
+        print(f'  Tract: {np.unique(product.tract)}')
+        print(f'  Patch: {np.unique(product.patch)}')
+        print(f'  CatId: {np.unique(product.catId)}')
+        print(f'  ProposalId: {np.unique(product.proposalId)}')
 
-        self.__print_info(pfsConfig, filename)
-        print(f'  DesignName: {pfsConfig.designName}')
-        print(f'  PfsDesignId: 0x{pfsConfig.pfsDesignId:016x}')
-        print(f'  Visit: {pfsConfig.visit}')
-        print(f'  Center: {pfsConfig.raBoresight:0.5f}, {pfsConfig.decBoresight:0.5f}')
-        print(f'  PosAng: {pfsConfig.posAng:0.5f}')
-        print(f'  Arms: {pfsConfig.arms}')
-        print(f'  Tract: {np.unique(pfsConfig.tract)}')
-        print(f'  Patch: {np.unique(pfsConfig.patch)}')
-        print(f'  CatId: {np.unique(pfsConfig.catId)}')
-        print(f'  ProposalId: {np.unique(pfsConfig.proposalId)}')
+    def __print_pfsSingle(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+        
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=0)
+
+        f, id = self.__connector.locate_product(
+            PfsConfig,
+            pfsDesignId=product.observations.pfsDesignId[0],
+            visit=product.observations.visit[0]
+        )
+        p, id, f = self.__connector.load_product(PfsConfig, identity=id)
+        self.__print_pfsConfig(p, id, f)
+
+    def __print_pfsObject(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=())
 
     def __print_pfsMerged(self, filename):
-        connector = self.__get_data_connector(filename)
-        # TODO: use connector here
         merged = PfsMerged.readFits(filename)
 
         self.__print_info(merged, filename)
@@ -146,7 +207,7 @@ class Info(Script):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            filename, identity = connector.get_pfsConfig(
+            filename, identity = self.__connector.locate_pfsConfig(
                 visit = merged.identity.visit,
                 pfsDesignId = merged.identity.pfsDesignId,
             )

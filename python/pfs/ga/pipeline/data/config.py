@@ -53,5 +53,22 @@ config = SimpleNamespace(
             load = lambda identity, filename, dir:
                 PfsSingle.read(identity.__dict__, dirName=dir),
         ),
+        PfsObject: SimpleNamespace(
+            params = SimpleNamespace(
+                catId = IntFilter(name='catId', format='{:05d}'),
+                tract = IntFilter(name='tract', format='{:05d}'),
+                patch = StringFilter(name='patch'),
+                objId = HexFilter(name='objId', format='{:016x}'),
+                nVisit = IntFilter(name='nVisit', format='{:03d}'),
+                pfsVisitHash = HexFilter(name='pfsVisitHash', format='{:016x}'),
+            ),
+            params_regex = [
+                r'pfsObject-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$',
+            ],
+            dir_format = '$GAPIPE_RERUNDIR/pfsObject/{catId}/{tract}/{patch}',
+            filename_format = 'pfsObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
+            load = lambda identity, filename, dir:
+                PfsObject.read(identity.__dict__, dirName=dir),
+        ),
     }
 )

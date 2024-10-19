@@ -12,6 +12,7 @@ from .intfilter import IntFilter
 from .hexfilter import HexFilter
 from .datefilter import DateFilter
 from .stringfilter import StringFilter
+from .config import config as default_config
 
 class FileSystemConnector():
     """
@@ -45,11 +46,11 @@ class FileSystemConnector():
     """
 
     def __init__(self,
-                 config,
+                 config=None,
                  orig=None):
         
         if not isinstance(orig, FileSystemConnector):
-            self.__config = config
+            self.__config = config if config is not None else default_config
 
             self.__pfsDesignId = HexFilter(name='pfsDesignId', format='{:016x}')
             self.__catId = IntFilter(name='catid', format='{:05d}')
@@ -367,7 +368,7 @@ class FileSystemConnector():
         files, ids = self.find_product(product, **kwargs)
         return self.__get_single_file(files, ids)
     
-    def load_product(self, product, filename=None, identity=None):
+    def load_product(self, product, *, filename=None, identity=None):
         """
         Loads a product from a file or based on identity.
 
@@ -382,15 +383,19 @@ class FileSystemConnector():
         """
 
         self.__ensure_one_arg(filename=filename, identity=identity)
-        
+
+        # Some products cannot be loaded by filename, so we need to parse the identity
         if filename is not None:
             identity = self.parse_product_identity(product, filename, required=True)
 
         # The file name might not contain all information necessary to load the
         # product, so given the parsed identity, we need to locate the file.
-        file, identity = self.locate_product(product, **identity.__dict__)
-        dir = os.path.dirname(file)
+        filename, identity = self.locate_product(product, **identity.__dict__)
+        dir = os.path.dirname(filename)
 
-        return self.__config.products[product].load(identity, file, dir)
+        # Load the product via the dispatcher
+        product = self.__config.products[product].load(identity, filename, dir)
+
+        return product, identity, filename
 
     #endregion
