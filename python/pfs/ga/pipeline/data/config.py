@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 
 from pfs.datamodel import *
@@ -18,7 +19,7 @@ config = SimpleNamespace(
                 pfsDesignId = HexFilter(name='pfsDesignId', format='{:016x}')
             ),
             params_regex = [
-                r'pfsDesign-0x(?P<pfsDesignId>[0-9a-fA-F]{16})\.(?:fits|fits\.gz)$',
+                re.compile(r'pfsDesign-0x(?P<pfsDesignId>[0-9a-fA-F]{16})\.(?:fits|fits\.gz)$'),
             ],
             dir_format = 'pfsDesign',
             filename_format = 'pfsDesign-0x{pfsDesignId}.fits',
@@ -32,8 +33,8 @@ config = SimpleNamespace(
                 date = DateFilter(name='date', format='{:%Y-%m-%d}'),
             ),
             params_regex = [
-                r'(?P<date>\d{4}-\d{2}-\d{2})/pfsConfig-0x(?P<pfsDesignId>[0-9a-fA-F]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$',
-                r'pfsConfig-0x(?P<pfsDesignId>[0-9a-fA-F]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$'
+                re.compile(r'(?P<date>\d{4}-\d{2}-\d{2})/pfsConfig-0x(?P<pfsDesignId>[0-9a-fA-F]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
+                re.compile(r'pfsConfig-0x(?P<pfsDesignId>[0-9a-fA-F]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$')
             ],
             dir_format = 'pfsConfig/{date}/',
             filename_format = 'pfsConfig-0x{pfsDesignId}-{visit}.fits',
@@ -49,7 +50,7 @@ config = SimpleNamespace(
                 visit = IntFilter(name='visit', format='{:06d}'),
             ),
             params_regex = [
-                r'pfsSingle-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$',
+                re.compile(r'pfsSingle-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
             ],
             dir_format = 'rerun/$rerun/pfsSingle/{catId}/{tract}/{patch}',
             filename_format = 'pfsSingle-{catId}-{tract}-{patch}-{objId}-{visit}.fits',
@@ -66,7 +67,7 @@ config = SimpleNamespace(
                 pfsVisitHash = HexFilter(name='pfsVisitHash', format='{:016x}'),
             ),
             params_regex = [
-                r'pfsObject-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$',
+                re.compile(r'pfsObject-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
             dir_format = 'rerun/$rerun/pfsObject/{catId}/{tract}/{patch}',
             filename_format = 'pfsObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
