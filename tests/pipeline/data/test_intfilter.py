@@ -18,3 +18,33 @@ class TestIntFilter(TestCase):
         
         filter.parse(['12345-12348'])
         self.assertEqual([(12345, 12348)], filter.values)
+
+    def test_str(self):
+        filter = IntFilter()
+        
+        filter.values = None
+        self.assertEqual('', str(filter))
+
+        filter.values = [12345]
+        self.assertEqual('12345', str(filter))
+
+        filter.values = [12345, 23456]
+        self.assertEqual('12345 23456', str(filter))
+
+        filter.values = [(12345, 12348)]
+        self.assertEqual('12345-12348', str(filter))
+
+    def test_repr(self):
+        filter = IntFilter()
+        
+        filter.values = None
+        self.assertEqual('IntFilter()', repr(filter))
+
+        filter.values = [12345]
+        self.assertEqual('IntFilter(12345)', repr(filter))
+
+        filter.values = [12345, 23456]
+        self.assertEqual('IntFilter(12345, 23456)', repr(filter))
+
+        filter.values = [(12345, 12348)]
+        self.assertEqual('IntFilter((12345, 12348))', repr(filter))

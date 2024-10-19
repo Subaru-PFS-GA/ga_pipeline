@@ -22,6 +22,9 @@ class SearchFilter():
             self._format = format if format is not None else orig._format
             self._values = self._normalize_values(values if values is not None else orig._values)
 
+    def copy(self):
+        return type(self)(orig=self)
+
     def _normalize_values(self, values):
         """
         Normalize the values of the filter.
@@ -66,7 +69,7 @@ class SearchFilter():
         if self._values is not None:
             r = ', '.join(repr(a) for a in self._values)
         else:
-            r = ''
+            r = 'None'
 
         if self._name is not None:
             r += f', name=\'{self._name}\''
