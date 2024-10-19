@@ -47,6 +47,8 @@ class FileSystemConnector():
         Filter for observation date.
     """
 
+    __expandvars_regex = re.compile(r'\$(\w+|\{[^}]*\})', re.ASCII)
+
     def __init__(self,
                  config=None,
                  orig=None):
@@ -176,6 +178,42 @@ class FileSystemConnector():
             names = ', '.join(kwargs.keys())
             raise ValueError(f'Only one of the parameters {names} can be specified .')
         
+    def __expandvars(self, path, variables: dict):
+        """
+        Expand shell variables of form $var and ${var}.  Unknown variables
+        are left unchanged. Stolen from os.path.expandvars.
+        """
+
+        path = os.fspath(path)
+        
+        if '$' not in path:
+            return path
+        
+        search = FileSystemConnector.__expandvars_regex.search
+        start = '{'
+        end = '}'
+
+        i = 0
+        while True:
+            m = search(path, i)
+            if not m:
+                break
+            i, j = m.span(0)
+            name = m.group(1)
+            if name.startswith(start) and name.endswith(end):
+                name = name[1:-1]
+            try:
+                value = variables[name]
+            except KeyError:
+                i = j
+            else:
+                tail = path[j:]
+                path = path[:i] + value
+                i = len(path)
+                path += tail
+
+        return path
+        
     def __parse_identity(self, regex, path: str, params: SimpleNamespace):
         """
         Parses parameters from the filename using the specified regex pattern.
@@ -245,7 +283,8 @@ class FileSystemConnector():
         glob_pattern = os.path.join(self.__config.root, *[ p.format(**glob_pattern_parts) for p in patterns ])
 
         # Substitute config variables into the glob pattern
-        glob_pattern = os.path.expandvars(glob_pattern)
+        glob_pattern = self.__expandvars(glob_pattern, self.__config.variables)
+        glob_pattern = self.__expandvars(glob_pattern, os.environ)
 
         # Find the files that match the glob pattern
         paths = glob(glob_pattern)
@@ -313,7 +352,14 @@ class FileSystemConnector():
         Returns the data root directory.
         """
 
-        return os.path.abspath(os.path.expandvars(self.__config.root))
+        return os.path.abspath(self.__expandvars(self.__config.root, os.environ))
+    
+    def get_rerun_dir(self):
+        """
+        Returns the rerun directory.
+        """
+
+        return os.path.abspath(self.__expandvars(self.__config.variables['rerun'], os.environ))
 
     def parse_product_type(self, product):
         """

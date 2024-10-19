@@ -97,7 +97,9 @@ class Data(Script):
 
     def __run_info(self):
         root = self.__connector.get_data_root()
+        rerun = self.__connector.get_rerun_dir()
         print(f'Data root: {root}')
+        print(f'Rerun directory: {rerun}')
 
     def __run_search(self):
         if self.__product is None:
