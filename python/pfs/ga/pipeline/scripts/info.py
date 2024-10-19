@@ -6,7 +6,8 @@ from glob import glob
 from types import SimpleNamespace
 import numpy as np
 
-from pfs.datamodel import PfsDesign, PfsConfig, PfsObject, PfsSingle, PfsMerged
+import pfs.datamodel
+from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from ..constants import Constants
@@ -26,41 +27,46 @@ class Info(Script):
         super().__init__()
 
         self.__file_types = {
-            'pfsSingle': SimpleNamespace(
-                type = PfsSingle,
+            PfsSingle: SimpleNamespace(
                 print = [ self.__print_pfsSingle ]
             ),
-            'pfsObject': SimpleNamespace(
-                type = PfsObject,
+            PfsObject: SimpleNamespace(
                 print = [ self.__print_pfsObject ]
             ),
-            'pfsDesign': SimpleNamespace(
-                type = PfsDesign,
+            PfsDesign: SimpleNamespace(
                 print = [ self.__print_pfsDesign ]
             ),
-            'pfsConfig': SimpleNamespace(
-                type = PfsConfig,
+            PfsConfig: SimpleNamespace(
                 print = [ self.__print_pfsConfig ]
             ),
-            'pfsMerged': SimpleNamespace(
-                type = PfsMerged,
+            PfsMerged: SimpleNamespace(
                 print = [ self.__print_pfsMerged ]
             ),
         }
 
-        self.__connector = None
+        self.__connector = self.__create_data_connector()
         self.__filename = None          # Path of the input file
-        self.__file_type = None
+        self.__product = None           # Product to be processed
 
     def _add_args(self):
-        self._add_arg('in', type=str, help='Input file')
+        # Optional positional argument
+        self.add_arg('in', type=str, nargs='?', help='Input file')
+        self.__connector.add_args(self)
 
         super()._add_args()
 
     def _init_from_args(self, args):
-        super()._init_from_args(args)
+        # See if the very first argument can be interpreted as a product type.
+        # If not, interpret it as a filename
+        inarg = self.get_arg('in')
+        try:
+            self.__product = self.__connector.parse_product_type(inarg)
+        except ValueError:
+            self.__filename = inarg
+        
+        self.__connector.init_from_args(self)
 
-        self.__filename = self._get_arg('in')
+        super()._init_from_args(args)
 
     def _configure_logging(self):
         super()._configure_logging()
@@ -76,20 +82,23 @@ class Info(Script):
         Depending on the type of file being processed, print different types of information.
         """
 
-        self.__connector = self.__create_data_connector()
+        if self.__filename is not None:
+            # Split filename into path, basename and extension
+            path, basename = os.path.split(self.__filename)
+            name, ext = os.path.splitext(basename)
+            product_type = self.__connector.parse_product_type(name.split('-')[0])
 
-        # Split filename into path, basename and extension
-        path, basename = os.path.split(self.__filename)
-        name, ext = os.path.splitext(basename)
-        t = name.split('-')[0]
-
-        if t in self.__file_types:
-            product_type = self.__file_types[t].type
-            product, identity, filename = self.__connector.load_product(product_type, filename=self.__filename)
-            for func in self.__file_types[t].print:
-                func(product, identity, filename)
+            if product_type in self.__file_types:
+                product, identity, filename = self.__connector.load_product(product_type, filename=self.__filename)
+            else:
+                raise NotImplementedError(f'File type not recognized: {basename}')
+        elif self.__product is not None:
+            product, identity, filename = self.__connector.load_product(self.__product)
         else:
-            raise NotImplementedError(f'File type not recognized: {basename}')
+            raise ValueError('No input file or product type provided')
+
+        for func in self.__file_types[type(product)].print:
+            func(product, identity, filename)
         
     def __create_data_connector(self):
         """

@@ -20,7 +20,7 @@ class SearchFilter():
         else:
             self._name = name if name is not None else orig._name
             self._format = format if format is not None else orig._format
-            self._values = self._normalize_values(values if values is not None else orig._values)
+            self._values = self._normalize_values(values if values is not None and len(values) > 0 else orig._values)
 
     def copy(self):
         return type(self)(orig=self)

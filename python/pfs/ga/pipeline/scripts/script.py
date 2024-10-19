@@ -66,10 +66,14 @@ class Script():
     def __parse_args(self):
         self.__args = self.__parser.parse_args().__dict__
 
-    def _add_arg(self, *args, **kwargs):
+    def add_arg(self, *args, **kwargs):
         self.__parser.add_argument(*args, **kwargs)
 
-    def _get_arg(self, name, args=None, default=None):
+    def is_arg(self, name, args=None):
+        args = args if args is not None else self.__args
+        return name in args and args[name] is not None
+
+    def get_arg(self, name, args=None, default=None):
         args = args if args is not None else self.__args
 
         if name in args and args[name] is not None and args[name] != '':
@@ -78,15 +82,15 @@ class Script():
             return default
         
     def _add_args(self):
-        self._add_arg('--debug', action='store_true', help='Enable debug mode')
-        self._add_arg('--profile', action='store_true', help='Enable performance profiler')
-        self._add_arg('--log-level', type=str, help='Set log level')
+        self.add_arg('--debug', action='store_true', help='Enable debug mode')
+        self.add_arg('--profile', action='store_true', help='Enable performance profiler')
+        self.add_arg('--log-level', type=str, help='Set log level')
 
     def _init_from_args(self, args):
-        self.__debug = self._get_arg('debug', args, self.__debug)
-        self.__profile = self._get_arg('profile', args, self.__profile)
+        self.__debug = self.get_arg('debug', args, self.__debug)
+        self.__profile = self.get_arg('profile', args, self.__profile)
         
-        self.__log_level = self._get_arg('log_level', args, self.__log_level)
+        self.__log_level = self.get_arg('log_level', args, self.__log_level)
         if isinstance(self.__log_level, str) and hasattr(logging, self.__log_level.upper()):
             self.__log_level = getattr(logging, self.__log_level.upper())
         else:

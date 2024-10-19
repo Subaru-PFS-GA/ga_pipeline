@@ -2,7 +2,9 @@ import os
 import re
 from glob import glob
 from types import SimpleNamespace
+import inspect
 
+import pfs.datamodel
 from pfs.datamodel import *
 
 from ..setup_logger import logger
@@ -51,24 +53,21 @@ class FileSystemConnector():
         
         if not isinstance(orig, FileSystemConnector):
             self.__config = config if config is not None else default_config
-
-            self.__pfsDesignId = HexFilter(name='pfsDesignId', format='{:016x}')
-            self.__catId = IntFilter(name='catid', format='{:05d}')
-            self.__tract = IntFilter(name='tract', format='{:05d}')
-            self.__patch = StringFilter(name='patch')
-            self.__objId = HexFilter(name='objid', format='{:016x}')
-            self.__visit = IntFilter(name='visit', format='{:06d}')
-            self.__date = DateFilter(name='date', format='{:%Y-%m-%d}')
+            self.__product = None
+            self.__all_params = self.__init_all_params()
         else:
             self.__config = config if config is not None else orig.__config
+            self.__product = orig.__product
+            self.__all_params = self.__init_all_params()
 
-            self.__pfsDesignId = orig.__pfsDesignId
-            self.__catId = orig.__catId
-            self.__tract = orig.__tract
-            self.__patch = orig.__patch
-            self.__objId = orig.__objId
-            self.__visit = orig.__visit
-            self.__date = orig.__date
+    def __init_all_params(self):
+        # Enumerate all parameters that appear in the config and make a 
+        # unique dictionary of them
+        all_params = {}
+        for product in self.__config.products.values():
+            for k, p in product.params.__dict__.items():
+                all_params[k] = p.copy()
+        return all_params
 
     #region Properties
 
@@ -76,6 +75,19 @@ class FileSystemConnector():
         return self.__config
     
     config = property(__get_config)
+
+    def __get_product(self):
+        return self.__product
+    
+    def __set_product(self, value):
+        self.__product = value
+    
+    product = property(__get_product)
+
+    def __get_all_params(self):
+        return self.__all_params
+    
+    all_params = property(__get_all_params)
 
     def __get_pfsDesignId(self):
         return self.__pfsDesignId
@@ -109,6 +121,19 @@ class FileSystemConnector():
         return self.__visit
     
     visit = property(__get_visit)
+
+    #endregion
+    #region Command-line arguments
+
+    def add_args(self, script):
+        for k, p in self.__all_params.items():
+            script.add_arg(f'--{k.lower()}', type=str, nargs='*', help=f'Filter on {k}')
+
+    def init_from_args(self, script):
+        # Parse the filter parameters
+        for k, p in self.__all_params.items():
+            if script.is_arg(k.lower()):
+                p.parse(script.get_arg(k.lower()))
 
     #endregion
     #region Utility functions
@@ -147,7 +172,7 @@ class FileSystemConnector():
             Name of the parameter that is specified.
         """
 
-        if sum([1 for x in kwargs.values() if x is not None]) != 1:
+        if sum([1 for x in kwargs.values() if x is not None]) > 1:
             names = ', '.join(kwargs.keys())
             raise ValueError(f'Only one of the parameters {names} can be specified .')
         
@@ -210,8 +235,8 @@ class FileSystemConnector():
             if k in params:
                 if v is not None:
                     params[k].values = v
-                elif hasattr(self, k):
-                    params[k].values = getattr(self, k)
+                elif k in self.__all_params:
+                    params[k].values = self.__all_params[k]
 
         # Evaluate the glob pattern for each filter parameter
         glob_pattern_parts = { k: p.get_glob_pattern() for k, p in params.items() }
@@ -283,6 +308,24 @@ class FileSystemConnector():
     #endregion
     #region Products
 
+    def parse_product_type(self, product):
+        """
+        Based on a string, figure out the product type.
+
+        Arguments
+        ---------
+        product : str
+            String representation of the product type.
+        """
+
+        product = product.lower()
+
+        for t in self.__config.products.keys():
+            if inspect.isclass(t) and t.__name__.lower() == product:
+                return t
+            
+        raise ValueError(f'Product type not recognized: {product}')
+
     def parse_product_identity(self, product, path: str, required=True):
         """
         Parses parameters from the filename using the specified regex pattern.
@@ -316,7 +359,7 @@ class FileSystemConnector():
         self.__throw_or_warn(f'Filename does not match expected format: {path}', required)
         return None
     
-    def find_product(self, product, **kwargs):
+    def find_product(self, product=None, **kwargs):
         """
         Finds profuct files that match the specified filters.
 
@@ -336,6 +379,8 @@ class FileSystemConnector():
             List of identities that match the query.
         """
 
+        product = product if product is not None else self.__product
+
         return self.__find_files_and_match_params(
             patterns = [
                 self.__config.products[product].dir_format,
@@ -345,7 +390,7 @@ class FileSystemConnector():
             params = self.__config.products[product].params,
             param_values = kwargs)
     
-    def locate_product(self, product, **kwargs):
+    def locate_product(self, product=None, **kwargs):
         """
         Finds a specific product file.
 
@@ -365,10 +410,11 @@ class FileSystemConnector():
             The identity of the product that matches the query.
         """
 
+        product = product if product is not None else self.__product
         files, ids = self.find_product(product, **kwargs)
         return self.__get_single_file(files, ids)
     
-    def load_product(self, product, *, filename=None, identity=None):
+    def load_product(self, product=None, filename=None, identity=None):
         """
         Loads a product from a file or based on identity.
 
@@ -384,13 +430,20 @@ class FileSystemConnector():
 
         self.__ensure_one_arg(filename=filename, identity=identity)
 
+        product = product if product is not None else self.__product
+
         # Some products cannot be loaded by filename, so we need to parse the identity
         if filename is not None:
             identity = self.parse_product_identity(product, filename, required=True)
-
+            params = identity.__dict__
+        elif identity is not None:
+            params = identity.__dict__
+        else:
+            params = { k: p.copy() for k, p in self.__all_params.items() if p.value is not None }
+           
         # The file name might not contain all information necessary to load the
         # product, so given the parsed identity, we need to locate the file.
-        filename, identity = self.locate_product(product, **identity.__dict__)
+        filename, identity = self.locate_product(product, **params)
         dir = os.path.dirname(filename)
 
         # Load the product via the dispatcher

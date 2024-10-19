@@ -45,40 +45,40 @@ class Configure(Script):
     def _add_args(self):
         super()._add_args()
 
-        self._add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
+        self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
 
-        self._add_arg('--workdir', type=str, help='Working directory')
-        self._add_arg('--datadir', type=str, help='Data directory')
-        self._add_arg('--rerundir', type=str, help='Rerun directory')
-        self._add_arg('--outdir', type=str, help='Output directory')
+        self.add_arg('--workdir', type=str, help='Working directory')
+        self.add_arg('--datadir', type=str, help='Data directory')
+        self.add_arg('--rerundir', type=str, help='Rerun directory')
+        self.add_arg('--outdir', type=str, help='Output directory')
 
-        self._add_arg('--catid', type=str, nargs='*', help='Filter on catId')
-        self._add_arg('--tract', type=str, help='Filter on tract')
-        self._add_arg('--patch', type=str, help='Patch string')
-        self._add_arg('--objid', type=str, nargs='*', help='Filter on objid')
-        self._add_arg('--visit', type=str, nargs='*', help='Filter on visit')
+        self.add_arg('--catid', type=str, nargs='*', help='Filter on catId')
+        self.add_arg('--tract', type=str, help='Filter on tract')
+        self.add_arg('--patch', type=str, help='Patch string')
+        self.add_arg('--objid', type=str, nargs='*', help='Filter on objid')
+        self.add_arg('--visit', type=str, nargs='*', help='Filter on visit')
 
     def _init_from_args(self, args):
         super()._init_from_args(args)
 
         # Load the configuration file
-        self.__config = self._get_arg('config', args)
+        self.__config = self.get_arg('config', args)
         c = GA1DPipelineConfig()
         c.load(self.__config, ignore_collisions=True)
         self.__config = c
 
         # Command-line arguments override the configuration file
-        self.__workdir = self._get_arg('workdir', args, self.__config.workdir)
-        self.__datadir = self._get_arg('datadir', args, self.__config.datadir)
-        self.__rerundir = self._get_arg('rerundir', args, self.__config.rerundir)
-        self.__outdir = self._get_arg('outdir', args, self.__config.outdir)
+        self.__workdir = self.get_arg('workdir', args, self.__config.workdir)
+        self.__datadir = self.get_arg('datadir', args, self.__config.datadir)
+        self.__rerundir = self.get_arg('rerundir', args, self.__config.rerundir)
+        self.__outdir = self.get_arg('outdir', args, self.__config.outdir)
 
         # Parse the ID filters
-        self.__catId.parse(self._get_arg('catid', args))
-        self.__tract.parse(self._get_arg('tract', args))
-        self.__patch = self._get_arg('patch', args, self.__patch)
-        self.__objId.parse(self._get_arg('objid', args))
-        self.__visit.parse(self._get_arg('visit', args))
+        self.__catId.parse(self.get_arg('catid', args))
+        self.__tract.parse(self.get_arg('tract', args))
+        self.__patch = self.get_arg('patch', args, self.__patch)
+        self.__objId.parse(self.get_arg('objid', args))
+        self.__visit.parse(self.get_arg('visit', args))
 
     def prepare(self):
         super().prepare()
@@ -94,6 +94,12 @@ class Configure(Script):
 
         files = ' '.join(self.__config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
+
+        # TODO we need different discovery algorithms here
+        #      depending on what type of files to be processed
+        #      pfsSingle and pfsObject can be found by globbing
+        #      but pfsMerges requires loading the FITS file and then
+        #      looking up the corresponding pfsConfig file.
 
         # Find all the pfsSingle files that match the filters
         targets = self.__get_pfsSingle_targets()
@@ -140,6 +146,8 @@ class Configure(Script):
             # Save the config to a file
             os.makedirs(os.path.dirname(path), exist_ok=True)
             self.__config.save(path)
+
+    # TODO: move these into different algorithms
 
     def __get_pfsSingle_glob_pattern(self):
         dir = Constants.PFSSINGLE_DIR_GLOB.format(
