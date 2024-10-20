@@ -41,6 +41,36 @@ config = SimpleNamespace(
             load = lambda identity, filename, dir: 
                 PfsConfig.read(pfsDesignId=identity.pfsDesignId, visit=identity.visit, dirName=dir),
         ),
+        PfsArm: SimpleNamespace(
+            params = SimpleNamespace(
+                visit = IntFilter(name='visit', format='{:06d}'),
+                arm = StringFilter(name='arm'),
+                spectrograph = IntFilter(name='spectrograph', format='{:1d}'),
+                date = DateFilter(name='date', format='{:%Y-%m-%d}'),
+            ),
+            params_regex = [
+                re.compile(r'(?P<date>\d{4}-\d{2}-\d{2})/v(\d{6})/pfsArm-(?P<visit>\d{6})-(?P<arm>[brnm])(?P<spectrograph>\d)\.(fits|fits\.gz)$'),
+                re.compile(r'pfsArm-(?P<visit>\d{6})-(?P<arm>[brnm])(?P<spectrograph>\d)\.(fits|fits\.gz)$')
+            ],
+            dir_format = 'rerun/$rerun/pfsArm/{date}/v{visit}/',
+            filename_format = 'pfsArm-{visit}-{arm}{spectrograph}.fits',
+            load = lambda identity, filename, dir:
+                PfsArm.read(Identity(identity.visit, arm=identity.arm, spectrograph=identity.spectrograph), dirName=dir),
+        ),
+        PfsMerged: SimpleNamespace(
+            params = SimpleNamespace(
+                visit = IntFilter(name='visit', format='{:06d}'),
+                date = DateFilter(name='date', format='{:%Y-%m-%d}'),
+            ),
+            params_regex = [
+                re.compile(r'(?P<date>\d{4}-\d{2}-\d{2})/v(\d{6})/pfsMerged-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
+                re.compile(r'pfsMerged-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
+            ],
+            dir_format = 'rerun/$rerun/pfsMerged/{date}/v{visit}/',
+            filename_format = 'pfsMerged-{visit}.fits',
+            load = lambda identity, filename, dir:
+                PfsMerged.read(Identity(identity.visit), dirName=dir),
+        ),
         PfsSingle: SimpleNamespace(
             params = SimpleNamespace(
                 catId = IntFilter(name='catId', format='{:05d}'),

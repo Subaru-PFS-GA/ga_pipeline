@@ -38,7 +38,7 @@ class TestIntFilter(TestCase):
         filter = IntFilter()
         
         filter.values = None
-        self.assertEqual('IntFilter()', repr(filter))
+        self.assertEqual('IntFilter(None)', repr(filter))
 
         filter.values = [12345]
         self.assertEqual('IntFilter(12345)', repr(filter))

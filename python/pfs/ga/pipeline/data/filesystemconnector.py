@@ -86,7 +86,17 @@ class FileSystemConnector():
     def __set_product(self, value):
         self.__product = value
     
-    product = property(__get_product)
+    product = property(__get_product, __set_product)
+
+    def __get_params(self):
+        return self.__params
+    
+    params = property(__get_params)
+
+    def __get_variables(self):
+        return self.__variables
+    
+    variables = property(__get_variables)
 
     def __get_pfsDesignId(self):
         return self.__pfsDesignId

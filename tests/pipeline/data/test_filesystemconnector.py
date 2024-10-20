@@ -105,20 +105,41 @@ class TestFileSystemConnector(TestCase):
     def test_load_product(self):
         connector = self.get_test_connector()
 
+        connector.variables['rerun'] = 'run17/20240604'
         filename, identity = connector.locate_product(PfsDesign, pfsDesignId=0x6d832ca291636984)
 
         pfsDesign = connector.load_product(PfsDesign, filename=filename)
         pfsDesign = connector.load_product(PfsDesign, identity=identity)
 
+        #
 
         filename, identity = connector.locate_product(PfsConfig, visit=111483)
         
         pfsConfig = connector.load_product(PfsConfig, filename=filename)
         pfsConfig = connector.load_product(PfsConfig, identity=identity)
 
+        #
 
+        connector.variables['rerun'] = 'run08'
+        filename, identity = connector.locate_product(PfsArm, visit=83249, arm='r', spectrograph=1)
+
+        pfsArm = connector.load_product(PfsArm, filename=filename)
+        pfsArm = connector.load_product(PfsArm, identity=identity)
+
+        #
+
+        connector.variables['rerun'] = 'run08'
+        filename, identity = connector.locate_product(PfsMerged, visit=83245)
+
+        pfsMerged = connector.load_product(PfsMerged, filename=filename)
+        pfsMerged = connector.load_product(PfsMerged, identity=identity)
+
+        #
+
+        connector.variables['rerun'] = 'run17/20240604'
         filename, identity = connector.locate_product(PfsSingle, catId=10015, tract=1, patch='1,1', objId=0x5d48, visit=111317)
 
         pfsSingle = connector.load_product(PfsSingle, filename=filename)
         pfsSingle = connector.load_product(PfsSingle, identity=identity)
         
+
