@@ -13,7 +13,10 @@ class GA1DPipelineConfig(PipelineConfig):
 
     def __init__(self):
         # Path to rerun data, absolute or relative to `datadir`
+        self.datadir = self._get_env('GAPIPE_DATADIR')
         self.rerundir = self._get_env('GAPIPE_RERUNDIR')
+        self.workdir = None
+        self.outdir = None
 
         # GA target object configuration
         self.target = GATargetConfig()
