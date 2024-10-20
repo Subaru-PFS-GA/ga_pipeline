@@ -4,14 +4,18 @@ import os
 import re
 from glob import glob
 from types import SimpleNamespace
+from datetime import datetime
 import numpy as np
 
+from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from ..constants import Constants
+from ..data import FileSystemConnector, IntFilter, HexFilter
+from ..data.filesystemconfig import FileSystemConfig
+from ..config import *
+from ..pipeline import PipelineException
 from .script import Script
-from ..util import IntIDFilter, HexIDFilter
-from ..config import GA1DPipelineConfig
 
 from ..setup_logger import logger
 
@@ -21,71 +25,83 @@ class Configure(Script):
 
     The script works by finding all pfsSingle files that match the filters specified
     on the command-line and then reads an existing configuration file which is used
-    as a template. The script then updates the configuration file with the IDs of the
-    pfsSingle files and saves the updated configuration file to the output directory.
+    as a template. The script then updates the configuration file with the identities
+    of the data products determined from the pfsSingle files and saves the updated
+    configuration file to the output directory.
+
+    Although the script registers all the identity parameters as filters, it only
+    uses the catId, tract, patch, objId, and visit filters to find the pfsSingle files.
+    The corresponding pfsConfig files are then found by matching the pfsSingle files
+    to look up the fiberId etc.
+
+    Variables
+    ---------
+    config : GA1DPipelineConfig
+        Pipeline configuration template
+    workdir : str
+        Working directory for the pipeline job. The log file, as well as the config
+        files, are written to this directory. When running the pipeline, the working
+        directory will be used to store the individual log files and auxiliary files.
+        Subdirectories composed of the objects' identity parameters will be created.
+    outdir : str
+        Output directory for the final data products.
     """
 
     def __init__(self):
         super().__init__()
 
-        self.__config_file = None       # Path of the configuration file
-        self.__config = None            # Pipeline configuration
+        self.__config = None            # Pipeline configuration template
 
         self.__workdir = None           # Working directory for the pipeline job
-        self.__datadir = None           # Data directory
-        self.__rerundir = None          # Directory of rerun, relative to datadir
-        self.__outdir = None            # 
+        self.__outdir = None            # Output directory for the final data products
+        self.__dry_run = False          # Dry run mode
 
-        self.__catId = IntIDFilter('catid', format='{:05d}')
-        self.__tract = IntIDFilter('tract', format='{:05d}')
-        self.__patch = None
-        self.__objId = HexIDFilter('objid', format='{:016x}')
-        self.__visit = IntIDFilter('visit', format='{:06d}')
+        self.__connector = self.__create_data_connector()
 
     def _add_args(self):
-        super()._add_args()
-
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
 
         self.add_arg('--workdir', type=str, help='Working directory')
-        self.add_arg('--datadir', type=str, help='Data directory')
-        self.add_arg('--rerundir', type=str, help='Rerun directory')
         self.add_arg('--outdir', type=str, help='Output directory')
 
-        self.add_arg('--catid', type=str, nargs='*', help='Filter on catId')
-        self.add_arg('--tract', type=str, help='Filter on tract')
-        self.add_arg('--patch', type=str, help='Patch string')
-        self.add_arg('--objid', type=str, nargs='*', help='Filter on objid')
-        self.add_arg('--visit', type=str, nargs='*', help='Filter on visit')
+
+        # Register the identity param filters
+        self.__connector.add_args(self)
+
+        super()._add_args()
 
     def _init_from_args(self, args):
-        super()._init_from_args(args)
-
         # Load the configuration file
-        self.__config = self.get_arg('config', args)
-        c = GA1DPipelineConfig()
-        c.load(self.__config, ignore_collisions=True)
-        self.__config = c
+        config_files = self.get_arg('config', args)
+        self.__config = GA1DPipelineConfig()
+        self.__config.load(config_files, ignore_collisions=True)
 
         # Command-line arguments override the configuration file
         self.__workdir = self.get_arg('workdir', args, self.__config.workdir)
-        self.__datadir = self.get_arg('datadir', args, self.__config.datadir)
-        self.__rerundir = self.get_arg('rerundir', args, self.__config.rerundir)
         self.__outdir = self.get_arg('outdir', args, self.__config.outdir)
+        self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
 
-        # Parse the ID filters
-        self.__catId.parse(self.get_arg('catid', args))
-        self.__tract.parse(self.get_arg('tract', args))
-        self.__patch = self.get_arg('patch', args, self.__patch)
-        self.__objId.parse(self.get_arg('objid', args))
-        self.__visit.parse(self.get_arg('visit', args))
+        # Parse the identity param filters
+        self.__connector.init_from_args(self)
+
+        super()._init_from_args(args)
+
+    def __create_data_connector(self):
+        """
+        Create a connector to the file system.
+        """
+
+        connector = FileSystemConnector()
+        return connector    
 
     def prepare(self):
         super().prepare()
 
+        # TODO: do not write to the log file if in dry-run mode
+
         # Override logging directory to use the same as the pipeline workdir
-        logfile = os.path.basename(self.logfile)
-        self.logfile = os.path.join(self.__workdir, 'log', logfile)
+        log_file = os.path.basename(self.log_file)
+        self.log_file = os.path.join(self.__workdir, 'log', log_file)
 
     def run(self):
         """
@@ -95,138 +111,192 @@ class Configure(Script):
         files = ' '.join(self.__config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
-        # TODO we need different discovery algorithms here
-        #      depending on what type of files to be processed
-        #      pfsSingle and pfsObject can be found by globbing
-        #      but pfsMerges requires loading the FITS file and then
-        #      looking up the corresponding pfsConfig file.
-
         # Find all the pfsSingle files that match the filters
-        targets = self.__get_pfsSingle_targets()
+        targets, _ = self.__find_targets()
 
         if len(targets) == 0:
+            logger.warning('No pfsSingle files found matching the filters.')
             return
         
-        # Generate a config file for each of the inputs
-        for objId in sorted(targets.keys()):
+        # Generate the configuration file for each target
+        self.__generate_config_files(targets)
 
-            identity = dict(
-                catId = targets[objId].catId,
-                tract = targets[objId].tract,
-                patch = targets[objId].patch,
-                objId = targets[objId].objId,
-                nVisit = wraparoundNVisit(len(targets[objId].visits)),
-                pfsVisitHash = calculatePfsVisitHash(targets[objId].visits),
-            )
-
-            # Compose the filename
-            dir = Constants.PFSGACONFIG_DIR_FORMAT.format(**identity)
-            filename = Constants.PFSGACONFIG_FILENAME_FORMAT.format(**identity)
-            path = os.path.join(self.__outdir.format(**identity), dir, filename)
-
-            logger.info(f'Generating configuration file `{path}`.')
-
-            # Update the config with the ids
-            self.__config.target.catId = targets[objId].catId
-            self.__config.target.tract = targets[objId].tract
-            self.__config.target.patch = targets[objId].patch
-            self.__config.target.objId = targets[objId].objId
-
-            # TODO: the empty dict here is a placeholder for per visit configuration
-            # TODO: figure out designID and fiberID and create a VisitConfig object instead
-            #       of the empty {}
-            self.__config.target.visits = { v: {} for v in targets[objId].visits }
-
-            # TODO: update config with directory names?
-            self.__config.workdir = self.__workdir.format(**identity)
-            self.__config.datadir = self.__datadir.format(**identity)
-            self.__config.rerundir = self.__rerundir.format(**identity)
-            self.__config.outdir = self.__outdir.format(**identity)
-
-            # Save the config to a file
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            self.__config.save(path)
-
-    # TODO: move these into different algorithms
-
-    def __get_pfsSingle_glob_pattern(self):
-        dir = Constants.PFSSINGLE_DIR_GLOB.format(
-            catId = self.__catId.get_glob_pattern(),
-            tract = self.__tract.get_glob_pattern(),
-            patch = self.__patch if self.__patch is not None else '*',
-            objId = self.__objId.get_glob_pattern(),
-            visit = self.__visit.get_glob_pattern()
-        )
-
-        filename = Constants.PFSSINGLE_FILENAME_GLOB.format(
-            catId = self.__catId.get_glob_pattern(),
-            tract = self.__tract.get_glob_pattern(),
-            patch = self.__patch if self.__patch is not None else '*',
-            objId = self.__objId.get_glob_pattern(),
-            visit = self.__visit.get_glob_pattern()
-        )
-
-        pattern = os.path.join(self.__datadir, self.__rerundir, dir, filename)
-
-        return pattern
-    
-    def __get_pfsSingle_targets(self):
+   
+    def __find_targets(self):
         """
         Find all the pfsSingle files that match the filters and parse the
-        filenames into a dictionary of targets.
+        filenames into a dictionary of targets. Then load the relevant pfsConfig
+        files to get the observation details (fiberId, etc).
         """
 
+        # TODO: This function now finds observations by looking of PfsSIngle files.
+        #       Use some database instead.
+
         logger.info(f'Finding pfsSingle files matching the following filters:')
-        logger.info(f'    catId: {str(self.__catId)}')
-        logger.info(f'    tract: {str(self.__tract)}')
-        logger.info(f'    patch: {self.__patch}')
-        logger.info(f'    objId: {str(self.__objId)}')
-        logger.info(f'    visit: {str(self.__visit)}')
-        
-        glob_pattern = self.__get_pfsSingle_glob_pattern()
-        paths = glob(glob_pattern)
+        logger.info(f'    catId: {repr(self.__connector.filters.catId)}')
+        logger.info(f'    tract: {repr(self.__connector.filters.tract)}')
+        logger.info(f'    patch: {repr(self.__connector.filters.patch)}')
+        logger.info(f'    objId: {repr(self.__connector.filters.objId)}')
+        logger.info(f'    visit: {repr(self.__connector.filters.visit)}')
 
-        logger.info(f'Found {len(paths)} pfsSingle files matching pattern `{glob_pattern}`.')
+        filenames, identities = self.__connector.find_product(PfsSingle)
 
+        logger.info(f'Found {len(filenames)} pfsSingle files matching the filters.')
+
+        # Create a dict keyed by objId
         targets = {}
-        for path in paths:
-            filename = os.path.basename(path)
-            match = re.match(Constants.PFSSINGLE_FILENAME_REGEX, filename)
+        for i, filename in enumerate(filenames):
+            objId = identities.objId[i]
 
-            catId = self.__catId.parse_value(match.group(1))
-            tract = self.__tract.parse_value(match.group(2))
-            patch = match.group(3)
-            objId = self.__objId.parse_value(match.group(4))
-            visit = self.__visit.parse_value(match.group(5))
-
-            if match is not None and \
-                self.__catId.match(catId) and \
-                self.__tract.match(tract) and \
-                (self.__patch is None or self.__patch == patch) and \
-                self.__objId.match(objId) and \
-                self.__visit.match(visit):
-                    
-                if objId not in targets:
-                    targets[objId] = SimpleNamespace(
-                        catId = catId,
-                        tract = tract,
-                        patch = patch,
-                        objId = objId,
-                        visits = [],
-                        files = [],
-                    )
+            if objId not in targets:
+                targets[objId] = GATargetConfig(
+                    identity = GAObjectIdentityConfig(
+                        catId = identities.catId[i],
+                        tract = identities.tract[i],
+                        patch = identities.patch[i],
+                        objId = objId),
+                    observations = GAObjectObservationsConfig(
+                        visit = [],
+                        arm = {},
+                        spectrograph = {},
+                        pfsDesignId = {},
+                        fiberId = {},
+                        fiberStatus = {},
+                        pfiNominal = {},
+                        pfiCenter = {},
+                        obsTime = {},
+                        expTime = {},
+                    ))
                 
-                targets[objId].visits.append(visit)
-                targets[objId].files.append(path)
+            targets[objId].observations.visit.append(identities.visit[i])
+                
+        # Report some statistics in the log
+        unique_visits = np.unique(np.concatenate([ target.observations.visit for _, target in targets.items() ]))
+        logger.info(f'Targets span {len(unique_visits)} unique visits.')
 
-        unique_visits = np.unique(np.concatenate([ target.visits for objid, target in targets.items() ]))
-        logger.info(f'Number of targets filtered down to {len(targets)} spanning {len(unique_visits)} unique visits.')
+        # Load the pfsConfig files of each visit to get the fiberId etc.
+        for visit in unique_visits:
 
-        for objId, obj in targets.items():
-            obj.visits.sort()
-            obj.files.sort()
+            logger.info(f'Finding pfsConfig file matching the following filters:')
+            logger.info(f'    visit: {visit}')
 
-        return targets
+            try:
+                filename, identity = self.__connector.locate_product(PfsConfig, visit=visit)
+            except FileNotFoundError:
+                raise PipelineException(f'No pfsConfig file found for visit {visit}.')
+
+            pfsConfig, config_identity, _ = self.__connector.load_product(PfsConfig, filename=filename)
+
+            for i, objId in enumerate(pfsConfig.objId):
+                if objId in targets:
+                    target = targets[objId]
+
+                    if target.proposalId is None:
+                        target.proposalId = pfsConfig.proposalId[i]
+                    elif target.proposalId != pfsConfig.proposalId[i]:
+                        logger.warning(f'proposalId mismatch for objId {objId}: {target.proposalId} != {pfsConfig.proposalId[i]}')
+                    
+                    if target.targetType is None:
+                        target.targetType = pfsConfig.targetType[i]
+                    elif target.targetType != pfsConfig.targetType[i]:
+                        logger.warning(f'targetType mismatch for objId {objId}: {target.targetType} != {pfsConfig.targetType[i]}')
+
+                    if target.identity.catId != pfsConfig.catId[i]:
+                        logger.warning(f'catId mismatch for objId {objId}: {target.identity.catId} != {pfsConfig.catId[i]}')
+
+                    target.observations.arm[visit] = pfsConfig.arms             # TODO: Normalize order of arms?
+                    target.observations.spectrograph[visit] = pfsConfig.spectrograph[i]
+                    target.observations.pfsDesignId[visit] = pfsConfig.pfsDesignId
+                    target.observations.fiberId[visit] = pfsConfig.fiberId[i]
+                    target.observations.fiberStatus[visit] = pfsConfig.fiberStatus[i]
+                    target.observations.pfiNominal[visit] = pfsConfig.pfiNominal[i]
+                    target.observations.pfiCenter[visit] = pfsConfig.pfiCenter[i]
+                    
+                    # TODO: update this to get exact time, not just the date
+                    target.observations.obsTime[visit] = datetime.combine(config_identity.date, datetime.min.time())
+
+                    # TODO update this once exposure time appears in the pfsConfig file
+                    target.observations.expTime[visit] = np.nan
+
+        def sort_by_visit(observations, values):
+            return np.array([ values[v] for v in observations.visit ])
+
+        # Update targets: sort observations and calculate nVisit and pfsVisitHash
+        for _, target in targets.items():
+            observations = target.observations
+
+            # Convert the dict to numpy arrays, and sort them by visit
+            idx = np.argsort(observations.visit)
+            observations.visit = np.array(observations.visit)[idx]
+
+            observations.arm = sort_by_visit(observations, observations.arm)
+            observations.spectrograph = sort_by_visit(observations, observations.spectrograph)
+            observations.pfsDesignId = sort_by_visit(observations, observations.pfsDesignId)
+            observations.fiberId = sort_by_visit(observations, observations.fiberId)
+            observations.fiberStatus = sort_by_visit(observations, observations.fiberStatus)
+            observations.pfiNominal = sort_by_visit(observations, observations.pfiNominal)
+            observations.pfiCenter = sort_by_visit(observations, observations.pfiCenter)
+            observations.obsTime = sort_by_visit(observations, observations.obsTime)
+            observations.expTime = sort_by_visit(observations, observations.expTime)
+
+            # Update the identity
+            target.identity.nVisit = wraparoundNVisit(len(observations.visit))
+            target.identity.pfsVisitHash = calculatePfsVisitHash(observations.visit)
+
+        return targets, filenames
+    
+    def __generate_config_files(self, targets):
+        """
+        Generate a config file for each of the inputs.
+
+        While the result of the final processing is a single FITS file, we need
+        a separate work directory for each object to store the auxiliary files.
+        """
+        for objId in sorted(targets.keys()):
+            # Generate the config
+            config, filename = self.__create_config(targets[objId])
+
+            # Save the config to a file
+            logger.info(f'Generating configuration file `{filename}`.')
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            self.__config.save(filename)
+
+    def __create_config(self, target, ext='.yaml'):
+        """
+        Initialze a pipeline configuration object based on the template and the target.
+        """
+
+        config = self.__config      # TODO: should we make a deep copy here?
+
+        # Compose the directory and file names for the identity of the object
+        dir = self.__connector.format_dir(PfsGAObject, target.identity)
+        obj_file = self.__connector.format_filename(PfsGAObject, target.identity)
+        obj_dir, _ = os.path.splitext(obj_file)
+
+        # Name of the output pipeline configuration
+        filename = os.path.join(self.__workdir, dir, obj_dir, obj_dir + ext)
+
+        # Update config with directory names
+
+        # Input data directories
+        config.datadir = self.__connector.get_data_root()
+        config.rerundir = self.__connector.get_rerun_dir()
+
+        logger.debug(f'Configured data directory for object {target.identity.objId:016x}: {config.datadir}')
+        logger.debug(f'Configured rerun directory for object {target.identity.objId:016x}: {config.rerundir}')
+
+        # Output
+        config.workdir = os.path.join(self.__workdir, dir, obj_dir)
+        config.outdir = os.path.join(self.__outdir, dir)
+
+        logger.debug(f'Configured work directory for object {target.identity.objId:016x}: {config.workdir}')
+        logger.debug(f'Configured output directory for object {target.identity.objId:016x}: {config.outdir}')
+
+        # Update the config with the ids
+
+        config.target = target
+
+        return config, filename
 
 def main():
     script = Configure()

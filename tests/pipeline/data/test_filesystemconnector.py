@@ -4,13 +4,12 @@ from unittest import TestCase
 
 from pfs.datamodel import *
 
-from pfs.ga.pipeline.data import FileSystemConnector
-from pfs.ga.pipeline.data.config import config
+from pfs.ga.pipeline.data import FileSystemConnector, FileSystemConfig
 
 class TestFileSystemConnector(TestCase):
 
     def get_test_connector(self):
-        return FileSystemConnector(config)
+        return FileSystemConnector(FileSystemConfig)
 
     def test_init(self):
         connector = self.get_test_connector()
