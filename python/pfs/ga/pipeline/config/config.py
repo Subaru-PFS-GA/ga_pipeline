@@ -1,8 +1,11 @@
 import os
+import numpy as np
 import commentjson as json
 import yaml
 
 from ..setup_logger import logger
+from .configjsonencoder import ConfigJSONEncoder
+from .configyamlencoder import *
 
 class Config():
     """Base class for configurations"""
@@ -129,7 +132,7 @@ class Config():
     def __save_dict_json(config, filename):
         # Save configuration to a JSON file with comments
         with open(filename, 'w') as f:
-            json.dump(config, f, sort_keys=False)
+            json.dump(config, f, sort_keys=False, cls=ConfigJSONEncoder)
 
     @staticmethod
     def __save_dict_yaml(config, filename):
@@ -255,26 +258,30 @@ class Config():
             return v
         
     @staticmethod
-    def _save_config_to_dict(obj):
+    def _config_to_dict(obj):
         # Save configuration to a dictionary
 
         config = {}
         for k in obj.__dict__:
             if not k.startswith('_'):
                 v = getattr(obj, k)
-                config[k] = Config.__save_obj_to_dict(v)
+                config[k] = Config.__obj_to_dict(v)
         return config
 
     @staticmethod
-    def __save_obj_to_dict(obj):
+    def __obj_to_dict(obj):
         if isinstance(obj, Config):
-            return Config._save_config_to_dict(obj)
+            return Config._config_to_dict(obj)
+        elif isinstance(obj, np.ndarray):
+            return [ Config.__obj_to_dict(v) for v in obj.tolist() ]
+        elif isinstance(obj, np.generic):
+            return obj.item()
         elif isinstance(obj, dict):
-            return { k: Config.__save_obj_to_dict(v) for k, v in obj.items() }
+            return { k: Config.__obj_to_dict(v) for k, v in obj.items() }
         elif isinstance(obj, list):
-            return [ Config.__save_obj_to_dict(v) for v in obj ]
+            return [ Config.__obj_to_dict(v) for v in obj ]
         else:
             return obj
 
     def _save_impl(self):
-        return self._save_config_to_dict(self)
+        return self._config_to_dict(self)
