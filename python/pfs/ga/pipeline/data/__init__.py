@@ -4,3 +4,4 @@ from .stringfilter import StringFilter
 from .datefilter import DateFilter
 
 from .filesystemconnector import FileSystemConnector
+from .filesystemconfig import FileSystemConfig

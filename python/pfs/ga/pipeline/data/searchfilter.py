@@ -110,6 +110,11 @@ class SearchFilter():
         
     value = property(__get_value)
 
+    def __is_none(self):
+        return self._values is None or len(self._values) == 0
+    
+    is_none = property(__is_none)
+
     def _parse_value(self, value):
         raise NotImplementedError()
     

@@ -8,7 +8,7 @@ from .hexfilter import HexFilter
 from .datefilter import DateFilter
 from .stringfilter import StringFilter
 
-config = SimpleNamespace(
+FileSystemConfig = SimpleNamespace(
     variables = {
         'root': '$GAPIPE_DATADIR',
         'rerun': '$GAPIPE_RERUNDIR',
@@ -104,5 +104,20 @@ config = SimpleNamespace(
             load = lambda identity, filename, dir:
                 PfsObject.read(identity.__dict__, dirName=dir),
         ),
+        PfsGAObject: SimpleNamespace(
+            params = SimpleNamespace(
+                catId = IntFilter(name='catId', format='{:05d}'),
+                tract = IntFilter(name='tract', format='{:05d}'),
+                patch = StringFilter(name='patch'),
+                objId = HexFilter(name='objId', format='{:016x}'),
+                nVisit = IntFilter(name='nVisit', format='{:03d}'),
+                pfsVisitHash = HexFilter(name='pfsVisitHash', format='{:016x}'),
+            ),
+            params_regex = [],
+            dir_format = 'rerun/$rerun/pfsGAObject/{catId}/{tract}/{patch}',
+            filename_format = 'pfsGAObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
+            load = lambda identity, filename, dir:
+                PfsGAObject.read(identity.__dict__, dirName=dir),
+        )
     }
 )
