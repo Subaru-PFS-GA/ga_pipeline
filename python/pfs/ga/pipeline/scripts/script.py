@@ -256,7 +256,7 @@ class Script():
 
     def _dump_settings(self):
         # Save environment, arguments and command-line to files next to the log file
-        if self.__log_file is not None:
+        if self.__log_to_file and self.__log_file is not None:
             logdir = os.path.dirname(self.__log_file)
             self.__dump_env(os.path.join(logdir, f'env_{self.__timestamp}.sh'))
             self.__dump_args(os.path.join(logdir, f'args_{self.__timestamp}.json'))
