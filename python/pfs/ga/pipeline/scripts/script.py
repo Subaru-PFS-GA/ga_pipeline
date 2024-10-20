@@ -14,15 +14,22 @@ class Script():
     Implements generic function for pipeline command-line scripts.
     """
 
-    def __init__(self):
+    def __init__(self,
+                 log_level=logging.INFO,
+                 log_file=None,
+                 log_to_file=True,
+                 log_to_console=True):
+
+        self.__log_level = log_level                # Default log level
+        self.__log_to_file = log_to_file            # Log to file
+        self.__log_to_console = log_to_console      # Log to console
+
         self.__debug = False                        # If True, script is running in debug mode
         self.__profile = False                      # If True, the profiler is enabled
         
-        self.__log_level = logging.INFO             # Default log level
-        self.__log_file = None                      # Log file name
         self.__log_formatter = None                 # Log formatter
+        self.__log_file = log_file                  # Log file name
         self.__log_file_handler = None              # Log file handler
-        self.__log_to_console = True                # Log to console
         self.__log_console_handler = None           # Log console handler
 
         self.__parser = ArgumentParser()
@@ -54,6 +61,14 @@ class Script():
         self.__log_file = value
     
     log_file = property(__get_log_file, __set_log_file)
+
+    def __get_log_to_file(self):
+        return self.__log_to_file
+    
+    def __set_log_to_file(self, value):
+        self.__log_to_file = value
+
+    log_to_file = property(__get_log_to_file, __set_log_to_file)
 
     def __get_log_to_console(self):
         return self.__log_to_console
@@ -90,15 +105,15 @@ class Script():
         self.__debug = self.get_arg('debug', args, self.__debug)
         self.__profile = self.get_arg('profile', args, self.__profile)
         
-        self.__log_level = self.get_arg('log_level', args, self.__log_level)
-        if isinstance(self.__log_level, str) and hasattr(logging, self.__log_level.upper()):
-            self.__log_level = getattr(logging, self.__log_level.upper())
-        else:
-            self.__log_level = logging.INFO
+        if self.is_arg('log_level', args):
+            log_level = self.get_arg('log_level', args)
+            if isinstance(log_level, str) and hasattr(logging, log_level.upper()):
+                self.__log_level = getattr(logging, log_level.upper())
+            else:
+                raise ValueError(f'Invalid log level `{log_level}`.')
 
         if self.__debug and self.__log_level > logging.DEBUG:
             self.__log_level = logging.DEBUG
-        
 
     def _create_dir(self, name, dir, logger=logger):
         dir = os.path.join(os.getcwd(), dir)
@@ -108,11 +123,7 @@ class Script():
         else:
             logger.debug(f'Found existing {name} directory `{dir}`.')
 
-    def __start_logging(self):
-
-        # Allow overriding logging configuration
-        self._configure_logging()
-        
+    def __start_logging(self):        
         # Configure root logger
         root = logging.getLogger()
         root.handlers = []
@@ -120,7 +131,7 @@ class Script():
 
         self.__log_formatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
         
-        if self.__log_file is not None:
+        if self.log_to_file and self.__log_file is not None:
             logdir = os.path.dirname(self.__log_file)
             self._create_dir('log', logdir)
             
@@ -142,13 +153,12 @@ class Script():
         logger.propagate = True
         logger.setLevel(self.__log_level)
 
-        logger.info(f'Logging started to `{self.__log_file}`.')
-
-    def _configure_logging(self):
-        pass
+        if self.log_to_file and self.__log_file is not None:
+            logger.info(f'Logging started to `{self.__log_file}`.')
 
     def __stop_logging(self):
-        logger.info(f'Logging finished to `{self.__log_file}`.')
+        if self.log_to_file and self.__log_file is not None:
+            logger.info(f'Logging finished to `{self.__log_file}`.')
 
         # Disconnect file logger and re-assign stderr
         root = logging.getLogger()
@@ -172,6 +182,8 @@ class Script():
 
             self.__profiler = cProfile.Profile()
             self.__profiler.enable()
+
+            logger.info('Profiler started.')
         else:
             self.__profiler = None
 
@@ -195,6 +207,8 @@ class Script():
                 ps.print_stats()
 
             self.__profiler = None
+
+            logger.info('Profiler stopped, results written to profile.*.stats.')
 
     def __dump_env(self, filename):
         with open(filename, 'w') as f:

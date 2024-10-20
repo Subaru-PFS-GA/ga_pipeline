@@ -2,6 +2,7 @@
 
 import os
 from types import SimpleNamespace
+import logging
 import numpy as np
 
 from pfs.datamodel import *
@@ -21,9 +22,24 @@ class Data(Script):
     """
 
     def __init__(self):
-        super().__init__()
+        super().__init__(log_level=logging.WARNING, log_to_file=False)
 
-        self.__file_types = {
+        self.__commands = {
+            'info': SimpleNamespace(
+                help = 'Print information about the data root and rerun directory',
+                run = self.__run_info
+            ),
+            'search': SimpleNamespace(
+                help = 'Search for files of a given product type',
+                run = self.__run_search
+            ),
+            'show': SimpleNamespace(
+                help = 'Print information about a given file',
+                run = self.__run_show
+            )
+        }
+
+        self.__products = {
             PfsSingle: SimpleNamespace(
                 print = [ self.__print_pfsSingle ]
             ),
@@ -48,8 +64,11 @@ class Data(Script):
         self.__connector = self.__create_data_connector()
 
     def _add_args(self):
-        self.add_arg('command', type=str, choices=['info', 'search', 'show'], help='Command')
-        self.add_arg('in', type=str, nargs='?', help='Product type or filename')
+        self.add_arg('command', type=str,
+                     choices=[ k for k in self.__commands.keys() ],
+                     help='Command')
+        self.add_arg('in', type=str, nargs='?',
+                     help='Product type or filename')
         self.__connector.add_args(self)
 
         super()._add_args()
@@ -77,23 +96,11 @@ class Data(Script):
         connector = FileSystemConnector()
         return connector
 
-    def _configure_logging(self):
-        super()._configure_logging()
-
-        # Do to clutter the command-line
-        self.log_file = None
-        self.log_to_console = False
-
     def prepare(self):
         return super().prepare()
     
     def run(self):
-        if self.__command == 'info':
-            self.__run_info()
-        elif self.__command == 'search':
-            self.__run_search()
-        elif self.__command == 'show':
-            self.__run_show()
+        self.__commands[self.__command].run()
 
     def __run_info(self):
         root = self.__connector.get_data_root()
@@ -122,7 +129,7 @@ class Data(Script):
             name, ext = os.path.splitext(basename)
             product_type = self.__connector.parse_product_type(name.split('-')[0])
 
-            if product_type in self.__file_types:
+            if product_type in self.__products:
                 product, identity, filename = self.__connector.load_product(product_type, filename=self.__filename)
             else:
                 raise NotImplementedError(f'File type not recognized: {basename}')
@@ -131,7 +138,7 @@ class Data(Script):
         else:
             raise ValueError('No input file or product type provided')
 
-        for func in self.__file_types[type(product)].print:
+        for func in self.__products[type(product)].print:
             func(product, identity, filename)
 
     def __print_info(self, object, filename):

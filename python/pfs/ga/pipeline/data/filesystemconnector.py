@@ -61,6 +61,7 @@ class FileSystemConnector():
         all_vars = {}
         for k, v in self.__config.variables.items():
             all_vars[k] = v
+
         return all_vars
 
     def __init_params(self):
@@ -234,6 +235,9 @@ class FileSystemConnector():
         if match is not None:
             groups = match.groupdict()
             values = { k: p.parse_value(groups[k]) for k, p in params.items() if k in groups }
+
+            logger.debug(f'Parsed identity: {values} from {path}.')
+
             return SimpleNamespace(**values)
         else:
             return None
@@ -292,7 +296,11 @@ class FileSystemConnector():
         glob_pattern = self.__expandvars(glob_pattern, os.environ)
 
         # Find the files that match the glob pattern
+        logger.debug(f'Finding files with glob using pattern: `{glob_pattern}`.')
         paths = glob(glob_pattern)
+        
+        logger.debug(f'Found {len(paths)} files matching the pattern, starting filtering.')
+        logger.debug(f'Filtering files matching the params {params}.')
 
         ids = { k: [] for k in params.keys() }
         values = { k: None for k in params.keys() }
@@ -319,6 +327,8 @@ class FileSystemConnector():
                             ids[k].append(v)
                         
                     break # for regex in regex_list
+
+        logger.debug(f'Found {len(filenames)} files matching the query.')
 
         return filenames, SimpleNamespace(**ids)
     
@@ -443,7 +453,7 @@ class FileSystemConnector():
         params = { k: p.copy() for k, p in self.__params.items() if p.value is not None }
         params.update(kwargs)
 
-        # Set variables that are overwritten
+        logger.debug(f'Finding product {product.__name__} with parameters: {params}.')
 
         return self.__find_files_and_match_params(
             patterns = [
@@ -475,6 +485,7 @@ class FileSystemConnector():
         """
 
         product = product if product is not None else self.__product
+
         files, ids = self.find_product(product, **kwargs)
         return self.__get_single_file(files, ids)
     
@@ -511,6 +522,7 @@ class FileSystemConnector():
         dir = os.path.dirname(filename)
 
         # Load the product via the dispatcher
+        logger.debug(f'Loading product {product.__name__} from {filename}.')
         product = self.__config.products[product].load(identity, filename, dir)
 
         return product, identity, filename
