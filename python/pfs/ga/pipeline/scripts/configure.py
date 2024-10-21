@@ -11,8 +11,7 @@ from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from ..constants import Constants
-from ..data import FileSystemConnector, IntFilter, HexFilter
-from ..data.filesystemconfig import FileSystemConfig
+from ..data import FileSystemConnector
 from ..config import *
 from ..pipeline import PipelineException
 from .script import Script
@@ -64,6 +63,7 @@ class Configure(Script):
 
         self.add_arg('--workdir', type=str, help='Working directory')
         self.add_arg('--outdir', type=str, help='Output directory')
+
         self.add_arg('--dry-run', action='store_true', help='Dry run mode')
         self.add_arg('--top', type=int, help='Stop after this many objects')
 
@@ -95,7 +95,7 @@ class Configure(Script):
         """
 
         connector = FileSystemConnector()
-        return connector    
+        return connector
 
     def prepare(self):
         super().prepare()
@@ -291,8 +291,8 @@ class Configure(Script):
         # Update config with directory names
 
         # Input data directories
-        config.datadir = self.__connector.get_data_root()
-        config.rerundir = self.__connector.get_rerun_dir()
+        config.datadir = self.__connector.get_datadir()
+        config.rerundir = self.__connector.get_rerundir()
 
         logger.debug(f'Configured data directory for object {target.identity.objId:016x}: {config.datadir}')
         logger.debug(f'Configured rerun directory for object {target.identity.objId:016x}: {config.rerundir}')

@@ -102,18 +102,18 @@ class FileSystemConnector():
     #region Command-line arguments
 
     def add_args(self, script):
-        script.add_arg('--root', type=str, help='Root directory of the data repository')
-        script.add_arg('--rerun', type=str, help='Rerun directory, relative to the root')
+        script.add_arg('--datadir', type=str, help='Root directory of the data repository')
+        script.add_arg('--rerundir', type=str, help='Rerun directory, relative to the root')
 
         for k, p in self.__filters.__dict__.items():
             script.add_arg(f'--{k.lower()}', type=str, nargs='*', help=f'Filter on {k}')
 
     def init_from_args(self, script):
-        if script.is_arg('root'):
-            self.__variables['root'] = script.get_arg('root')
+        if script.is_arg('datadir'):
+            self.__variables['datadir'] = script.get_arg('datadir')
 
-        if script.is_arg('rerun'):
-            self.__variables['rerun'] = script.get_arg('rerun')
+        if script.is_arg('rerundir'):
+            self.__variables['rerundir'] = script.get_arg('rerundir')
 
         # Parse the filter parameters
         for k, p in self.__filters.__dict__.items():
@@ -166,6 +166,9 @@ class FileSystemConnector():
         Expand shell variables of form $var and ${var}.  Unknown variables
         are left unchanged. Stolen from os.path.expandvars.
         """
+
+        if variables is None:
+            return path
 
         path = os.fspath(path)
         
@@ -223,7 +226,8 @@ class FileSystemConnector():
                                       patterns: list,
                                       params: SimpleNamespace,
                                       param_values: SimpleNamespace,
-                                      params_regex: list):
+                                      params_regex: list,
+                                      variables: dict = None):
         """
         Given a list of directory name glob pattern template strings, substitute the parameters
         and find files that match the glob pattern. Match IDs is in the file names with the
@@ -242,6 +246,8 @@ class FileSystemConnector():
             Regular expression patterns to match the filename. The regex should contain named groups
             that correspond to the parameters of the product identity. The list should consist of
             more restrictive patterns first.
+        variables : dict
+            Dictionary of variables that can be expanded in the file paths.
 
         Returns
         -------
@@ -266,9 +272,10 @@ class FileSystemConnector():
         glob_pattern_parts = { k: p.get_glob_pattern() for k, p in params.items() }
 
         # Compose the full glob pattern
-        glob_pattern = os.path.join(self.__variables['root'], *[ p.format(**glob_pattern_parts) for p in patterns ])
+        glob_pattern = os.path.join('$datadir', *[ p.format(**glob_pattern_parts) for p in patterns ])
 
         # Substitute config variables into the glob pattern
+        glob_pattern = self.__expandvars(glob_pattern, variables)
         glob_pattern = self.__expandvars(glob_pattern, self.__variables)
         glob_pattern = self.__expandvars(glob_pattern, os.environ)
 
@@ -340,19 +347,27 @@ class FileSystemConnector():
     #endregion
     #region Products
 
-    def get_data_root(self):
+    def get_datadir(self, variables=None):
         """
         Returns the data root directory.
         """
 
-        return os.path.abspath(self.__expandvars(self.__variables['root'], os.environ))
+        path = '$datadir'
+        path = self.__expandvars(path, variables)
+        path = self.__expandvars(path, self.__variables)
+        path = self.__expandvars(path, os.environ)
+        return os.path.abspath(path)
     
-    def get_rerun_dir(self):
+    def get_rerundir(self, variables=None):
         """
         Returns the rerun directory.
         """
 
-        return self.__expandvars(self.__variables['rerun'], os.environ)
+        path = '$rerundir'
+        path = self.__expandvars(path, variables)
+        path = self.__expandvars(path, self.__variables)
+        path = self.__expandvars(path, os.environ)
+        return path
 
     def parse_product_type(self, product):
         """
@@ -405,7 +420,7 @@ class FileSystemConnector():
         self.__throw_or_warn(f'Filename does not match expected format: {path}', required)
         return None
     
-    def find_product(self, product=None, **kwargs):
+    def find_product(self, product=None, variables=None, **kwargs):
         """
         Finds product files that match the specified filters.
 
@@ -440,9 +455,10 @@ class FileSystemConnector():
             ],
             params_regex = self.__config.products[product].params_regex,
             params = self.__config.products[product].params,
-            param_values = params)
+            param_values = params,
+            variables=variables)
     
-    def locate_product(self, product=None, **kwargs):
+    def locate_product(self, product=None, variables=None, **kwargs):
         """
         Finds a specific product file.
 
@@ -464,10 +480,10 @@ class FileSystemConnector():
 
         product = product if product is not None else self.__product
 
-        files, ids = self.find_product(product, **kwargs)
+        files, ids = self.find_product(product, variables=variables, **kwargs)
         return self.__get_single_file(files, ids)
     
-    def load_product(self, product=None, filename=None, identity=None):
+    def load_product(self, product=None, filename=None, identity=None, variables=None):
         """
         Loads a product from a file or based on identity.
 
@@ -496,7 +512,7 @@ class FileSystemConnector():
            
         # The file name might not contain all information necessary to load the
         # product, so given the parsed identity, we need to locate the file.
-        filename, identity = self.locate_product(product, **params)
+        filename, identity = self.locate_product(product, variables=variables, **params)
         dir = os.path.dirname(filename)
 
         # Load the product via the dispatcher
@@ -505,16 +521,17 @@ class FileSystemConnector():
 
         return product, identity, filename
     
-    def __format_path(self, product, identity, format_string):
+    def __format_path(self, product, identity, format_string, variables=None):
         params = self.__config.products[product].params.__dict__
         identity = identity.__dict__
-        variables = { k: p.format.format(identity[k]) for k, p in params.items() if k in identity }
-        path = format_string.format(**variables)
+        values = { k: p.format.format(identity[k]) for k, p in params.items() if k in identity }
+        path = format_string.format(**values)
+        path = self.__expandvars(path, variables)
         path = self.__expandvars(path, self.__variables)
         path = self.__expandvars(path, os.environ)
         return path
     
-    def format_dir(self, product, identity):
+    def format_dir(self, product, identity, variables=None):
         """
         Formats the directory path for the given product and identity.
 
@@ -527,9 +544,9 @@ class FileSystemConnector():
         """
 
         format_string = self.__config.products[product].dir_format
-        return self.__format_path(product, identity, format_string)
+        return self.__format_path(product, identity, format_string, variables=variables)
     
-    def format_filename(self, product, identity):
+    def format_filename(self, product, identity, variables=None):
         """
         Formats the filename for the given product and identity.
 
@@ -542,6 +559,6 @@ class FileSystemConnector():
         """
 
         format_string = self.__config.products[product].filename_format
-        return self.__format_path(product, identity, format_string)
+        return self.__format_path(product, identity, format_string, variables=variables)
 
     #endregion

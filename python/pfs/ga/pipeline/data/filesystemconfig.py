@@ -10,8 +10,8 @@ from .stringfilter import StringFilter
 
 FileSystemConfig = SimpleNamespace(
     variables = {
-        'root': '$GAPIPE_DATADIR',
-        'rerun': '$GAPIPE_RERUNDIR',
+        'datadir': '$GAPIPE_DATADIR',
+        'rerundir': '$GAPIPE_RERUNDIR',
     },
     products = {
         PfsDesign: SimpleNamespace(
@@ -52,7 +52,7 @@ FileSystemConfig = SimpleNamespace(
                 re.compile(r'(?P<date>\d{4}-\d{2}-\d{2})/v(\d{6})/pfsArm-(?P<visit>\d{6})-(?P<arm>[brnm])(?P<spectrograph>\d)\.(fits|fits\.gz)$'),
                 re.compile(r'pfsArm-(?P<visit>\d{6})-(?P<arm>[brnm])(?P<spectrograph>\d)\.(fits|fits\.gz)$')
             ],
-            dir_format = 'rerun/$rerun/pfsArm/{date}/v{visit}/',
+            dir_format = 'rerun/$rerundir/pfsArm/{date}/v{visit}/',
             filename_format = 'pfsArm-{visit}-{arm}{spectrograph}.fits',
             load = lambda identity, filename, dir:
                 PfsArm.read(Identity(identity.visit, arm=identity.arm, spectrograph=identity.spectrograph), dirName=dir),
@@ -66,7 +66,7 @@ FileSystemConfig = SimpleNamespace(
                 re.compile(r'(?P<date>\d{4}-\d{2}-\d{2})/v(\d{6})/pfsMerged-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
                 re.compile(r'pfsMerged-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
             ],
-            dir_format = 'rerun/$rerun/pfsMerged/{date}/v{visit}/',
+            dir_format = 'rerun/$rerundir/pfsMerged/{date}/v{visit}/',
             filename_format = 'pfsMerged-{visit}.fits',
             load = lambda identity, filename, dir:
                 PfsMerged.read(Identity(identity.visit), dirName=dir),
@@ -82,7 +82,7 @@ FileSystemConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsSingle-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<visit>\d{6})\.(fits|fits\.gz)$'),
             ],
-            dir_format = 'rerun/$rerun/pfsSingle/{catId}/{tract}/{patch}',
+            dir_format = 'rerun/$rerundir/pfsSingle/{catId}/{tract}/{patch}',
             filename_format = 'pfsSingle-{catId}-{tract}-{patch}-{objId}-{visit}.fits',
             load = lambda identity, filename, dir:
                 PfsSingle.read(identity.__dict__, dirName=dir),
@@ -99,7 +99,7 @@ FileSystemConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsObject-(?P<catId>\d{5})-(?P<tract>\d{5})-(?P<patch>.*)-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
-            dir_format = 'rerun/$rerun/pfsObject/{catId}/{tract}/{patch}',
+            dir_format = 'rerun/$rerundir/pfsObject/{catId}/{tract}/{patch}',
             filename_format = 'pfsObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
             load = lambda identity, filename, dir:
                 PfsObject.read(identity.__dict__, dirName=dir),
@@ -114,7 +114,7 @@ FileSystemConfig = SimpleNamespace(
                 pfsVisitHash = HexFilter(name='pfsVisitHash', format='{:016x}'),
             ),
             params_regex = [],
-            dir_format = 'rerun/$rerun/pfsGAObject/{catId}/{tract}/{patch}',
+            dir_format = 'rerun/$rerundir/pfsGAObject/{catId}/{tract}/{patch}',
             filename_format = 'pfsGAObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
             load = lambda identity, filename, dir:
                 PfsGAObject.read(identity.__dict__, dirName=dir),

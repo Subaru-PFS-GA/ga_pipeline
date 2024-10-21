@@ -104,7 +104,7 @@ class TestFileSystemConnector(TestCase):
     def test_load_product(self):
         connector = self.get_test_connector()
 
-        connector.variables['rerun'] = 'run17/20240604'
+        connector.variables['rerundir'] = 'run17/20240604'
         filename, identity = connector.locate_product(PfsDesign, pfsDesignId=0x6d832ca291636984)
 
         pfsDesign = connector.load_product(PfsDesign, filename=filename)
@@ -119,7 +119,7 @@ class TestFileSystemConnector(TestCase):
 
         #
 
-        connector.variables['rerun'] = 'run08'
+        connector.variables['rerundir'] = 'run08'
         filename, identity = connector.locate_product(PfsArm, visit=83249, arm='r', spectrograph=1)
 
         pfsArm = connector.load_product(PfsArm, filename=filename)
@@ -127,7 +127,7 @@ class TestFileSystemConnector(TestCase):
 
         #
 
-        connector.variables['rerun'] = 'run08'
+        connector.variables['rerundir'] = 'run08'
         filename, identity = connector.locate_product(PfsMerged, visit=83245)
 
         pfsMerged = connector.load_product(PfsMerged, filename=filename)
@@ -135,7 +135,7 @@ class TestFileSystemConnector(TestCase):
 
         #
 
-        connector.variables['rerun'] = 'run17/20240604'
+        connector.variables['rerundir'] = 'run17/20240604'
         filename, identity = connector.locate_product(PfsSingle, catId=10015, tract=1, patch='1,1', objId=0x5d48, visit=111317)
 
         pfsSingle = connector.load_product(PfsSingle, filename=filename)
