@@ -129,7 +129,7 @@ class Script():
         root.handlers = []
         root.setLevel(self.__log_level)
 
-        self.__log_formatter = logging.Formatter("%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
+        self.__log_formatter = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt='%H:%M:%S')
         
         if self.log_to_file and self.__log_file is not None:
             logdir = os.path.dirname(self.__log_file)
@@ -247,7 +247,7 @@ class Script():
         """
 
         with open(filename, 'w') as f:
-            f.write(f'./bin/{self.__class__.__name__.lower()} ')
+            f.write(f'gapipe-{self.__class__.__name__.lower()} ')
             if len(sys.argv) > 1:
                 f.write(' '.join(sys.argv[1:]))
             f.write('\n')
