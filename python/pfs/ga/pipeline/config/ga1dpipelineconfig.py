@@ -11,7 +11,12 @@ class GA1DPipelineConfig(PipelineConfig):
 
     # TODO: Maybe split it into ObjectConfig, RVFitConfig, ChemFitConfig
 
-    def __init__(self):
+    def __init__(self,
+                 target: GATargetConfig = GATargetConfig(),
+                 rvfit: RVFitConfig = RVFitConfig(),
+                 coadd: CoaddConfig = CoaddConfig(),
+                 chemfit: ChemfitConfig = ChemfitConfig()):
+        
         # Path to rerun data, absolute or relative to `datadir`
         self.datadir = self._get_env('GAPIPE_DATADIR')
         self.rerundir = self._get_env('GAPIPE_RERUNDIR')
@@ -19,7 +24,7 @@ class GA1DPipelineConfig(PipelineConfig):
         self.outdir = None
 
         # GA target object configuration
-        self.target = GATargetConfig()
+        self.target = target
 
         # GA pipeline configuration
 
@@ -69,24 +74,15 @@ class GA1DPipelineConfig(PipelineConfig):
             'UNMASKEDNAN'
         ]
         
-        self.rvfit = RVFitConfig()
+        self.rvfit = rvfit
         self.run_rvfit = True
 
-        self.coadd = CoaddConfig()
+        self.coadd = coadd
         self.run_coadd = True
 
-        self.chemfit = ChemfitConfig()
+        self.chemfit = chemfit
         self.run_chemfit = False
         
         super().__init__()
 
-    def _load_impl(self, config=None, ignore_collisions=False):
-        self._load_config_from_dict(config=config,
-                                    type_map={ 
-                                        'object': GATargetConfig,
-                                        'rvfit': RVFitConfig,
-                                        'coadd': CoaddConfig,
-                                        'chemfit': ChemfitConfig,
-                                    },
-                                    ignore_collisions=ignore_collisions)
         

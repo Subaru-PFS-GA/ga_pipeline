@@ -12,8 +12,8 @@ class GATargetConfig(Config):
     def __init__(self,
                  proposalId = None,
                  targetType = None,
-                 identity = None,
-                 observations = None):
+                 identity: GAObjectIdentityConfig = GAObjectIdentityConfig(),
+                 observations: GAObjectObservationsConfig = GAObjectObservationsConfig()):
 
         self.proposalId = proposalId
         self.targetType = targetType
@@ -21,14 +21,6 @@ class GATargetConfig(Config):
         self.observations = observations
 
         super().__init__()
-
-    def _load_impl(self, config, ignore_collisions=False):
-        self._load_config_from_dict(config=config,
-                                    type_map={ 
-                                        'identity': GAObjectIdentityConfig,
-                                        'observations': GAObjectObservationsConfig
-                                    },
-                                    ignore_collisions=ignore_collisions)
 
     def get_identity(self, visit=None):
         """Return an identity dictionary similar to PFS datamodel."""

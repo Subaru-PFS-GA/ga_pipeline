@@ -9,11 +9,15 @@ class GAObjectIdentityConfig(Config):
                  catId = None,
                  tract = None,
                  patch = None,
-                 objId = None):
+                 objId = None,
+                 nVisit = None,
+                 pfsVisitHash = None):
         
         self.catId = catId
         self.tract = tract
         self.patch = patch
         self.objId = objId
+        self.nVisit = nVisit
+        self.pfsVisitHash = pfsVisitHash
 
         super().__init__()

@@ -1,0 +1,272 @@
+datadir: /datascope/subaru/data/commissioning
+rerundir: run17/20240604
+workdir: /datascope/subaru/user/dobos/gapipe/work/rerun/run17/20240604/pfsGAObject/10015/00001/1,1/pfsGAObject-10015-00001-1,1-0000000000000003-010-0x40137cf8387c4130
+outdir: /datascope/subaru/user/dobos/gapipe/out/rerun/run17/20240604/pfsGAObject/10015/00001/1,1
+target:
+  proposalId: S24A-EN16-GA1
+  targetType: 1
+  identity:
+    catId: 10015
+    tract: 1
+    patch: 1,1
+    objId: 3
+    nVisit: 10
+    pfsVisitHash: 4617171448526291248
+  observations:
+    visit:
+    - 111009
+    - 111010
+    - 111316
+    - 111317
+    - 111318
+    - 111482
+    - 111483
+    - 111635
+    - 111636
+    - 111637
+    arm:
+    - bmn
+    - bmn
+    - mbn
+    - mbn
+    - rbn
+    - bnm
+    - bnm
+    - bnm
+    - bnm
+    - bnm
+    spectrograph:
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    pfsDesignId:
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    - 7891200048818776452
+    fiberId:
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    - 1777
+    fiberStatus:
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    pfiNominal:
+    - - -81.89517211914062
+      - -76.48998260498047
+    - - -81.89517211914062
+      - -76.48998260498047
+    - - -81.8759765625
+      - -76.4581298828125
+    - - -81.8759765625
+      - -76.4581298828125
+    - - -81.8759765625
+      - -76.4581298828125
+    - - -81.90031433105469
+      - -76.47883605957031
+    - - -81.90031433105469
+      - -76.47883605957031
+    - - -81.89909362792969
+      - -76.4828872680664
+    - - -81.89909362792969
+      - -76.4828872680664
+    - - -81.89909362792969
+      - -76.4828872680664
+    pfiCenter:
+    - - -81.89949035644531
+      - -76.49072265625
+    - - -81.89949035644531
+      - -76.49072265625
+    - - -81.87791442871094
+      - -76.45674133300781
+    - - -81.87791442871094
+      - -76.45674133300781
+    - - -81.87791442871094
+      - -76.45674133300781
+    - - -81.90031433105469
+      - -76.47883605957031
+    - - -81.90031433105469
+      - -76.47883605957031
+    - - -81.9030990600586
+      - -76.4864730834961
+    - - -81.9030990600586
+      - -76.4864730834961
+    - - -81.9030990600586
+      - -76.4864730834961
+    obsTime:
+    - 2024-05-29T00:00:00
+    - 2024-05-29T00:00:00
+    - 2024-05-31T00:00:00
+    - 2024-05-31T00:00:00
+    - 2024-05-31T00:00:00
+    - 2024-06-01T00:00:00
+    - 2024-06-01T00:00:00
+    - 2024-06-02T00:00:00
+    - 2024-06-02T00:00:00
+    - 2024-06-02T00:00:00
+    expTime:
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+    - .nan
+arms:
+  b:
+    wave:
+    - 3800
+    - 6500
+    pix_per_res: 3
+  r:
+    wave:
+    - 6300
+    - 9700
+    pix_per_res: 3
+  m:
+    wave:
+    - 7100
+    - 8850
+    pix_per_res: 4
+  n:
+    wave:
+    - 9400
+    - 12600
+    pix_per_res: 3
+ref_mag: hsc_g
+v_corr: barycentric
+mask_flags:
+- BAD
+- CR
+- SAT
+- UNMASKEDNAN
+rvfit:
+  fit_arms:
+  - b
+  - m
+  require_all_arms: true
+  model_grid_path: /datascope/subaru/data/pfsspec/models/stellar/grid/phoenix/phoenix_HiRes/spectra.h5
+  model_grid_args: null
+  model_grid_mmap: true
+  model_grid_preload: false
+  psf_path: /datascope/subaru/data/pfsspec/subaru/pfs/psf/import/{arm}.real/gauss.h5
+  min_unmasked_pixels: 3000
+  correction_model: fluxcorr
+  correction_model_args:
+    flux_corr: true
+    flux_corr_deg: 10
+    flux_corr_per_arm: true
+    flux_corr_per_exp: true
+  rvfit_args:
+    M_H:
+    - -2.5
+    - 0.0
+    M_H_dist:
+    - normal
+    - -1.5
+    - 0.5
+    T_eff:
+    - 4000
+    - 6000
+    T_eff_dist:
+    - normal
+    - 5500
+    - 50
+    log_g:
+    - 1.5
+    - 5.5
+    log_g_dist:
+    - normal
+    - 3.5
+    - 1.0
+    a_M: 0.0
+    rv:
+    - -300
+    - 300
+    resampler: interp
+    flux_corr_per_arm: true
+    flux_corr_per_exp: true
+    amplitude_per_arm: true
+    amplitude_per_exp: true
+  trace_args:
+    plot_priors: true
+    plot_rv_guess: true
+    plot_rv_fit: true
+    plot_input_spec: true
+    plot_fit_spec:
+      pfsGA-RVFit-best-{id}:
+        plot_spectrum: true
+        plot_processed_template: true
+        plot_flux_err: true
+        plot_residuals: false
+      pfsGA-RVFit-residuals-{id}:
+        plot_spectrum: false
+        plot_processed_template: false
+        plot_flux_err: false
+        plot_residuals: true
+      pfsGA-RVFit-best-400nm-{id}:
+        wlim:
+        - 385
+        - 405
+        plot_spectrum: true
+        plot_processed_template: true
+        plot_flux_err: true
+        plot_residuals: false
+      pfsGA-RVFit-best-Ca-{id}:
+        wlim:
+        - 849
+        - 870
+        plot_spectrum: true
+        plot_processed_template: true
+        plot_flux_err: true
+        plot_residuals: false
+    plot_params_priors: true
+    plot_params_cov: true
+    plot_level: 1
+run_rvfit: true
+coadd:
+  coadd_arms:
+  - b
+  - m
+  stacker_args:
+    binning: lin
+    binsize: 0.5
+  trace_args: {}
+run_coadd: true
+chemfit: {}
+run_chemfit: false
+trace_args: {}
+logdir: null
+figdir: null
+loglevel: 20
