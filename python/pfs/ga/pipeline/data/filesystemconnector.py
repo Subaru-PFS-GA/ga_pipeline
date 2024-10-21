@@ -102,18 +102,19 @@ class FileSystemConnector():
     #region Command-line arguments
 
     def add_args(self, script):
-        script.add_arg('--datadir', type=str, help='Root directory of the data repository')
-        script.add_arg('--rerundir', type=str, help='Rerun directory, relative to the root')
+        # Add arguments for the variables
+        for k, v in self.__config.variables.items():
+            script.add_arg(f'--{k.lower()}', type=str, help=f'Set variable {k}')
 
+        # Add arguments for the filters
         for k, p in self.__filters.__dict__.items():
             script.add_arg(f'--{k.lower()}', type=str, nargs='*', help=f'Filter on {k}')
 
     def init_from_args(self, script):
-        if script.is_arg('datadir'):
-            self.__variables['datadir'] = script.get_arg('datadir')
-
-        if script.is_arg('rerundir'):
-            self.__variables['rerundir'] = script.get_arg('rerundir')
+        # Parse variables
+        for k, v in self.__config.variables.items():
+            if script.is_arg(k.lower()):
+                self.__variables[k] = script.get_arg(k.lower())
 
         # Parse the filter parameters
         for k, p in self.__filters.__dict__.items():
@@ -227,7 +228,7 @@ class FileSystemConnector():
                                       params: SimpleNamespace,
                                       param_values: SimpleNamespace,
                                       params_regex: list,
-                                      variables: dict = None):
+                                      variables: dict):
         """
         Given a list of directory name glob pattern template strings, substitute the parameters
         and find files that match the glob pattern. Match IDs is in the file names with the
@@ -272,7 +273,7 @@ class FileSystemConnector():
         glob_pattern_parts = { k: p.get_glob_pattern() for k, p in params.items() }
 
         # Compose the full glob pattern
-        glob_pattern = os.path.join('$datadir', *[ p.format(**glob_pattern_parts) for p in patterns ])
+        glob_pattern = os.path.join(*[ p.format(**glob_pattern_parts) for p in patterns ])
 
         # Substitute config variables into the glob pattern
         glob_pattern = self.__expandvars(glob_pattern, variables)
@@ -347,23 +348,39 @@ class FileSystemConnector():
     #endregion
     #region Products
 
-    def get_datadir(self, variables=None):
+    def set_variable(self, name, value):
         """
-        Returns the data root directory.
+        Sets the value of a variable.
+
+        Arguments
+        ---------
+        name : str
+            Name of the variable.
+        value : str
+            Value of the variable.
         """
 
-        path = '$datadir'
-        path = self.__expandvars(path, variables)
-        path = self.__expandvars(path, self.__variables)
-        path = self.__expandvars(path, os.environ)
-        return os.path.abspath(path)
-    
-    def get_rerundir(self, variables=None):
+        self.__variables[name] = value
+
+    def get_variable(self, name):
         """
-        Returns the rerun directory.
+        Returns the value of a variable.
+
+        Arguments
+        ---------
+        name : str
+            Name of the variable.
         """
 
-        path = '$rerundir'
+        return self.__variables[name]
+
+    def get_resolved_variable(self, name, variables=None):
+        """
+        Returns the value of a variable with all $ variables expanded, including
+        the ones defined in the config and in the environment.
+        """
+
+        path = f'${name}'
         path = self.__expandvars(path, variables)
         path = self.__expandvars(path, self.__variables)
         path = self.__expandvars(path, os.environ)
@@ -456,7 +473,7 @@ class FileSystemConnector():
             params_regex = self.__config.products[product].params_regex,
             params = self.__config.products[product].params,
             param_values = params,
-            variables=variables)
+            variables = variables)
     
     def locate_product(self, product=None, variables=None, **kwargs):
         """

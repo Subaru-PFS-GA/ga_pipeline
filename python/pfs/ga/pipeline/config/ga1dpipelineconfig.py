@@ -17,10 +17,9 @@ class GA1DPipelineConfig(PipelineConfig):
                  coadd: CoaddConfig = CoaddConfig(),
                  chemfit: ChemfitConfig = ChemfitConfig()):
         
-        # Path to rerun data, absolute or relative to `datadir`
-        self.datadir = self._get_env('GAPIPE_DATADIR')
-        self.rerundir = self._get_env('GAPIPE_RERUNDIR')
-        self.workdir = None
+        self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory
+        self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
+        self.rerundir = self._get_env('GAPIPE_RERUNDIR')      # Path to rerun data, absolute or relative to `datadir`
         self.outdir = None
 
         # GA target object configuration

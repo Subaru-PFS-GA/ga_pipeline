@@ -42,6 +42,24 @@ class Config():
     #endregion
     #region Load
 
+    @classmethod
+    def from_file(cls, path, ignore_collisions=False):
+        """
+        Load the configuration from a file.
+
+        Arguments
+        ---------
+        path : str
+            Path to the configuration file.
+        ignore_collisions : bool
+            If True, collisions in the configuration are ignored. If False, an exception is
+            raised when a collision is detected.
+        """
+
+        c = cls()
+        c.load(path, ignore_collisions=ignore_collisions)
+        return c
+
     def load(self, source, ignore_collisions=False):
         """
         Load the configuration from a dictionary or file.
