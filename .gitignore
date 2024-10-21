@@ -1,6 +1,9 @@
 .vscode
 temp
 slurm-*.out
+./*.json
+./*.sh
+./*.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
