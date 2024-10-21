@@ -103,8 +103,11 @@ class Data(Script):
         self.__commands[self.__command].run()
 
     def __run_info(self):
-        datadir = self.__connector.get_datadir()
-        rerundir = self.__connector.get_rerundir()
+        workdir = self.__connector.get_resolved_variable('workdir')
+        datadir = self.__connector.get_resolved_variable('datadir')
+        rerundir = self.__connector.get_resolved_variable('rerundir')
+        
+        print(f'Work directory: {workdir}')
         print(f'Data root directory: {datadir}')
         print(f'Rerun directory: {rerundir}')
 
@@ -115,8 +118,6 @@ class Data(Script):
         filenames, identities = self.__connector.find_product(self.__product)
         for i, filename in enumerate(filenames):
             print(filename)
-
-        print(f'Found {len(filenames)} files.')
 
     def __run_show(self):
         """
