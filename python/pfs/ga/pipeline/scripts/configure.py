@@ -55,6 +55,7 @@ class Configure(Script):
         self.__workdir = None           # Working directory for the pipeline job
         self.__outdir = None            # Output directory for the final data products
         self.__dry_run = False          # Dry run mode
+        self.__top = None               # Stop after this many objects
 
         self.__connector = self.__create_data_connector()
 
@@ -63,7 +64,8 @@ class Configure(Script):
 
         self.add_arg('--workdir', type=str, help='Working directory')
         self.add_arg('--outdir', type=str, help='Output directory')
-
+        self.add_arg('--dry-run', action='store_true', help='Dry run mode')
+        self.add_arg('--top', type=int, help='Stop after this many objects')
 
         # Register the identity param filters
         self.__connector.add_args(self)
@@ -80,6 +82,7 @@ class Configure(Script):
         self.__workdir = self.get_arg('workdir', args, self.__config.workdir)
         self.__outdir = self.get_arg('outdir', args, self.__config.outdir)
         self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
+        self.__top = self.get_arg('top', args, self.__top)
 
         # Parse the identity param filters
         self.__connector.init_from_args(self)
@@ -121,7 +124,6 @@ class Configure(Script):
         # Generate the configuration file for each target
         self.__generate_config_files(targets)
 
-   
     def __find_targets(self):
         """
         Find all the pfsSingle files that match the filters and parse the
@@ -252,14 +254,24 @@ class Configure(Script):
         While the result of the final processing is a single FITS file, we need
         a separate work directory for each object to store the auxiliary files.
         """
+
+        q = 0
         for objId in sorted(targets.keys()):
             # Generate the config
             config, filename = self.__create_config(targets[objId])
 
             # Save the config to a file
-            logger.info(f'Generating configuration file `{filename}`.')
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
-            self.__config.save(filename)
+            if not self.__dry_run:
+                logger.info(f'Saving configuration file `{filename}`.')
+                os.makedirs(os.path.dirname(filename), exist_ok=True)
+                self.__config.save(filename)
+            else:
+                logger.info(f'Skipped saving configuration file `{filename}`.')
+
+            q += 1
+            if self.__top is not None and q >= self.__top:
+                logger.info(f'Stopping after {q} objects.')
+                break
 
     def __create_config(self, target, ext='.yaml'):
         """
