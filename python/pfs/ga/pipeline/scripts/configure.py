@@ -51,8 +51,8 @@ class Configure(Script):
 
         self.__config = None            # Pipeline configuration template
 
-        self.__workdir = None           # Working directory for the pipeline job
-        self.__outdir = None            # Output directory for the final data products
+        self.__workdir = self.get_env('GAPIPE_WORKDIR')     # Working directory for the pipeline job
+        self.__outdir = self.get_env('GAPIPE_OUTDIR')       # Output directory for the final data products
         self.__dry_run = False          # Dry run mode
         self.__top = None               # Stop after this many objects
 
@@ -61,7 +61,6 @@ class Configure(Script):
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
 
-        self.add_arg('--workdir', type=str, help='Working directory')
         self.add_arg('--outdir', type=str, help='Output directory')
 
         self.add_arg('--dry-run', action='store_true', help='Dry run mode')
@@ -73,19 +72,46 @@ class Configure(Script):
         super()._add_args()
 
     def _init_from_args(self, args):
-        # Load the configuration file
-        config_files = self.get_arg('config', args)
-        self.__config = GA1DPipelineConfig()
-        self.__config.load(config_files, ignore_collisions=True)
-
-        # Command-line arguments override the configuration file
-        self.__workdir = self.get_arg('workdir', args, self.__config.workdir)
-        self.__outdir = self.get_arg('outdir', args, self.__config.outdir)
-        self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
-        self.__top = self.get_arg('top', args, self.__top)
-
         # Parse the identity param filters
         self.__connector.init_from_args(self)
+
+        self.__config = GA1DPipelineConfig()
+
+        # Load the configuration template file
+        config_files = self.get_arg('config', args)
+        self.__config.load(config_files, ignore_collisions=True)
+
+        # Ensure the precendence of the directories:
+        #   1. Command-line arguments
+        #   2. Configuration file
+        #   3. Default values
+
+        # Override configuration with command-line arguments
+        if self.is_arg('workdir', args):
+            self.__config.workdir = self.get_arg('workdir', args)
+        if self.is_arg('outdir', args):
+            self.__config.outdir = self.get_arg('outdir', args)
+        if self.is_arg('datadir', args):
+            self.__config.datadir = self.get_arg('datadir', args)
+        if self.is_arg('rerundir', args):
+            self.__config.rerundir = self.get_arg('rerundir', args)
+
+        # Override data store connector with configuration values
+        # Also save workdir and outdir because these might be overwritten
+        # in the configuration template
+        if self.__config.workdir is not None:
+            self.__connector.set_variable('workdir', self.__config.workdir)
+            self.__workdir = self.__config.workdir
+        if self.__config.outdir is not None:
+            self.__connector.set_variable('outdir', self.__config.outdir)
+            self.__outdir = self.__config.outdir
+        if self.__config.datadir is not None:
+            self.__connector.set_variable('datadir', self.__config.datadir)
+        if self.__config.rerundir is not None:
+            self.__connector.set_variable('rerundir', self.__config.rerundir)
+
+        self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
+        self.__top = self.get_arg('top', args, self.__top)
 
         super()._init_from_args(args)
 
@@ -281,28 +307,28 @@ class Configure(Script):
         config = self.__config      # TODO: should we make a deep copy here?
 
         # Compose the directory and file names for the identity of the object
-        dir = self.__connector.format_dir(PfsGAObject, target.identity)
-        obj_file = self.__connector.format_filename(PfsGAObject, target.identity)
-        obj_dir, _ = os.path.splitext(obj_file)
+        # The file should be written somewhere under the work directory
+        dir = self.__connector.format_dir(GA1DPipelineConfig, target.identity)
+        config_file = self.__connector.format_filename(GA1DPipelineConfig, target.identity)
 
         # Name of the output pipeline configuration
-        filename = os.path.join(self.__workdir, dir, obj_dir, obj_dir + ext)
+        filename = os.path.join(dir, config_file)
 
         # Update config with directory names
 
         # Input data directories
-        config.datadir = self.__connector.get_datadir()
-        config.rerundir = self.__connector.get_rerundir()
+        config.datadir = self.__connector.get_resolved_variable('datadir')
+        config.rerundir = self.__connector.get_resolved_variable('rerundir')
 
-        logger.debug(f'Configured data directory for object {target.identity.objId:016x}: {config.datadir}')
-        logger.debug(f'Configured rerun directory for object {target.identity.objId:016x}: {config.rerundir}')
+        logger.debug(f'Configured data directory for object {target.identity}: {config.datadir}')
+        logger.debug(f'Configured rerun directory for object {target.identity}: {config.rerundir}')
 
         # Output
-        config.workdir = os.path.join(self.__workdir, dir, obj_dir)
-        config.outdir = os.path.join(self.__outdir, dir)
+        config.workdir = self.__workdir
+        config.outdir = self.__outdir
 
-        logger.debug(f'Configured work directory for object {target.identity.objId:016x}: {config.workdir}')
-        logger.debug(f'Configured output directory for object {target.identity.objId:016x}: {config.outdir}')
+        logger.debug(f'Configured work directory for object {target.identity}: {config.workdir}')
+        logger.debug(f'Configured output directory for object {target.identity}: {config.outdir}')
 
         # Update the config with the ids
 

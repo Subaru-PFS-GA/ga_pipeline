@@ -78,6 +78,15 @@ class Script():
 
     log_to_console = property(__get_log_to_console, __set_log_to_console)
 
+    def is_env(self, name):
+        return name in os.environ and os.environ[name] is not None
+    
+    def get_env(self, name, default=None):
+        if name in os.environ and os.environ[name] is not None:
+            return os.environ[name]
+        else:
+            return default
+
     def __parse_args(self):
         self.__args = self.__parser.parse_args().__dict__
 
