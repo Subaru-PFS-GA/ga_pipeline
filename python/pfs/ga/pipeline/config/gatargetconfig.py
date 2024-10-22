@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from .config import Config
@@ -25,19 +27,19 @@ class GATargetConfig(Config):
     def get_identity(self, visit=None):
         """Return an identity dictionary similar to PFS datamodel."""
 
-        # TODO Is it used anywhere? Delete if not.
-        raise NotImplementedError()
-
         identity = {}
-        identity['catId'] = self.catId
-        identity['tract'] = self.tract
-        identity['patch'] = self.patch
-        identity['objId'] = self.objId
+        identity['catId'] = self.identity.catId
+        identity['tract'] = self.identity.tract
+        identity['patch'] = self.identity.patch
+        identity['objId'] = self.identity.objId
 
-        if visit is not None:
+        if visit is not None and not isinstance(visit, Iterable):
             identity['visit'] = visit
+        elif visit is not None:
+            identity['nVisit'] = wraparoundNVisit(len(self.observation.visit))
+            identity['pfsVisitHash'] = calculatePfsVisitHash(self.observation.visit)
         else:
-            identity['nVisit'] = wraparoundNVisit(len(self.visits))
-            identity['pfsVisitHash'] = calculatePfsVisitHash(self.visits.keys())
+            identity['nVisit'] = wraparoundNVisit(len(visit))
+            identity['pfsVisitHash'] = calculatePfsVisitHash(visit)
 
         return identity

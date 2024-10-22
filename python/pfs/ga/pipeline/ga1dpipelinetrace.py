@@ -6,29 +6,49 @@ from pfs.ga.pfsspec.core import Trace, SpectrumTrace
 from .pipelinetrace import PipelineTrace
 
 class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
-    def __init__(self, figdir='.', logdir='.',
+    def __init__(self,
+                 figdir='.',
+                 logdir='.',
                  plot_inline=False, 
                  plot_level=Trace.PLOT_LEVEL_NONE, 
-                 log_level=Trace.LOG_LEVEL_NONE):
+                 log_level=Trace.LOG_LEVEL_NONE,
+                 id=None):
         
-        super().__init__(figdir=figdir, logdir=logdir,
-                         plot_inline=plot_inline, 
-                         plot_level=plot_level,
-                         log_level=log_level)
+        self.__id = id                          # Identity represented as string
         
         self.plot_exposures = True
         self.plot_flux_correction = True
 
-        self.reset()
+        super().__init__(figdir=figdir, logdir=logdir,
+                         plot_inline=plot_inline, 
+                         plot_level=plot_level,
+                         log_level=log_level)
 
     def reset(self):
-        pass    
+        super().reset()
 
-    def add_args(self, config, parser):
-        super().add_args(config, parser)
+    def update(self, figdir=None, logdir=None, id=None):
+        super().update(figdir=figdir, logdir=logdir)
+        
+        self.__id = id if id is not None else self.__id
+
+    #region Properties
+
+    def __get_id(self):
+        return self.__id
     
-    def init_from_args(self, script, config, args):
-        super().init_from_args(script, config, args)
+    def __set_id(self, value):
+        self.__id = value
+
+    id = property(__get_id, __set_id)
+
+    #endregion
+
+    def add_args(self, parser):
+        super().add_args(parser)
+    
+    def init_from_args(self, script, args):
+        SpectrumTrace.init_from_args(self, script, None, args)
 
         self.plot_flux_correction = get_arg('plot_flux_correction', self.plot_flux_correction, args)
 
@@ -36,10 +56,10 @@ class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
         """Fired when the individual exposures are read from the pfsSingle files."""
 
         if self.plot_exposures:
-            self._plot_spectra('pfsGA-exposures-{id}',
+            self._plot_spectra('pfsGA-exposures-{self.__id}',
                                spectra,
                                plot_spectrum=True, plot_flux_err=True, plot_mask=False,
-                               title='Input spectra - {id}',
+                               title='Input spectra - {self.__id}',
                                nrows=2, ncols=1, diagram_size=(6.5, 3.5))
             
             self.flush_figures()
@@ -53,7 +73,7 @@ class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
         """Fired when the flux correction is evaluated."""
 
         if self.plot_flux_correction or self.plot_level >= Trace.PLOT_LEVEL_DEBUG:
-            f = self.get_diagram_page('pfsGA-Coadd-fluxcorr-{id}', 1, 1, 1, diagram_size=(6.5, 3.5))
+            f = self.get_diagram_page('pfsGA-Coadd-fluxcorr-{self.__id}', 1, 1, 1, diagram_size=(6.5, 3.5))
 
             p = SpectrumPlot()
             ax = f.add_diagram((0, 0, 0), p)

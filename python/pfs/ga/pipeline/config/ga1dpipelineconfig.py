@@ -9,8 +9,6 @@ class GA1DPipelineConfig(PipelineConfig):
     Galactic Archeology Spectrum Processing Pipeline configuration.
     """
 
-    # TODO: Maybe split it into ObjectConfig, RVFitConfig, ChemFitConfig
-
     def __init__(self,
                  target: GATargetConfig = GATargetConfig(),
                  rvfit: RVFitConfig = RVFitConfig(),
@@ -24,6 +22,11 @@ class GA1DPipelineConfig(PipelineConfig):
 
         # GA target object configuration
         self.target = target
+
+        # TODO: this has to be set by pipeline step, rvfit can use different than chemfit
+        self.input_product = 'pfsMerged'                      # pfsMerged, pfsSingle or pfsObject
+
+        # TODO: need to get the photometry and priors from somewhere
 
         # GA pipeline configuration
 
