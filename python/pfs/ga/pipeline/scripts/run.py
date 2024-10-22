@@ -1,80 +1,125 @@
 #!/usr/bin/env python3
 
 import os
+import logging
 
 from .script import Script
 from ..constants import Constants
+from ..data import FileSystemConnector
+from ..config import GA1DPipelineConfig
+from ..ga1dpipeline import GA1DPipeline
+from ..ga1dpipelinetrace import GA1DPipelineTrace
 
 from ..setup_logger import logger
 
 class Run(Script):
     """
-    Run the pipeline from a configuration file.
+    Runs the pipeline from a configuration file. The configuration file is either
+    passed to it as a parameter, or the script can look it up by the indentity
+    of the object being processed.
     """
 
     def __init__(self):
         super().__init__()
 
-        self.__config = None
+        self.__config = None            # Configuration file or list of files
+        self.__dry_run = False          # Dry run mode
+
+        self.__connector = self.__create_data_connector()
+        self.__pipeline = None          # Pipeline object
+        self.__trace = None             # Pipeline trace object
+
+        self.__config_files = None      # Pipeline configuration files
 
     def _add_args(self):
+        self.add_arg('--config', type=str, nargs='?', help='Configuration file')
+        self.add_arg('--outdir', type=str, help='Output directory')
+        self.add_arg('--dry-run', action='store_true', help='Dry run mode')
+
+        # Register data store arguments, do not include search filters
+        self.__connector.add_args(self, include_variables=True, include_filters=True)
+
         super()._add_args()
 
-        self.add_arg('--config', type=str, help='Configuration file', required=True)
-        self.add_arg('--datadir', type=str, help='Data directory')
-        self.add_arg('--workdir', type=str, help='Working directory')
-        self.add_arg('--rerundir', type=str, help='Rerun directory')
-
     def _init_from_args(self, args):
+        # Parse the data store arguments
+        self.__connector.init_from_args(self)
+
+        self.__config = self.get_arg('config', args)
+        self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
+
         super()._init_from_args(args)
 
-        # Store the path to the config file for now, which will be loaded and later
-        self.__config = self.get_arg('config', args, self.__config)
+    def __create_data_connector(self):
+        """
+        Create a connector to the file system.
+        """
 
-    def _dump_settings(self):
-        # Do nothing here. This is to prevent saving the environment and arguments
-        # because we don't need them for the individual jobs.
-        pass
+        connector = FileSystemConnector()
+        return connector
 
     def prepare(self):
         super().prepare()
 
-        # Create the pipeline object and initialize it from a config file
-        from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
-        from pfs.ga.pipeline.config import GA1DPipelineConfig
-
-        config = GA1DPipelineConfig()
-        config.load(self.__config, ignore_collisions=True)
-
-        identity = config.target.get_identity()
-        
-        # Override a few settings from the command line
-        config.datadir = self.get_arg('datadir', default=config.datadir).format(**identity)
-        config.workdir = self.get_arg('workdir', default=config.workdir).format(**identity)
-        config.rerundir = self.get_arg('rerundir', default=config.rerundir)
-        config.outdir = self.get_arg('outdir', default=config.outdir).format(**identity)
-        config.logdir = os.path.join(config.workdir, 'log')
-        config.figdir = os.path.join(config.workdir, 'fig')
-
-        # Intialize the trace object used for logging and plotting
-        trace = GA1DPipelineTrace()
-        trace.init_from_args(self, None, config.trace_args)
-        
-        # Initialize the pipeline object
-        self.__pipeline = GA1DPipeline(script=self, config=config, trace=trace)        
-        
-        # Set the object IDs
-        id = Constants.PFSOBJECT_ID_FORMAT.format(**identity)
-        self.__pipeline.id = id
-        trace.id = id
+        # Create the pipeline and the trace object
+        self.__trace = GA1DPipelineTrace()
+        self.__pipeline = GA1DPipeline(script=self, connector=self.__connector, trace=self.__trace)
 
         # Override logging directory to use the same as the pipeline workdir
-        self.loglevel = self.__pipeline.get_log_level()
-        self.logfile = os.path.join(config.logdir, self.__pipeline.get_log_filename())
+        log_file = os.path.basename(self.log_file)
+        self.log_file = os.path.join(self.__connector.get_resolved_variable('workdir'), log_file)
 
     def run(self):
 
-        logger.info('Using configuration file(s) `{self.__config.config_files}`.')
+        # If a config file is provided on the command-line, we only process a single one.
+        # If no config file is provided, we search for configs based on the command line
+        # search filters using the data store connector.
+        if self.__config is not None:
+            self.__config_files = [ self.__config ]
+        else:
+            self.__config_files, _ = self.__connector.locate_product(GA1DPipelineConfig)
+
+        for i, config_file in enumerate(self.__config_files):
+            self.__run_pipeline(config_file)
+
+    def __run_pipeline(self, config_file):
+        
+        # Load the configuration
+        config = GA1DPipelineConfig()
+        config.load(config_file, ignore_collisions=True)
+        self.__update_directories(config)
+
+        # Generate a string ID for the object being processed
+        id = str(config.target.identity)
+
+        # Update the trace object used for logging and plotting
+        self.__trace.reset()
+        self.__trace.init_from_args(self, config.trace_args)
+        self.__trace.update()
+
+        # Update the pipeline object
+        self.__pipeline.reset()
+        self.__pipeline.update(config=config, id=id)
+
+        # Get the log file name and set figdir and logdir of the trace to the same directory
+        logfile = self.__pipeline.get_product_logfile()
+        self.__trace.logdir = os.path.dirname(logfile)
+        self.__trace.figdir = os.path.dirname(logfile)
+
+        # Reconfigure logging according to the configuration
+        self.push_log_settings()
+        self.stop_logging()
+
+        loglevel = self.__pipeline.get_loglevel()
+        if self.log_level is not None and self.log_level < loglevel:
+            loglevel = self.log_level
+        if self.debug and logging.DEBUG < loglevel:
+            loglevel = logging.DEBUG
+        self.loglevel = loglevel
+        self.logfile = logfile
+        self.start_logging()
+
+        logger.info(f'Using configuration file(s) `{config.config_files}`.')
         
         # Validate the pipeline configuration
         self.__pipeline.validate_config()
@@ -82,6 +127,40 @@ class Run(Script):
         
         # Execute the pipeline
         self.__pipeline.execute()
+
+        # Restore the logging to the main log file
+        self.stop_logging()
+        self.pop_log_settings()
+        self.start_logging()
+
+    def __update_directories(self, config):
+        """
+        Ensure the precedence of the configuration settings
+        """
+        
+        #   1. Command-line arguments
+        #   2. Configuration file
+        #   3. Default values
+
+        # Override configuration with command-line arguments
+        if self.is_arg('workdir'):
+            config.workdir = self.get_arg('workdir')
+        if self.is_arg('outdir'):
+            config.outdir = self.get_arg('outdir')
+        if self.is_arg('datadir'):
+            config.datadir = self.get_arg('datadir')
+        if self.is_arg('rerundir'):
+            config.rerundir = self.get_arg('rerundir')
+
+        # Override data store connector with configuration values
+        if config.workdir is not None:
+            self.__connector.set_variable('workdir', config.workdir)
+        if config.outdir is not None:
+            self.__connector.set_variable('outdir', config.outdir)
+        if config.datadir is not None:
+            self.__connector.set_variable('datadir', config.datadir)
+        if config.rerundir is not None:
+            self.__connector.set_variable('rerundir', config.rerundir)
 
 def main():
     script = Run()

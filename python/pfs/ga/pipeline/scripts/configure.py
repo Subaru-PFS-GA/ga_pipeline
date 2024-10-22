@@ -81,6 +81,7 @@ class Configure(Script):
         config_files = self.get_arg('config', args)
         self.__config.load(config_files, ignore_collisions=True)
 
+        # TODO: consider merging this part with the run script
         # Ensure the precendence of the directories:
         #   1. Command-line arguments
         #   2. Configuration file
@@ -126,11 +127,9 @@ class Configure(Script):
     def prepare(self):
         super().prepare()
 
-        # TODO: do not write to the log file if in dry-run mode
-
         # Override logging directory to use the same as the pipeline workdir
-        log_file = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.__workdir, 'log', log_file)
+        logfile = os.path.basename(self.log_file)
+        self.log_file = os.path.join(self.__workdir, logfile)
 
     def run(self):
         """
