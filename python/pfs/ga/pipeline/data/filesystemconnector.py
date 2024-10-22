@@ -101,14 +101,16 @@ class FileSystemConnector():
     #endregion
     #region Command-line arguments
 
-    def add_args(self, script):
+    def add_args(self, script, include_variables=True, include_filters=True):
         # Add arguments for the variables
-        for k, v in self.__config.variables.items():
-            script.add_arg(f'--{k.lower()}', type=str, help=f'Set variable {k}')
+        if include_variables:
+            for k, v in self.__config.variables.items():
+                script.add_arg(f'--{k.lower()}', type=str, help=f'Set variable {k}')
 
         # Add arguments for the filters
-        for k, p in self.__filters.__dict__.items():
-            script.add_arg(f'--{k.lower()}', type=str, nargs='*', help=f'Filter on {k}')
+        if include_filters:
+            for k, p in self.__filters.__dict__.items():
+                script.add_arg(f'--{k.lower()}', type=str, nargs='*', help=f'Filter on {k}')
 
     def init_from_args(self, script):
         # Parse variables
@@ -522,7 +524,9 @@ class FileSystemConnector():
         if filename is not None:
             identity = self.parse_product_identity(product, filename, required=True)
             params = identity.__dict__
-        elif identity is not None:
+        elif isinstance(identity, dict):
+            params = identity
+        elif isinstance(identity, SimpleNamespace):
             params = identity.__dict__
         else:
             params = { k: p.copy() for k, p in self.__filters.__dict__.items() if p.value is not None }
