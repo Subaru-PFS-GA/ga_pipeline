@@ -1,12 +1,11 @@
 import os
 import traceback
-import logging
+from collections import namedtuple
 try:
     import debugpy
 except ModuleNotFoundError:
     debugpy = None
 
-from .setup_logger import logger
 from .util import Timer
 from .scripts.script import Script
 from .constants import *
@@ -14,8 +13,16 @@ from .config.pipelineconfig import PipelineConfig
 from .pipelinetrace import PipelineTrace
 from .pipelineexception import PipelineException
 
+from .setup_logger import logger
+
+# Create a named tuple for the pipeline step
+StepResults = namedtuple('StepResults', ['success', 'skip_remaining', 'skip_substeps'])
+
 class Pipeline():
-    def __init__(self, script: Script, config: PipelineConfig, trace: PipelineTrace = None):
+    def __init__(self,
+                 script: Script = None,
+                 config: PipelineConfig = None,
+                 trace: PipelineTrace = None):
 
         self.__script = script
         self.__config = config
@@ -25,6 +32,20 @@ class Pipeline():
         self.__tracebacks = []
 
         self._steps = None
+
+    def reset(self):
+        pass
+
+    def update(self, 
+               script: Script = None,  
+               config: PipelineConfig = None, 
+               trace: PipelineTrace = None):
+        
+        self.__script = script if script is not None else self.__script
+        self.__config = config if config is not None else self.__config
+        self.__trace = trace if trace is not None else self.__trace
+
+        # TODO: reset anything else?
 
     def __get_script(self): 
         return self.__script
@@ -61,10 +82,13 @@ class Pipeline():
         """
 
         self.__start_tracing()
-
         self.__execute_steps(self._steps)
-
         self.__stop_tracing()
+
+        # Save exceptions to a file and reset them so that
+        # they are not reported again on the driver script level
+        self.__save_exceptions()
+        self.__reset_exceptions()
 
     def _create_dir(self, name, dir):
         self.script._create_dir(name, dir, logger=logger)
@@ -72,7 +96,9 @@ class Pipeline():
     def _test_dir(self, name, dir, must_exist=True):
         """Verify that a directory exists and is accessible."""
 
-        if not os.path.isdir(dir):
+        if dir is None:
+            logger.info(f'{name.title()} directory is not set, will use default.')
+        elif not os.path.isdir(dir):
             if must_exist:
                 raise FileNotFoundError(f'{name.title()} directory `{dir}` does not exist.')
             else:
@@ -91,21 +117,12 @@ class Pipeline():
         else:
             logger.info(f'Using {name} file `{filename}`.')
 
-    def get_log_filename(self):
+    def get_loglevel(self):
+        raise NotImplementedError()
+
+    def get_product_logfile(self):
         raise NotImplementedError()
     
-    def get_log_level(self):
-        # Override log level from the command-line
-        loglevel = self.__config.loglevel
-
-        if self.__script.log_level is not None and self.__script.log_level < loglevel:
-            loglevel = self.__script.log_level
-        
-        if self.__script.debug and logging.DEBUG < loglevel:
-            loglevel = logging.DEBUG
-        
-        return loglevel
-
     def __start_tracing(self):
         if self.__trace is not None:
             self.__trace.figdir = self.__config.figdir
@@ -146,23 +163,27 @@ class Pipeline():
             try:
                 logger.info(start_message)
                 
-                success, skip_remaining, skip_substeps = func()
-                if not success and critical:
+                # TODO: Create named tuple for the return values
+                step_results = func()
+                if not step_results.success and critical:
                     raise PipelineException(f'Pipeline step `{name}` failed and is critical. Stopping pipeline.')
 
                 logger.info(timer.format_message(stop_message))
-                return success, skip_remaining, skip_substeps
+                return step_results
             except Exception as ex:
-                # Break into debugger, if available
-                if debugpy is not None and debugpy.is_client_connected():
-                    raise ex
-
                 error_message = self._get_log_message_step_error(name, ex)
                 logger.error(timer.format_message(error_message))
                 logger.exception(ex)
                 
                 self.__exceptions.append(ex)
                 self.__tracebacks.append(traceback.format_tb(ex.__traceback__))
+
+                # TODO: Add trace hook for the exception
+
+                # Enable these lines to automatically break into debugger, if available
+                if debugpy is not None and debugpy.is_client_connected():
+                    raise ex
+
                 return False, True, True
 
     def _get_log_message_step_start(self, name):
@@ -173,3 +194,24 @@ class Pipeline():
 
     def _get_log_message_step_error(self, name, ex):
         return f'Pipeline step `{name}` failed with error `{type(ex).__name__}`.'
+    
+    def __save_exceptions(self):
+        if self.__exceptions is not None and len(self.__exceptions) > 0:
+            
+            # Get full path of log file without extension
+            logfile = self.get_product_logfile()
+            if logfile is not None:
+                logdir = os.path.dirname(logfile)
+                logfile = os.path.basename(logfile)
+                logfile = os.path.splitext(logfile)[0]
+                fn = os.path.join(logdir, logfile + '.traceback')
+                with open(fn, 'a') as f:
+                    for i in range(len(self.__exceptions)):
+                        f.write(repr(self.__exceptions[i]))
+                        f.write('\n')
+                        f.writelines(self.__tracebacks[i])
+                        f.write('\n')
+
+    def __reset_exceptions(self):
+        self.__exceptions = []
+        self.__tracebacks = []
