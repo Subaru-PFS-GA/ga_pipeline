@@ -132,7 +132,10 @@ class Script():
         else:
             logger.debug(f'Found existing {name} directory `{dir}`.')
 
-    def __start_logging(self):        
+    def __get_command_name(self):
+        return f'gapipe-{self.__class__.__name__.lower()}'
+
+    def start_logging(self):
         # Configure root logger
         root = logging.getLogger()
         root.handlers = []
@@ -165,7 +168,7 @@ class Script():
         if self.log_to_file and self.__log_file is not None:
             logger.info(f'Logging started to `{self.__log_file}`.')
 
-    def __stop_logging(self):
+    def stop_logging(self):
         if self.log_to_file and self.__log_file is not None:
             logger.info(f'Logging finished to `{self.__log_file}`.')
 
@@ -178,6 +181,37 @@ class Script():
         self.__log_formatter = None
         self.__log_file_handler = None
         self.__log_console_handler = None
+
+    def push_log_settings(self):
+        """
+        Stash the current log settings for later restoration.
+        """
+
+        root = logging.getLogger()
+        self.__stashed_log_handlers = root.handlers
+
+        self.__stashed_log_file_handler = self.__log_file_handler
+        self.__stashed_log_formatter = self.__log_formatter
+        self.__stashed_log_level = self.__log_level
+        self.__stashed_log_file = self.__log_file
+
+    def pop_log_settings(self):
+
+        root = logging.getLogger()
+        root.handlers = self.__stashed_log_handlers
+
+        self.__log_file_handler = self.__stashed_log_file_handler
+        self.__log_formatter = self.__stashed_log_formatter
+        self.__log_level = self.__stashed_log_level
+        self.__log_file = self.__stashed_log_file
+
+    def pop_log_settings(self):
+        """
+        Restore the stashed log settings.
+        """
+
+        self.__log_level = self.__stashed_log_level
+        self.__log_file = self.__stashed_log_file
 
     def __start_profiler(self):
         """
@@ -256,7 +290,7 @@ class Script():
         """
 
         with open(filename, 'w') as f:
-            f.write(f'gapipe-{self.__class__.__name__.lower()} ')
+            f.write(f'{self.__get_command_name()} ')
             if len(sys.argv) > 1:
                 f.write(' '.join(sys.argv[1:]))
             f.write('\n')
@@ -267,9 +301,10 @@ class Script():
         # Save environment, arguments and command-line to files next to the log file
         if self.__log_to_file and self.__log_file is not None:
             logdir = os.path.dirname(self.__log_file)
-            self.__dump_env(os.path.join(logdir, f'env_{self.__timestamp}.sh'))
-            self.__dump_args(os.path.join(logdir, f'args_{self.__timestamp}.json'))
-            self.__dump_cmdline(os.path.join(logdir, f'command_{self.__timestamp}.sh'))
+            command = self.__get_command_name()
+            self.__dump_env(os.path.join(logdir, f'{command}_{self.__timestamp}.env'))
+            self.__dump_args(os.path.join(logdir, f'{command}_{self.__timestamp}.args.json'))
+            self.__dump_cmdline(os.path.join(logdir, f'{command}_{self.__timestamp}.cmd'))
 
     def execute(self):
         self._add_args()
@@ -280,14 +315,14 @@ class Script():
 
         self.prepare()
 
-        self.__start_logging()    
+        self.start_logging()    
         self._dump_settings()
         self.__start_profiler()
 
         self.run()
 
         self.__stop_profiler()
-        self.__stop_logging()
+        self.stop_logging()
 
     def prepare(self):
         """
@@ -295,9 +330,9 @@ class Script():
         up the logging level, directories, etc.
         """
         
-        name = self.__class__.__name__.lower()
+        command = self.__get_command_name()
         time = self.__timestamp
-        self.__log_file = f'{name}_{time}.log'
+        self.__log_file = f'{command}_{time}.log'
 
     def run(self):
         raise NotImplementedError()
