@@ -3,12 +3,14 @@
 import os
 import logging
 
+from pfs.ga.pfsspec.survey.repo import FileSystemRepo
+
 from .script import Script
 from ..constants import Constants
-from ..data import FileSystemConnector
 from ..config import GA1DPipelineConfig
 from ..ga1dpipeline import GA1DPipeline
 from ..ga1dpipelinetrace import GA1DPipelineTrace
+from ..repo import PfsFileSystemConfig
 
 from ..setup_logger import logger
 
@@ -25,7 +27,7 @@ class Run(Script):
         self.__config = None            # Configuration file or list of files
         self.__dry_run = False          # Dry run mode
 
-        self.__connector = self.__create_data_connector()
+        self.__repo = self.__create_data_repo()
         self.__pipeline = None          # Pipeline object
         self.__trace = None             # Pipeline trace object
 
@@ -37,37 +39,36 @@ class Run(Script):
         self.add_arg('--dry-run', action='store_true', help='Dry run mode')
 
         # Register data store arguments, do not include search filters
-        self.__connector.add_args(self, include_variables=True, include_filters=True)
+        self.__repo.add_args(self, include_variables=True, include_filters=True)
 
         super()._add_args()
 
     def _init_from_args(self, args):
         # Parse the data store arguments
-        self.__connector.init_from_args(self)
+        self.__repo.init_from_args(self)
 
         self.__config = self.get_arg('config', args)
         self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
 
         super()._init_from_args(args)
 
-    def __create_data_connector(self):
+    def __create_data_repo(self):
         """
         Create a connector to the file system.
         """
 
-        connector = FileSystemConnector()
-        return connector
+        return FileSystemRepo(config=PfsFileSystemConfig)
 
     def prepare(self):
         super().prepare()
 
         # Create the pipeline and the trace object
         self.__trace = GA1DPipelineTrace()
-        self.__pipeline = GA1DPipeline(script=self, connector=self.__connector, trace=self.__trace)
+        self.__pipeline = GA1DPipeline(script=self, repo=self.__repo, trace=self.__trace)
 
         # Override logging directory to use the same as the pipeline workdir
         log_file = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.__connector.get_resolved_variable('workdir'), log_file)
+        self.log_file = os.path.join(self.__repo.get_resolved_variable('workdir'), log_file)
 
     def run(self):
 
@@ -77,7 +78,7 @@ class Run(Script):
         if self.__config is not None:
             self.__config_files = [ self.__config ]
         else:
-            self.__config_files, _ = self.__connector.locate_product(GA1DPipelineConfig)
+            self.__config_files, _ = self.__repo.locate_product(GA1DPipelineConfig)
 
         for i, config_file in enumerate(self.__config_files):
             self.__run_pipeline(config_file)
@@ -154,13 +155,13 @@ class Run(Script):
 
         # Override data store connector with configuration values
         if config.workdir is not None:
-            self.__connector.set_variable('workdir', config.workdir)
+            self.__repo.set_variable('workdir', config.workdir)
         if config.outdir is not None:
-            self.__connector.set_variable('outdir', config.outdir)
+            self.__repo.set_variable('outdir', config.outdir)
         if config.datadir is not None:
-            self.__connector.set_variable('datadir', config.datadir)
+            self.__repo.set_variable('datadir', config.datadir)
         if config.rerundir is not None:
-            self.__connector.set_variable('rerundir', config.rerundir)
+            self.__repo.set_variable('rerundir', config.rerundir)
 
 def main():
     script = Run()

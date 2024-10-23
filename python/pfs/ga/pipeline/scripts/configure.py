@@ -9,11 +9,12 @@ import numpy as np
 
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
+from pfs.ga.pfsspec.survey.repo import FileSystemRepo
 
 from ..constants import Constants
-from ..data import FileSystemConnector
 from ..config import *
 from ..pipeline import PipelineException
+from ..repo import PfsFileSystemConfig
 from .script import Script
 
 from ..setup_logger import logger
@@ -56,7 +57,7 @@ class Configure(Script):
         self.__dry_run = False          # Dry run mode
         self.__top = None               # Stop after this many objects
 
-        self.__connector = self.__create_data_connector()
+        self.__repo = self.__create_data_repo()
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
@@ -67,13 +68,13 @@ class Configure(Script):
         self.add_arg('--top', type=int, help='Stop after this many objects')
 
         # Register the identity param filters
-        self.__connector.add_args(self)
+        self.__repo.add_args(self)
 
         super()._add_args()
 
     def _init_from_args(self, args):
         # Parse the identity param filters
-        self.__connector.init_from_args(self)
+        self.__repo.init_from_args(self)
 
         self.__config = GA1DPipelineConfig()
 
@@ -101,28 +102,27 @@ class Configure(Script):
         # Also save workdir and outdir because these might be overwritten
         # in the configuration template
         if self.__config.workdir is not None:
-            self.__connector.set_variable('workdir', self.__config.workdir)
+            self.__repo.set_variable('workdir', self.__config.workdir)
             self.__workdir = self.__config.workdir
         if self.__config.outdir is not None:
-            self.__connector.set_variable('outdir', self.__config.outdir)
+            self.__repo.set_variable('outdir', self.__config.outdir)
             self.__outdir = self.__config.outdir
         if self.__config.datadir is not None:
-            self.__connector.set_variable('datadir', self.__config.datadir)
+            self.__repo.set_variable('datadir', self.__config.datadir)
         if self.__config.rerundir is not None:
-            self.__connector.set_variable('rerundir', self.__config.rerundir)
+            self.__repo.set_variable('rerundir', self.__config.rerundir)
 
         self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
         self.__top = self.get_arg('top', args, self.__top)
 
         super()._init_from_args(args)
 
-    def __create_data_connector(self):
+    def __create_data_repo(self):
         """
-        Create a connector to the file system.
+        Create a repo connector to the file system.
         """
 
-        connector = FileSystemConnector()
-        return connector
+        return FileSystemRepo(config=PfsFileSystemConfig)
 
     def prepare(self):
         super().prepare()
@@ -160,13 +160,13 @@ class Configure(Script):
         #       Use some database instead.
 
         logger.info(f'Finding pfsSingle files matching the following filters:')
-        logger.info(f'    catId: {repr(self.__connector.filters.catId)}')
-        logger.info(f'    tract: {repr(self.__connector.filters.tract)}')
-        logger.info(f'    patch: {repr(self.__connector.filters.patch)}')
-        logger.info(f'    objId: {repr(self.__connector.filters.objId)}')
-        logger.info(f'    visit: {repr(self.__connector.filters.visit)}')
+        logger.info(f'    catId: {repr(self.__repo.filters.catId)}')
+        logger.info(f'    tract: {repr(self.__repo.filters.tract)}')
+        logger.info(f'    patch: {repr(self.__repo.filters.patch)}')
+        logger.info(f'    objId: {repr(self.__repo.filters.objId)}')
+        logger.info(f'    visit: {repr(self.__repo.filters.visit)}')
 
-        filenames, identities = self.__connector.find_product(PfsSingle)
+        filenames, identities = self.__repo.find_product(PfsSingle)
 
         logger.info(f'Found {len(filenames)} pfsSingle files matching the filters.')
 
@@ -208,11 +208,11 @@ class Configure(Script):
             logger.info(f'    visit: {visit}')
 
             try:
-                filename, identity = self.__connector.locate_product(PfsConfig, visit=visit)
+                filename, identity = self.__repo.locate_product(PfsConfig, visit=visit)
             except FileNotFoundError:
                 raise PipelineException(f'No pfsConfig file found for visit {visit}.')
 
-            pfsConfig, config_identity, _ = self.__connector.load_product(PfsConfig, filename=filename)
+            pfsConfig, config_identity, _ = self.__repo.load_product(PfsConfig, filename=filename)
 
             for i, objId in enumerate(pfsConfig.objId):
                 if objId in targets:
@@ -307,8 +307,8 @@ class Configure(Script):
 
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
-        dir = self.__connector.format_dir(GA1DPipelineConfig, target.identity)
-        config_file = self.__connector.format_filename(GA1DPipelineConfig, target.identity)
+        dir = self.__repo.format_dir(GA1DPipelineConfig, target.identity)
+        config_file = self.__repo.format_filename(GA1DPipelineConfig, target.identity)
 
         # Name of the output pipeline configuration
         filename = os.path.join(dir, config_file)
@@ -316,8 +316,8 @@ class Configure(Script):
         # Update config with directory names
 
         # Input data directories
-        config.datadir = self.__connector.get_resolved_variable('datadir')
-        config.rerundir = self.__connector.get_resolved_variable('rerundir')
+        config.datadir = self.__repo.get_resolved_variable('datadir')
+        config.rerundir = self.__repo.get_resolved_variable('rerundir')
 
         logger.debug(f'Configured data directory for object {target.identity}: {config.datadir}')
         logger.debug(f'Configured rerun directory for object {target.identity}: {config.rerundir}')
