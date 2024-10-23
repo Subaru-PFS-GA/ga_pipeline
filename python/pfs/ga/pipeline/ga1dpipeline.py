@@ -5,6 +5,7 @@ import pytz
 import numpy as np
 from types import SimpleNamespace
 
+import pfs.datamodel
 from pfs.datamodel import *
 from pfs.datamodel import PfsGAObject, PfsGAObjectNotes, StellarParams, VelocityCorrections, Abundances
 
@@ -15,8 +16,9 @@ from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
 from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS
+from pfs.ga.pfsspec.survey.repo import FileSystemRepo
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
-from pfs.ga.pfsspec.survey.pfs.io import PfsStellarSpectrumReader
+from pfs.ga.pfsspec.survey.pfs.io import PfsSpectrumReader
 
 from .setup_logger import logger
 
@@ -27,7 +29,7 @@ from .pipeline import Pipeline, StepResults
 from .pipelineerror import PipelineError
 from .config import GA1DPipelineConfig
 from .ga1dpipelinetrace import GA1DPipelineTrace
-from .data import FileSystemConnector
+from .repo import PfsFileSystemConfig
 
 class GA1DPipeline(Pipeline):
     """
@@ -49,7 +51,7 @@ class GA1DPipeline(Pipeline):
     def __init__(self,
                  script: Script = None,
                  config: GA1DPipelineConfig = None,
-                 connector: FileSystemConnector = None,
+                 repo: FileSystemRepo = None,
                  trace: GA1DPipelineTrace = None,
                  id: str = None):
         """
@@ -62,7 +64,7 @@ class GA1DPipeline(Pipeline):
             Script object for logging and command-line arguments
         config: :obj:`GA1DPipelineConfig`
             Configuration of the GA pipeline
-        connector: :obj:`FileSystemConnector`
+        connector: :obj:`FileSystemRepo`
         trace: :obj:`GA1DPipelineTrace`
             Trace object for logging and plotting
         """
@@ -70,12 +72,12 @@ class GA1DPipeline(Pipeline):
         super().__init__(script=script, config=config, trace=trace)
 
         self.__id = id                          # Identity represented as string
-        self.__connector = connector
+        self.__repo = repo
 
         self._steps = self.__create_steps()
        
         # list of data products to be loaded
-        self.__required_product_types = [ PfsSingle, PfsMerged ]
+        self.__required_product_types = None
         self.__product_cache = None             # cache of loaded products
 
         self.__output_product_type = PfsGAObject
@@ -87,7 +89,6 @@ class GA1DPipeline(Pipeline):
         self.__pfsConfig = None                 # dict of pfsConfig, indexed by visit
         self.__pfsGAObject = None
 
-        self.__spectra = None                   # spectra in PFSSPEC class for each class and visit
         self.__v_corr = None                    # velocity correction for each visit
 
         self.__rvfit = None                     # RVFit object
@@ -104,10 +105,10 @@ class GA1DPipeline(Pipeline):
     def reset(self):
         super().reset()
 
-    def update(self, script=None, config=None, connector=None, trace=None, id=None):
+    def update(self, script=None, config=None, repo=None, trace=None, id=None):
         super().update(script=script, config=config, trace=trace)
 
-        self.__connector = connector if connector is not None else self.__connector
+        self.__repo = repo if repo is not None else self.__repo
         self.__id = id if id is not None else self.__id
 
         if self.trace is not None:
@@ -206,12 +207,12 @@ class GA1DPipeline(Pipeline):
     #endregion
 
     def get_product_workdir(self):
-        return self.__connector.format_dir(GA1DPipelineConfig,
+        return self.__repo.format_dir(GA1DPipelineConfig,
                                            self.config.target.identity,
                                            variables={ 'datadir': self.config.workdir })
 
     def get_product_outdir(self):
-        return self.__connector.format_dir(PfsGAObject,
+        return self.__repo.format_dir(PfsGAObject,
                                            self.config.target.identity,
                                            variables={ 'datadir': self.config.outdir })
 
@@ -236,7 +237,7 @@ class GA1DPipeline(Pipeline):
         """
 
         dir = self.get_product_workdir()
-        filename = self.__connector.format_filename(GA1DPipelineConfig, self.config.target.identity)
+        filename = self.__repo.format_filename(GA1DPipelineConfig, self.config.target.identity)
         filename, _ = os.path.splitext(filename)
         if self.config.logdir is not None:
             return os.path.join(dir, self.config.logdir, filename + '.log')
@@ -281,10 +282,10 @@ class GA1DPipeline(Pipeline):
         self._test_dir('log', self.get_product_logdir(), must_exist=False)
         self._test_dir('figure', self.get_product_figdir(), must_exist=False)
         
-        self._test_dir('data', self.__connector.get_resolved_variable('datadir'))
-        self._test_dir('rerun', os.path.join(self.__connector.get_resolved_variable('datadir'),
+        self._test_dir('data', self.__repo.get_resolved_variable('datadir'))
+        self._test_dir('rerun', os.path.join(self.__repo.get_resolved_variable('datadir'),
                                              'rerun',
-                                             self.__connector.get_resolved_variable('rerundir')))
+                                             self.__repo.get_resolved_variable('rerundir')))
         
         return True
     
@@ -360,93 +361,31 @@ class GA1DPipeline(Pipeline):
             yield i, visit, identity
 
     #endregion
-    #region Step: Init
+    #region Load and validate input products
 
-    def __step_init(self):
-        # Save the full configuration to the output directory, if it's not already there
-        dir = self.get_product_workdir()
-        fn = self.__connector.format_filename(GA1DPipelineConfig, self.config.target.identity)
-        fn = os.path.join(dir, fn)
-        if not os.path.isfile(fn):
-            self.config.save(fn)
-            logger.info(f'Runtime configuration file saved to `{fn}`.')
-
-        # Verify stellar template grids and PSF files
-        if self.config.run_rvfit:
-            for arm in self.config.rvfit.fit_arms:
-                if isinstance(self.config.rvfit.model_grid_path, dict):
-                    fn = self.config.rvfit.model_grid_path[arm].format(arm=arm)
+    def __validate_input_product(self, product):
+        for i, visit, identity in self.__enumerate_visits():
+            if self.__product_cache is not None and product in self.__product_cache:
+                if issubclass(product, PfsFiberArray):
+                    # Data product contains a single object
+                    if visit in self.__product_cache[product]:
+                        if identity.objId in self.__product_cache[product][visit]:
+                            # Product is already in the cache, skip
+                            continue
+                elif issubclass(product, PfsFiberArraySet):
+                    # Data product contains multiple objects
+                    if visit in self.__product_cache[product]:
+                        # Product is already in the cache, skip
+                        continue
                 else:
-                    fn = self.config.rvfit.model_grid_path.format(arm=arm)
+                    raise NotImplementedError('Product type not recognized.')
                 
-                if not os.path.isfile(fn):
-                    raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
-                else:
-                    logger.info(f'Using synthetic spectrum grid `{fn}` for arm `{arm}`.')
+            # Product not found in cache of cache is empty, look up the file location
+            try:
+                self.__repo.locate_product(product, **identity.__dict__)
+            except FileNotFoundError:
+                raise PipelineError(f'{product.__name__} file for visit `{visit}` not available.')
                 
-                if self.config.rvfit.psf_path is not None:
-                    fn = self.config.rvfit.psf_path.format(arm=arm)
-                    if not os.path.isfile(fn):
-                        raise FileNotFoundError(f'PSF file `{fn}` not found.')
-                    else:
-                        logger.info(f'Using PSF file `{fn}` for arm `{arm}`.')
-
-        # Verify that input data files are available or the input products
-        # are already in the cache
-        for t in self.__required_product_types:
-            self.__step_init_validate_input_product(t)
-
-        # TODO: Verify photometry / prior files
-
-        # TODO: add validation steps for CHEMFIT
-
-        # Create output directories, although these might already exists since
-        # the log files are already being written
-        self._create_dir('output', self.get_product_outdir())
-        self._create_dir('work', self.get_product_workdir())
-        self._create_dir('log', self.get_product_logdir())
-        self._create_dir('figure', self.get_product_figdir())
-
-        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-    
-    def __step_init_validate_input_product(self, product):
-        if self.__product_cache is None or product not in self.__product_cache:
-            for i, visit, identity in self.__enumerate_visits():
-                try:
-                    self.__connector.locate_product(product, **identity.__dict__)
-                except FileNotFoundError:
-                    raise PipelineError(f'{product.__name__} file for visit `{visit}` not available.')
-        else:
-            for i, visit, identity in self.__enumerate_visits():
-                if visit not in self.__product_cache[product]:
-                    raise PipelineError(f'{product.__name__} for visit `{visit}` is not available.')
-    
-    #endregion
-    #region Step: Load
-
-    def __step_load(self):
-        """
-        Load the input data necessary for the pipeline. This does not include
-        the spectrum grid, etc.
-        """
-
-        # Load required data products that aren't already in the cache       
-        for t in self.__required_product_types:
-            self.__load_input_products(t)
-
-        # Extract the spectra of individual arms from the pfsSingle objects
-        for t in self.__required_product_types:
-            avail_arms = self.__get_avail_arms(t)
-        
-        # TODO: this should probably go to the respective steps
-        #       because the data product we use depends on the template fitting method
-        self.__spectra = self.__read_spectra(avail_arms)
-
-        if self.trace is not None:
-            self.trace.on_load(self.__spectra)
-
-        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-    
     def __load_input_products(self, product):
         """
         Load the source data product for each visit, if it's not already available.
@@ -477,17 +416,65 @@ class GA1DPipeline(Pipeline):
                     self.__product_cache[product][visit] = {}
                 
                 if identity.objId not in self.__product_cache[product][visit]:
-                    data, id, filename = self.__connector.load_product(product, identity=identity)
+                    data, id, filename = self.__repo.load_product(product, identity=identity)
                     self.__product_cache[product][visit][identity.objId] = data
                     q += 1
-            elif issubclass(product, PfsFiberArraySet):
+            elif issubclass(product, (PfsFiberArraySet, PfsDesign)):
                 # Data product contains multiple objects
                 if visit not in self.__product_cache[product]:
-                    data, id, filename = self.__connector.load_product(product, identity=identity)
+                    data, id, filename = self.__repo.load_product(product, identity=identity)
                     self.__product_cache[product][visit] = data
                     q += 1
+            else:
+                raise NotImplementedError('Product type not recognized.')
                
         logger.info(f'A total of {q} {product.__name__} data files loaded successfully for {self.__id}.')
+
+    def __unload_data_products(self):
+        # TODO: implement clean-up logic for batch processing mode
+        raise NotImplementedError()
+    
+    def __validate_product(self, product, visit, data):       
+        identity = self.__repo.get_identity(data)
+        filename = self.__repo.format_filename(type(data), identity=identity)
+
+        if issubclass(product, PfsFiberArray):
+            # Verify that it is a single visit and not a co-add
+            if data.nVisit != 1:
+                raise PipelineError('More than one visit found in `{pfsSingle.filename}`')
+            
+            # Verify that visit numbers match
+            if visit not in data.observations.visit:
+                raise PipelineError(f'Visit does not match visit ID found in `{filename}`.')
+            
+            if data.target.catId != self.config.target.catId:
+                raise PipelineError(f'catId in config `{self.config.target.catId}` does not match catID in `{filename}`.')
+
+            if data.target.objId != self.config.target.objId:
+                raise PipelineError(f'objId in config `{self.config.target.objId}` does not match objID in `{filename}`.')
+        elif issubclass(product, PfsFiberArraySet):
+            if visit != data.identity.visit:
+                raise PipelineError(f'Visit does not match visit ID found in `{filename}`.')
+        elif issubclass(product, PfsDesign):
+            if issubclass(product, PfsConfig):
+                # Verify that visit numbers match
+                if visit != data.visit:
+                    raise PipelineError(f'Visit does not match visit ID found in `{filename}`.')
+                
+            if self.config.target.identity.catId not in data.catId:
+                raise PipelineError(f'catId in config `{self.config.target.identity.catId}` does not match catID in `{filename}`.')
+            
+            if self.config.target.identity.objId not in data.objId:
+                raise PipelineError(f'objId in config `{self.config.target.identity.objId}` does not match objID in `{filename}`.')
+        else:
+            raise NotImplementedError('Product type not recognized.')
+        
+        # TODO: compare flags and throw a warning if bits are not the same in every file
+
+        # TODO: write log message
+    
+    #endregion
+    #region Read spectra from the data products
     
     def __get_avail_arms(self, product):
         """
@@ -501,8 +488,10 @@ class GA1DPipeline(Pipeline):
                 arms = self.__product_cache[product][visit][identity.objId].observations.arm[0]
             elif issubclass(product, PfsFiberArraySet):
                 arms = self.__product_cache[product][visit].identity.arm
+            else:
+                arms = ''
                     
-            avail_arms.update([ a for a in arms ])
+            avail_arms = avail_arms.union([ a for a in arms ])
 
         # TODO: add option to require that all observations contain all arms
 
@@ -510,147 +499,62 @@ class GA1DPipeline(Pipeline):
 
         return avail_arms
     
-    def __read_spectra(self, product, arms):
+    def __read_spectra(self, products, arms):
         # Extract spectra from the input products for each visit in a format
-        # required by pfsspec
+        # required by pfsspec. Also return observation metadata which will be
+        # required for the final output data product PfsGAObject.
 
-        read = 0
-        skipped = 0
+        r = PfsSpectrumReader()
+
+        read_count = 0
+        skipped_count = 0
 
         spectra = { arm: {} for arm in arms }
 
         for i, visit, identity in self.__enumerate_visits():
-
-            raise NotImplementedError()
-
-            pfsSingle = self.__pfsSingle[visit]
-
-            # nm -> A            
-            wave = Physics.nm_to_angstrom(pfsSingle.fluxTable.wavelength)
-
-            # Slice up by arm
             for arm in arms:
-                # Generate a mask based on arm limits
-                arm_mask = (self.config.arms[arm]['wave'][0] <= wave) & (wave <= self.config.arms[arm]['wave'][1])
+                wave_limits = self.config.arms[arm]['wave']
+                spec = PfsStellarSpectrum()
+                read = False
 
-                if arm not in pfsSingle.observations.arm[0] or arm_mask.sum() == 0:
-                    s = None
-                    skipped += 1
+                # Make sure PfsDesign is read first if it's in the list of products because
+                # other products might need information from it
+                # Cannot read a spectrum from a design file but can update its metadata
+                for t in products:
+                    if issubclass(t, PfsDesign):
+                        data = self.__product_cache[t][visit]
+                        r.read_from_pfsDesign(data, spec, arm=arm,
+                                                objid=identity.objId)
+                
+                for t in products:
+                    if issubclass(t, PfsFiberArray):
+                        data = self.__product_cache[t][visit][identity.objId]
+                        # TODO is the arm available?
+                        raise NotImplementedError()
+                        r.read_from_pfsFiberArray(data, spec, arm=arm, wave_limits=wave_limits)
+                        read = True
+                    elif issubclass(t, PfsFiberArraySet):
+                        data = self.__product_cache[t][visit]
+                        if arm in data.identity.arm:
+                            r.read_from_pfsFiberArraySet(data, spec, arm=arm,
+                                                         fiberid=spec.fiberid, wave_limits=wave_limits)
+                            read = True
+                    elif issubclass(t, PfsDesign):
+                        pass
+                    else:
+                        raise NotImplementedError('Product type not recognized.')
+
+                if read:
+                    spectra[arm][visit] = spec
+                    read_count += 1
                 else:
-                    s = self.__read_spectrum(i, arm, visit, pfsSingle, arm_mask)
-                    read += 1
+                    spectra[arm][visit] = None
+                    skipped_count += 1
 
-                spectra[arm][visit] = s
-
-        logger.info(f'Extracted {read} and skipped {skipped} spectra from PfsSingle files.')
+        logger.info(f'Extracted {read_count} and skipped {skipped_count} spectra.')
 
         return spectra
     
-    def __step_load_validate(self):
-        # Extract info from pfsSingle objects one by one and perform
-        # some validation steps
-
-        target = None
-
-        for visit in self.__pfsSingle.keys():
-            pfsSingle = self.__pfsSingle[visit]
-            self.__load_validate_pfsSingle(visit, pfsSingle)
-
-            # Make sure that targets are the same
-            if target is None:
-                target = pfsSingle.target
-            elif not target == pfsSingle.target:
-                raise PipelineError(f'Target information in PfsSingle files do not match.')
-
-        # TODO: Count spectra per arm and write report to log
-
-        if self.config.run_rvfit:
-            # Find a unique set of available arms in the pfsSingle files
-
-            # NOTE: for some reason, pfsSingle.observations.arm is a char array that contains a single string
-            #       in item 0 and not an array of characters
-
-            # Verify that all arms defined in the config are available
-            avail_arms = set(self.__spectra.keys())
-            fit_arms = set()
-            for arm in self.config.rvfit.fit_arms:
-                if self.config.rvfit.require_all_arms and arm not in avail_arms:
-                    raise PipelineError(f'RVFIT requires arm `{arm}` which is not observed.')
-                elif arm not in avail_arms:
-                    logger.warning(f'RVFIT requires arm `{arm}` which is not observed.')
-
-        # TODO: add validation for chemfit
-
-        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-    
-    def __load_validate_pfsSingle(self, visit, pfsSingle):
-        fn = pfsSingle.filenameFormat % {**pfsSingle.getIdentity(), 'visit': visit}
-
-        # Verify that it is a single visit and not a co-add
-        if pfsSingle.nVisit != 1:
-            raise PipelineError('More than one visit found in `{pfsSingle.filename}`')
-        
-        # Verify that visit numbers match
-        if visit not in pfsSingle.observations.visit:
-            raise PipelineError(f'Visit does not match visit ID found in `{fn}`.')
-        
-        if pfsSingle.target.catId != self.config.target.catId:
-            raise PipelineError(f'catId in config `{self.config.target.catId}` does not match catID in `{fn}`.')
-
-        if pfsSingle.target.objId != self.config.target.objId:
-            raise PipelineError(f'objId in config `{self.config.target.objId}` does not match objID in `{fn}`.')
-        
-        # TODO: compare flags and throw a warning if bits are not the same in every file
-
-        # TODO: write log message
-    
-    def __read_spectrum(self, i, arm, visit, pfsSingle, arm_mask):
-        # TODO: consider moving this routine to pfs.ga.pfsspec.survey
-
-        r = PfsStellarSpectrumReader()
-        s = r.read_from_pfsSingle(pfsSingle, i,
-                                  arm=arm, arm_mask=arm_mask,
-                                  ref_mag=self.config.ref_mag)
-
-        # Generate the ID string
-        s.id = Constants.PFSARM_ID_FORMAT.format(
-            catId=s.catId,
-            objId=s.objId,
-            tract=s.tract,
-            patch=s.patch,
-            visit=s.visit,
-            arm=s.arm,
-            spectrograph=s.spectrograph
-        )
-
-        # TODO: Consider using different mask bits for each pipeline step
-        # TODO: are mask bits the same for a rerun or they vary from file to file?
-        s.mask_bits = self.__get_mask_bits(pfsSingle, self.config.mask_flags)
-        
-        # TODO: add logic to accept some masked pixels if the number of unmasked pixels is low
-
-        # SNR
-        # TODO: make this configurable?
-        s.calculate_snr(QuantileSnr(0.75, binning=self.config.arms[arm]['pix_per_res']))
-
-        # Write number of masked/unmasked pixels to log
-        # TODO: review message and add IDs
-        mm = s.mask_as_bool()
-        logger.info(f'Spectrum {s.id} contains {np.sum(mm)} masked pixels and {np.sum(~mm)} unmasked pixels.')
-
-        self.__calc_spectrum_params(s)
-
-        return s
-    
-    def __calc_spectrum_params(self, s):
-        # s.airmass
-
-        # TODO: read MJD from somewhere
-        # Convert datetime to MJD using astropy
-        # Create datetime with UTC time zone (Hawaii: UTC - 10)
-        s.mjd = Astro.datetime_to_mjd(datetime(2023, 7, 24, 14, 0, 0, tzinfo=pytz.timezone('UTC')))
-        s.alt, s.az = Astro.radec_to_altaz(s.ra, s.dec, s.mjd)
-
     def __get_mask_bits(self, pfsSingle, mask_flags):
         if mask_flags is None:
             return None
@@ -661,22 +565,135 @@ class GA1DPipeline(Pipeline):
             return mask_bits
 
     #endregion
+    #region Step: Init
+
+    def __step_init(self):
+        # Save the full configuration to the output directory, if it's not already there
+        dir = self.get_product_workdir()
+        fn = self.__repo.format_filename(GA1DPipelineConfig, self.config.target.identity)
+        fn = os.path.join(dir, fn)
+        if not os.path.isfile(fn):
+            self.config.save(fn)
+            logger.info(f'Runtime configuration file saved to `{fn}`.')
+
+        # Verify stellar template grids and PSF files
+        if self.config.run_rvfit:
+            for arm in self.config.rvfit.fit_arms:
+                if isinstance(self.config.rvfit.model_grid_path, dict):
+                    fn = self.config.rvfit.model_grid_path[arm].format(arm=arm)
+                else:
+                    fn = self.config.rvfit.model_grid_path.format(arm=arm)
+                
+                if not os.path.isfile(fn):
+                    raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
+                else:
+                    logger.info(f'Using synthetic spectrum grid `{fn}` for arm `{arm}`.')
+                
+                if self.config.rvfit.psf_path is not None:
+                    fn = self.config.rvfit.psf_path.format(arm=arm)
+                    if not os.path.isfile(fn):
+                        raise FileNotFoundError(f'PSF file `{fn}` not found.')
+                    else:
+                        logger.info(f'Using PSF file `{fn}` for arm `{arm}`.')
+
+        # TODO: verify chemfit template paths, factor out the two into their respective functions
+
+        # Compile the list of required input data products
+        self.__required_product_types = set()
+        if self.config.run_rvfit:
+            self.__required_product_types.update([ getattr(pfs.datamodel, t) for t in self.config.rvfit.required_products ])
+        if self.config.run_chemfit:
+            self.__required_product_types.update([ getattr(pfs.datamodel, t) for t in self.config.chemfit.required_products ])
+
+        # Verify that input data files are available or the input products
+        # are already in the cache
+        for t in self.__required_product_types:
+            self.__validate_input_product(t)
+
+        # TODO: Verify photometry / prior files
+
+        # TODO: add validation steps for CHEMFIT
+
+        # Create output directories, although these might already exists since
+        # the log files are already being written
+        self._create_dir('output', self.get_product_outdir())
+        self._create_dir('work', self.get_product_workdir())
+        self._create_dir('log', self.get_product_logdir())
+        self._create_dir('figure', self.get_product_figdir())
+
+        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
+    
+    #endregion
+    #region Step: Load
+
+    def __step_load(self):
+        """
+        Load the input data necessary for the pipeline. This does not include
+        the spectrum grid, etc.
+        """
+
+        # Load required data products that aren't already in the cache       
+        for t in self.__required_product_types:
+            self.__load_input_products(t)
+
+        # TODO: load photometry / prior files
+
+        # TODO: add trace hook?
+
+        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
+    
+    def __step_load_validate(self):
+        # Extract info from pfsSingle objects one by one and perform
+        # some validation steps
+
+        target = None
+
+        for i, visit, identity in self.__enumerate_visits():
+            for product in self.__required_product_types:
+                if issubclass(product, PfsFiberArray):
+                    data = self.__product_cache[product][visit][identity.objId]
+
+                    # Make sure that targets are the same
+                    if target is None:
+                        target = data.target
+                    elif not target == data.target:
+                        raise PipelineError(f'Target information in PfsSingle files do not match.')
+
+                elif issubclass(product, PfsFiberArraySet):
+                    data = self.__product_cache[product][visit]
+                elif issubclass(product, PfsDesign):
+                    data = self.__product_cache[product][visit]
+                else:
+                    raise NotImplementedError('Product type not recognized.')
+
+                self.__validate_product(product, visit, data)
+
+        # TODO: Count spectra per arm and write report to log
+
+        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    #endregion
     #region Step: vcorr
 
     # TODO: these have to be moved to the 2D pipeline
 
     def __step_vcorr(self):
-        if self.config.v_corr is not None and self.config.v_corr.lower() != 'none':
-            self.__v_corr_calculate()
-            self.__v_corr_apply()
-            return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-        else:
-            logger.info('Velocity correction for geocentric frame is set to `none`, skipping corrections.')
-            return StepResults(success=True, skip_remaining=False, skip_substeps=True)
+        # if self.config.v_corr is not None and self.config.v_corr.lower() != 'none':
+        #     self.__v_corr_calculate()
+        #     self.__v_corr_apply()
+        #     return StepResults(success=True, skip_remaining=False, skip_substeps=False)
+        # else:
+        #     logger.info('Velocity correction for geocentric frame is set to `none`, skipping corrections.')
+        #     return StepResults(success=True, skip_remaining=False, skip_substeps=True)
+
+        return StepResults(success=True, skip_remaining=False, skip_substeps=True)
         
     def __v_corr_calculate(self):
         
         # TODO: logging + perf counter
+
+        # TODO: review this
+        raise NotImplementedError()
         
         self.__v_corr = {}
 
@@ -688,6 +705,9 @@ class GA1DPipeline(Pipeline):
                     self.__v_corr[visit] = Astro.v_corr(self.config.v_corr, s.ra, s.dec, s.mjd)
 
     def __v_corr_apply(self):
+
+        # TODO: review this
+        raise NotImplementedError()
 
         # Apply the velocity correction for each spectrum
         for arm in self.__spectra:
@@ -705,31 +725,58 @@ class GA1DPipeline(Pipeline):
         
     def __step_rvfit(self):
         """
-        Perform the RV fitting step.
+        Initialize the RV fitting step.
         """
         
         if not self.config.run_rvfit:
             logger.info('RV fitting is disabled, skipping step.')
             return StepResults(success=True, skip_remaining=False, skip_substeps=True)
+        
+        # Find the set of available arms in the available files
+        avail_arms = set()
+        for t in self.__required_product_types:
+            if issubclass(t, (PfsFiberArray, PfsFiberArraySet)):
+                avail_arms = avail_arms.union(self.__get_avail_arms(t))
 
-        # Collect arms that can be used for fitting
-        avail_arms = self.__get_avail_arms()
-        fit_arms = set(self.config.rvfit.fit_arms)
-        self.__rvfit_arms = avail_arms.intersection(fit_arms)
-
-        if len(self.__rvfit_arms) < len(fit_arms):
-            # TODO: list missing arms, include visit IDs
-            logger.warning(f'Not all arms required to run RVFit are available in the observations for `{self.__id}.')
-
-        # Collect spectra in a format that can be passed to RVFit
-        self.__rvfit_spectra = self.__rvfit_collect_spectra(self.__rvfit_arms)
-
+        # Verify that all arms required in the config are available
+        self.__rvfit_arms = set()
+        for arm in self.config.rvfit.fit_arms:
+            message = f'RVFIT requires arm `{arm}` which is not observed.'
+            if self.config.rvfit.require_all_arms and arm not in avail_arms:
+                raise PipelineError(message)
+            elif arm not in avail_arms:
+                logger.warning(message)
+            else:
+                self.__rvfit_arms.add(arm)
+        
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     def __step_rvfit_load(self):
+
         # Load template grids and PSFs
         self.__rvfit_grids = self.__rvfit_load_grid(self.__rvfit_arms)
+
+        # TODO: this will change once we get real PSFs from the 2DRP
+        # TODO: add trace hook to plot the PSFs
         self.__rvfit_psfs = self.__rvfit_load_psf(self.__rvfit_arms, self.__rvfit_grids)
+        
+        # Initialize the RVFit object
+        self.__rvfit = self.__rvfit_init(self.__rvfit_grids, self.__rvfit_psfs)
+
+        # Read the spectra from the data products
+        spectra = self.__read_spectra(self.__required_product_types, self.__rvfit_arms)
+        
+        # Collect spectra in a format that can be passed to RVFit
+        self.__rvfit_spectra = self.__rvfit_collect_spectra(spectra,
+                                                            self.__rvfit_arms,
+                                                            skip_fully_masked=True,
+                                                            skip_mostly_masked=False,
+                                                            skip_none=True,
+                                                            mask_flags=self.config.rvfit.mask_flags)
+        
+        if self.trace is not None:
+            self.trace.on_load(self.__rvfit_spectra)
+
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     def __rvfit_load_grid(self, arms):
@@ -786,6 +833,52 @@ class GA1DPipeline(Pipeline):
 
         return psfs
     
+    def __rvfit_collect_spectra(self,
+                                input_spectra,
+                                use_arms, 
+                                skip_fully_masked=False,
+                                skip_mostly_masked=False,
+                                skip_none=False,
+                                mask_flags=None):
+        """
+        Collect spectra that will be used to fit the RV and stacking.
+        Only add those arms where at least on spectrum is available.
+
+        If a visit is missing in one of the arms, the spectrum will be set to None.
+        """
+    
+        spectra = {}
+        for arm in use_arms:
+            for visit in sorted(input_spectra[arm].keys()):
+                spec = input_spectra[arm][visit]
+                if spec is not None:
+                    # Calculate mask bits
+                    if mask_flags is not None:
+                        mask_bits = spec.get_mask_bits(mask_flags)
+                    else:
+                        mask_bits = None
+
+                    mask = self.__rvfit.get_full_mask(spec, mask_bits=mask_bits)
+
+                    if mask.sum() == 0:
+                        logger.warning(f'All pixels in spectrum {spec.get_name()} are masked.')
+                        if skip_fully_masked:
+                            continue
+                        else:
+                            # Skip this spectrum because it is fully masked
+                            spec = None
+                    elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
+                        logger.warning(f'Not enough unmasked pixels in spectrum {spec.get_name()}.')
+                        if skip_mostly_masked:
+                            continue
+
+                if not skip_none or spec is not None:
+                    if arm not in spectra:
+                        spectra[arm] = []
+                    spectra[arm].append(spec)
+
+        return spectra
+    
     def __step_rvfit_preprocess(self):
         # TODO: validate available spectra here and throw warning if any of the arms are missing after
         #       filtering based on masks
@@ -793,8 +886,6 @@ class GA1DPipeline(Pipeline):
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
 
     def __step_rvfit_fit(self):
-        # Initialize the RVFit object
-        self.__rvfit = self.__rvfit_init(self.__rvfit_grids, self.__rvfit_psfs)
 
         # Determine the normalization factor to be used to keep continuum coefficients unity
         self.__rvfit.spec_norm, self.__rvfit.temp_norm = self.__rvfit.get_normalization(self.__rvfit_spectra)
@@ -835,40 +926,6 @@ class GA1DPipeline(Pipeline):
         rvfit.correction_model.init_from_args(None, None, self.config.rvfit.correction_model_args)
 
         return rvfit
-    
-    def __rvfit_collect_spectra(self, use_arms, skip_fully_masked=False, skip_mostly_masked=False, skip_none=False, mask_bits=None):
-        # Collect spectra that will be used to fit the RV and stacking
-        # Only add those arms where at least on spectrum is available
-
-        spectra = {}
-        for arm in use_arms:
-            for visit in sorted(self.__spectra[arm].keys()):
-                spec = self.__spectra[arm][visit]
-                if spec is not None:
-
-                    if self.__rvfit is not None:
-                        mask = self.__rvfit.get_full_mask(spec, mask_bits=mask_bits)
-                    else:
-                        mask = spec.mask_as_bool(bits=mask_bits)
-
-                    if mask.sum() == 0:
-                        logger.warning(f'All pixels in spectrum {spec.id} are masked.')
-                        if skip_fully_masked:
-                            continue
-                        else:
-                            # Skip this spectrum because it is fully masked
-                            spec = None
-                    elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
-                        logger.warning(f'Not enough unmasked pixels in spectrum {spec.id}.')
-                        if skip_mostly_masked:
-                            continue
-
-                if not skip_none or spec is not None:
-                    if arm not in spectra:
-                        spectra[arm] = []
-                    spectra[arm].append(spec)
-
-        return spectra
 
     def __step_rvfit_cleanup(self):
         # TODO: free up memory after rvfit
