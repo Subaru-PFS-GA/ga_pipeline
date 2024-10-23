@@ -18,7 +18,7 @@ PfsFileSystemConfig = SimpleNamespace(
         'rerundir': '$GAPIPE_RERUNDIR',
     },
     products = {
-        **PfsFileSystemConfigBase.product,
+        **PfsFileSystemConfigBase.products,
 
         GA1DPipelineConfig: SimpleNamespace(
             params = SimpleNamespace(
