@@ -40,20 +40,43 @@ class RVFitConfig(Config):
 
         self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
 
+        # Flags to treat as masked pixel, combined with logical or.
+        self.mask_flags = [
+            'BAD',
+            'BAD_FIBERTRACE',
+            'BAD_FLAT',
+            'BAD_FLUXCAL',
+            'BAD_SKY',
+            'CR',
+            'DETECTED',
+            'DETECTED_NEGATIVE',
+            'EDGE',
+            'FIBERTRACE',
+            'INTRP',
+            'IPC',
+            'NO_DATA',
+            'REFLINE',
+            'SAT',
+            'SUSPECT',
+            'UNMASKEDNAN'
+        ]
+
         # Correction model to use, either 'fluxcorr' or 'contnorm'. Use 'fluxcorr' for
         # flux correcting the fluxed stellar templates and 'contnorm' to continuum-normalize the
         # observations when fitting with normalized templates.
-        self.correction_model = 'fluxcorr'
-        self.correction_model_args = {
-            'flux_corr': True,
-            'flux_corr_deg': 10,
-            'flux_corr_per_arm': True,
-            'flux_corr_per_exp': True,
-        }
+        # self.required_products = [ 'PfsSingle' ]
+        # self.correction_model = 'fluxcorr'
+        # self.correction_model_args = {
+        #     'flux_corr': True,
+        #     'flux_corr_deg': 10,
+        #     'flux_corr_per_arm': True,
+        #     'flux_corr_per_exp': True,
+        # }
 
         # TODO: Example configuration with `contnomr`, which currently has no arguments
-        # self.correction_model = 'contnorm'
-        # self.correction_model_args = {}
+        self.required_products = [ 'PfsConfig', 'PfsMerged' ]
+        self.correction_model = 'contnorm'
+        self.correction_model_args = {}        
 
         # Arguments to pass to ModelGridTempFit
         # This is where we can set the parameter priors, etc.

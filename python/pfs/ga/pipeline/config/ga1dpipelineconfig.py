@@ -23,9 +23,6 @@ class GA1DPipelineConfig(PipelineConfig):
         # GA target object configuration
         self.target = target
 
-        # TODO: this has to be set by pipeline step, rvfit can use different than chemfit
-        self.input_product = 'pfsMerged'                      # pfsMerged, pfsSingle or pfsObject
-
         # TODO: need to get the photometry and priors from somewhere
 
         # GA pipeline configuration
@@ -48,33 +45,14 @@ class GA1DPipelineConfig(PipelineConfig):
                 wave = [ 9400, 12600 ],
                 pix_per_res = 3,
             ),
-        }  
+        }
 
+        # TODO
         self.ref_mag = 'hsc_g'                  # Reference magnitude
 
+        # TODO
         # Type of velocity corrections, 'barycentric' or 'heliocentric' or 'none'
         self.v_corr = 'barycentric'
-
-        # Flags to treat as masked pixel, combined with logical or.
-        self.mask_flags = [
-            'BAD',
-            'BAD_FIBERTRACE',
-            'BAD_FLAT',
-            'BAD_FLUXCAL',
-            'BAD_SKY',
-            'CR',
-            'DETECTED',
-            'DETECTED_NEGATIVE',
-            'EDGE',
-            'FIBERTRACE',
-            'INTRP',
-            'IPC',
-            'NO_DATA',
-            'REFLINE',
-            'SAT',
-            'SUSPECT',
-            'UNMASKEDNAN'
-        ]
         
         self.rvfit = rvfit
         self.run_rvfit = True
