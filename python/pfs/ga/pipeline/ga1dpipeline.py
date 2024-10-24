@@ -19,6 +19,7 @@ from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridT
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.io import PfsSpectrumReader
+from pfs.ga.pfsspec.survey.pfs.utils import *
 
 from .setup_logger import logger
 
@@ -83,10 +84,6 @@ class GA1DPipeline(Pipeline):
         self.__output_product_type = PfsGAObject
         self.__output_product = None            # output product
 
-        self.__pfsSingle = None                 # dict of pfsSingle, indexed by visit
-        self.__pfsMerged = None                 # dict of pfsMerged, indexed by visit
-        self.__pfsObject = None                 # dict of pfsObject, indexed by visit
-        self.__pfsConfig = None                 # dict of pfsConfig, indexed by visit
         self.__pfsGAObject = None
 
         self.__v_corr = None                    # velocity correction for each visit
@@ -135,11 +132,11 @@ class GA1DPipeline(Pipeline):
                     }
                 ]
             },
-            {
-                'name': 'vcorr',
-                'func': self.__step_vcorr,
-                'critical': False
-            },
+            # {
+            #     'name': 'vcorr',
+            #     'func': self.__step_vcorr,
+            #     'critical': False
+            # },
             {
                 'name': 'rvfit',
                 'func': self.__step_rvfit,
@@ -161,16 +158,16 @@ class GA1DPipeline(Pipeline):
                         'critical': True,
                     },
                     {
+                        'name': 'rvfit_coadd',
+                        'func': self.__step_rvfit_coadd,
+                        'critical': False
+                    },
+                    {
                         'name': 'rvfit_cleanup',
                         'func': self.__step_rvfit_cleanup,
                         'critical': True,
                     },
                 ]
-            },
-            {
-                'name': 'coadd',
-                'func': self.__step_coadd,
-                'critical': False
             },
             {
                 'name': 'chemfit',
@@ -213,8 +210,8 @@ class GA1DPipeline(Pipeline):
 
     def get_product_outdir(self):
         return self.__repo.format_dir(PfsGAObject,
-                                           self.config.target.identity,
-                                           variables={ 'datadir': self.config.outdir })
+                                      self.config.target.identity,
+                                      variables={ 'datadir': self.config.outdir })
 
     def get_loglevel(self):
         return self.config.loglevel
@@ -294,63 +291,7 @@ class GA1DPipeline(Pipeline):
         pass
 
     #region Object and visit identity
-
-    def __copy_target(self, orig):
-        # TODO: do we need this?
-        raise NotImplementedError()
-
-        # Copy the target object
-        return Target(
-            catId = orig.catId,
-            tract = orig.tract,
-            patch = orig.patch,
-            objId = orig.objId,
-            ra = orig.ra,
-            dec = orig.dec,
-            targetType = orig.targetType,
-            fiberFlux = orig.fiberFlux,
-        )
-    
-    def __merge_observations(self, observations):
-        # TODO: do we need this? We already have Observations object
-        raise NotImplementedError()
-
-        # Merge observations into a single object
-        visit = np.concatenate([ o.visit for o in observations ])
-        arm = np.concatenate([ o.arm for o in observations ])
-        spectrograph = np.concatenate([ o.spectrograph for o in observations ])
-        pfsDesignId = np.concatenate([ o.pfsDesignId for o in observations ])
-        fiberId = np.concatenate([ o.fiberId for o in observations ])
-        pfiNominal = np.concatenate([ o.pfiNominal for o in observations ])
-        pfiCenter = np.concatenate([ o.pfiCenter for o in observations ])
-
-        return Observations(
-            visit = visit,
-            arm = arm,
-            spectrograph = spectrograph,
-            pfsDesignId = pfsDesignId,
-            fiberId = fiberId,
-            pfiNominal = pfiNominal,
-            pfiCenter = pfiCenter,
-        )
-    
-    def __get_identity(self):
-        """
-        Returns an identity generated from the pfsSingle objects.
-        """
-
-        # TODO: is this function needed?
-        raise NotImplementedError()
-
-        first_visit = sorted(list(self.__pfsSingle.keys()))[0]
-        target = self.__copy_target(self.__pfsSingle[first_visit].target)
-        observations = self.__merge_observations([ self.__pfsSingle[visit].observations for visit in sorted(self.__pfsSingle.keys()) ])
-
-        identity = target.identity
-        identity.update(observations.getIdentity())
-
-        return target, observations, identity
-    
+        
     def __enumerate_visits(self):
         """
         Enumerate the visits in the configs and return an identity for each.
@@ -537,7 +478,8 @@ class GA1DPipeline(Pipeline):
                         data = self.__product_cache[t][visit]
                         if arm in data.identity.arm:
                             r.read_from_pfsFiberArraySet(data, spec, arm=arm,
-                                                         fiberid=spec.fiberid, wave_limits=wave_limits)
+                                                         fiberid=spec.fiberid,
+                                                         wave_limits=wave_limits)
                             read = True
                     elif issubclass(t, PfsDesign):
                         pass
@@ -555,15 +497,6 @@ class GA1DPipeline(Pipeline):
 
         return spectra
     
-    def __get_mask_bits(self, pfsSingle, mask_flags):
-        if mask_flags is None:
-            return None
-        else:
-            mask_bits = 0
-            for flag in mask_flags:
-                mask_bits |= pfsSingle.flags[flag]
-            return mask_bits
-
     #endregion
     #region Step: Init
 
@@ -769,9 +702,7 @@ class GA1DPipeline(Pipeline):
         # Collect spectra in a format that can be passed to RVFit
         self.__rvfit_spectra = self.__rvfit_collect_spectra(spectra,
                                                             self.__rvfit_arms,
-                                                            skip_fully_masked=True,
                                                             skip_mostly_masked=False,
-                                                            skip_none=True,
                                                             mask_flags=self.config.rvfit.mask_flags)
         
         if self.trace is not None:
@@ -836,20 +767,18 @@ class GA1DPipeline(Pipeline):
     def __rvfit_collect_spectra(self,
                                 input_spectra,
                                 use_arms, 
-                                skip_fully_masked=False,
                                 skip_mostly_masked=False,
-                                skip_none=False,
                                 mask_flags=None):
         """
         Collect spectra that will be used to fit the RV and stacking.
-        Only add those arms where at least on spectrum is available.
 
-        If a visit is missing in one of the arms, the spectrum will be set to None.
+        If all spectra are missing or fully masked in a visit, the visit will be skipped.
+        If all spectra are missing or fully masked in an arm, the arm will be skipped.
         """
     
-        spectra = {}
+        spectra = { arm: {} for arm in use_arms }
         for arm in use_arms:
-            for visit in sorted(input_spectra[arm].keys()):
+            for i, visit, identity in self.__enumerate_visits():
                 spec = input_spectra[arm][visit]
                 if spec is not None:
                     # Calculate mask bits
@@ -858,24 +787,43 @@ class GA1DPipeline(Pipeline):
                     else:
                         mask_bits = None
 
+                    # Calculate mask
                     mask = self.__rvfit.get_full_mask(spec, mask_bits=mask_bits)
 
                     if mask.sum() == 0:
                         logger.warning(f'All pixels in spectrum {spec.get_name()} are masked.')
-                        if skip_fully_masked:
-                            continue
-                        else:
-                            # Skip this spectrum because it is fully masked
-                            spec = None
+                        spec = None
                     elif mask.sum() < self.config.rvfit.min_unmasked_pixels:
                         logger.warning(f'Not enough unmasked pixels in spectrum {spec.get_name()}.')
                         if skip_mostly_masked:
-                            continue
+                            spec = None
 
-                if not skip_none or spec is not None:
-                    if arm not in spectra:
-                        spectra[arm] = []
-                    spectra[arm].append(spec)
+                spectra[arm][visit] = spec
+
+        # Remove all None visits
+        for i, visit, identity in self.__enumerate_visits():
+            non_zero = False
+            for arm in use_arms:
+                if spectra[arm][visit] is not None:
+                    non_zero = True
+                    break
+            if not non_zero:
+                for arm in spectra.keys():
+                    del spectra[arm][visit]
+
+        # Remove all None arms
+        for arm in use_arms:
+            non_zero = False
+            for visit in spectra[arm].keys():
+                if spectra[arm][visit] is not None:
+                    non_zero = True
+                    break
+            if not non_zero:
+                del spectra[arm]
+
+        # Convert dict of visits into lists for each arm
+        for arm in use_arms:
+            spectra[arm] = [ spectra[arm][visit] for visit in sorted(spectra[arm].keys()) ]
 
         return spectra
     
@@ -884,16 +832,6 @@ class GA1DPipeline(Pipeline):
         #       filtering based on masks
         
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-
-    def __step_rvfit_fit(self):
-
-        # Determine the normalization factor to be used to keep continuum coefficients unity
-        self.__rvfit.spec_norm, self.__rvfit.temp_norm = self.__rvfit.get_normalization(self.__rvfit_spectra)
-
-        # Run the maximum likelihood fitting
-        self.__rvfit_results = self.__rvfit.fit_rv(self.__rvfit_spectra)
-
-        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     def __rvfit_init(self, template_grids, template_psfs):
         """
@@ -901,14 +839,18 @@ class GA1DPipeline(Pipeline):
         """
 
         # Initialize the trace that will be used for logging and plotting
-        trace = ModelGridTempFitTrace(
-            id=self.__id,
-            figdir=self.config.figdir,
-            logdir=self.config.logdir)
-        
-        # Set the figure output file format
         if self.trace is not None:
+            trace = ModelGridTempFitTrace(id=self.__id)
+            trace.init_from_args(None, None, self.config.rvfit.trace_args)
+
+            # Set output directories based on pipeline trace
+            trace.figdir = self.trace.figdir
+            trace.logdir = self.trace.logdir
+
+            # Set the figure output file format
             trace.figure_formats = self.trace.figure_formats
+        else:
+            trace = None
 
         # Create the correction model which determines if we apply flux correction to
         # the templates or continuum-normalize the observations.
@@ -922,19 +864,21 @@ class GA1DPipeline(Pipeline):
 
         # Initialize the components from the configuration
         rvfit.init_from_args(None, None, self.config.rvfit.rvfit_args)
-        rvfit.trace.init_from_args(None, None, self.config.rvfit.trace_args)
         rvfit.correction_model.init_from_args(None, None, self.config.rvfit.correction_model_args)
 
         return rvfit
 
-    def __step_rvfit_cleanup(self):
-        # TODO: free up memory after rvfit
+    def __step_rvfit_fit(self):
+
+        # Determine the normalization factor to be used to keep continuum coefficients unity
+        self.__rvfit.spec_norm, self.__rvfit.temp_norm = self.__rvfit.get_normalization(self.__rvfit_spectra)
+
+        # Run the maximum likelihood fitting
+        self.__rvfit_results = self.__rvfit.fit_rv(self.__rvfit_spectra)
+
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-
-    #endregion
-    #region Co-add
-
-    def __step_coadd(self):
+    
+    def __step_rvfit_coadd(self):
         if not self.config.run_rvfit:
             logger.info('Spectrum stacking required RV fitting which is disabled, skipping step.')
             return StepResults(success=True, skip_remaining=True, skip_substeps=True)
@@ -942,52 +886,56 @@ class GA1DPipeline(Pipeline):
             logger.info('Spectrum stacking is disabled, skipping step.')
             return StepResults(success=True, skip_remaining=True, skip_substeps=True)
         
-        # Coadd the spectra
+        # Use the same input as for RV fitting and evaluate the templates and the
+        # continuum or flux correction function
+        spectra = self.__rvfit_spectra
+        templates = self.__rvfit_coadd_get_templates(spectra)
+        corrections = self.__rvfit_coadd_eval_correction(spectra, templates)
+        
+        # We can only coadd arms that have been used for RV fitting
+        coadd_arms = set(self.config.coadd.coadd_arms).intersection(spectra.keys())
 
-        first_visit = sorted(list(self.__pfsSingle.keys()))[0]
-        no_data_bit = self.__pfsSingle[first_visit].flags['NO_DATA']
+        if len(coadd_arms) < len(self.config.coadd.coadd_arms):
+            logger.warning('Not all arms required for co-adding are available from rvfit.')
 
-        # Collect arms that can be used for fitting
-        # We can only coadd spectra that have been processed through RV fit
-
-        avail_arms = set(self.__spectra.keys())
-        rvfit_arms = set(self.config.rvfit.fit_arms)
-        stack_arms = set(self.config.coadd.coadd_arms)
-        use_arms = avail_arms.intersection(rvfit_arms.intersection(stack_arms))
-
-        spectra = self.__rvfit_collect_spectra(use_arms)
-
-        # TODO: Validate here
-
-        # TODO: v_corr has already been applied to the spectra, so we only have to apply the
-        #       flux correction here. Since the flux correction normalizes the spectra to an
-        #       arbitrary value of unity, we'll have to recalibrate the flux based on broadband
-        #       magnitudes or else.
-
-        self.__stacker = self.__coadd_init()
-
-        # TODO: now we stack each arm separately and merge at the end. This will have to change
-        #       we want to process spectra that overlap between arms
-
-        templates = self.__coadd_get_templates(spectra)
-        flux_corr = self.__coadd_eval_correction(spectra, templates)
-
-        self.__stacking_results = {}
+        # Make sure that the bit flags are the same for all spectra
+        # TODO: any more validation here?
+        no_data_bit = None
+        mask_flags = None
         for arm in spectra:
-            # Only stack those spectra that are not None
+            for s in spectra[arm]:
+                if s is not None:
+                    if no_data_bit is None:
+                        no_data_bit = s.get_mask_bits([ self.config.coadd.no_data_flag ])
+
+                    if mask_flags is None:
+                        mask_flags = s.mask_flags
+                    elif mask_flags != s.mask_flags:
+                        logger.warning('Mask flags are not the same for all spectra.')
+
+        # Initialize the stacker algorithm
+        self.__stacker = self.__rvfit_coadd_init()
+
+        # TODO: add trace hook to plot the templates and corrections?
+
+        self.__coadd_spectra = {}
+        for arm in spectra:
+            # Only stack those spectra that are not masked or otherwise None
             ss = [ s for s in spectra[arm] if s is not None ]
-            fc = [ f for f in flux_corr[arm] if f is not None ]
+            fc = [ f for f in corrections[arm] if f is not None ]
             if len(ss) > 0:
                 stacked_wave, stacked_wave_edges, stacked_flux, stacked_error, stacked_weight, stacked_mask = \
                     self.__stacker.stack(ss, flux_corr=fc)
                 
                 # Mask out bins where the weight is zero
+                # TODO: move this to the stacker algorithm
                 stacked_mask = np.where(stacked_weight == 0, stacked_mask | no_data_bit, stacked_mask)
 
                 # Create a spectrum
                 spec = PfsStellarSpectrum()
 
                 # TODO: fill in ids?
+                #       calculate S/N etc.
 
                 spec.wave = stacked_wave
                 spec.wave_edges = stacked_wave_edges
@@ -995,31 +943,70 @@ class GA1DPipeline(Pipeline):
                 spec.flux_err = stacked_error
                 spec.mask = stacked_mask
 
-                self.__stacking_results[arm] = spec
+                self.__coadd_spectra[arm] = spec
             else:
-                self.__stacking_results[arm] = None
+                self.__coadd_spectra[arm] = None
+
+        # Merge arms into a single spectrum
+        # TODO: this won't work with overlapping arms! Need to merge them properly.
+        arms = sort_arms(spectra.keys())
+        self.__coadd_merged = PfsStellarSpectrum()
+        self.__coadd_merged.wave = np.concatenate([ self.__coadd_spectra[arm].wave for arm in arms ])
+        self.__coadd_merged.wave_edges = np.concatenate([ self.__coadd_spectra[arm].wave_edges for arm in arms ])
+        self.__coadd_merged.flux = np.concatenate([ self.__coadd_spectra[arm].flux for arm in arms ])
+        self.__coadd_merged.flux_err = np.concatenate([ self.__coadd_spectra[arm].flux_err for arm in arms ])
+        self.__coadd_merged.mask = np.concatenate([ self.__coadd_spectra[arm].mask for arm in arms ])
+
+        # TODO: sky? covar? covar2? - these are required for a valid PfsFiberArray
+        self.__coadd_merged.sky = np.zeros(self.__coadd_merged.wave.shape)
+        self.__coadd_merged.covar = np.zeros((3,) + self.__coadd_merged.wave.shape)
+        self.__coadd_merged.covar2 = np.zeros((1, 1), dtype=np.float32)
+
+        # Merge observation metadata
+        observations = []
+        target = None
+        mask_flags = None
+        for arm in self.__rvfit_spectra:
+            for s in self.__rvfit_spectra[arm]:
+                if s is not None:
+                    observations.append(s.observations)
+                    if target is None:
+                        target = s.target
+                        mask_flags = s.mask_flags
+        
+        # Merge all observations into a final list
+        self.__coadd_merged.target = target
+        self.__coadd_merged.observations = merge_observations(observations)
+        self.__coadd_merged.mask_flags = mask_flags
+
+        # TODO: do we need mode metadata?
 
         # TODO: trace hook
         
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-    
-    def __coadd_init(self):
-        trace = StackerTrace(
-            id=self.__id,
-            figdir=self.config.figdir,
-            logdir=self.config.logdir)
-        
+           
+    def __rvfit_coadd_init(self):
+        # Initialize the trace object if tracing is enabled for the pipeline
         if self.trace is not None:
-            trace.figure_formats = [ '.png' ]
+            trace = StackerTrace(id=self.__id)
+            trace.init_from_args(None, None, self.config.coadd.trace_args)
 
+            # Set output directories based on pipeline trace
+            trace.figdir = self.trace.figdir
+            trace.logdir = self.trace.logdir
+
+            # Set the figure output file format
+            trace.figure_formats = self.trace.figure_formats
+        else:
+            trace = None
+
+        # Initialize the stacker object
         stacker = Stacker(trace)
-
         stacker.init_from_args(None, None, self.config.coadd.stacker_args)
-        stacker.trace.init_from_args(None, None, self.config.coadd.trace_args)
 
         return stacker
     
-    def __coadd_get_templates(self, spectra):
+    def __rvfit_coadd_get_templates(self, spectra):
         # Return the templates at the best fit parameters
 
         # Interpolate the templates to the best fit parameters
@@ -1032,8 +1019,8 @@ class GA1DPipeline(Pipeline):
 
         return templates
     
-    def __coadd_eval_correction(self, spectra, templates):
-        # Evaluate the correction correction for every exposure of each arm.
+    def __rvfit_coadd_eval_correction(self, spectra, templates):
+        # Evaluate the correction for every exposure of each arm.
         # Depending on the configuration, the correction is either a multiplicative
         # flux correction, or a model fitted to continuum pixels. The correction model
         # is used to normalize the spectra before coadding.
@@ -1048,6 +1035,10 @@ class GA1DPipeline(Pipeline):
             self.trace.on_coadd_eval_correction(spectra, templates, corr, self.__rvfit.spec_norm, self.__rvfit.temp_norm)
         
         return corr
+    
+    def __step_rvfit_cleanup(self):
+        # TODO: free up memory after rvfit
+        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
 
     #endregion
     #region CHEMFIT
@@ -1064,52 +1055,44 @@ class GA1DPipeline(Pipeline):
 
     def __step_save(self):
         # Construct the output object based on the results from the pipeline steps
-
-        # Copy target from any of the PfsSingle objects
-        first_visit = sorted(list(self.__pfsSingle.keys()))[0]
-        target = self.__copy_target(self.__pfsSingle[first_visit].target)
-        observations = self.__merge_observations([ self.__pfsSingle[visit].observations for visit in sorted(self.__pfsSingle.keys()) ])
-        flags = self.__copy_flags(self.__pfsSingle[first_visit].flags)
-        metadata = {}       # TODO
-
-
-        # TODO: replace this with the stacked spectrum
-        wavelength = self.__pfsSingle[first_visit].wavelength
-        flux = self.__pfsSingle[first_visit].flux
-        mask = self.__pfsSingle[first_visit].mask
-        sky = self.__pfsSingle[first_visit].sky
-        covar = self.__pfsSingle[first_visit].covar
-        covar2 = self.__pfsSingle[first_visit].covar2
-
-        # TODO: replace this with the stacked spectrum
+        # TODO: 
+        metadata = {}
         flux_table = None
 
         stellar_params = self.__get_stellar_params()
         stellar_params_covar = self.__rvfit_results.cov
-        velocity_corrections = self.__get_velocity_corrections()
+        velocity_corrections = self.__get_velocity_corrections(self.__coadd_merged.observations)
         abundances = self.__get_abundances()
         abundances_covar = None
         notes = PfsGAObjectNotes()
 
-        self.__pfsGAObject = PfsGAObject(target, observations,
-                                  wavelength, flux, mask, sky, covar, covar2,
-                                  flags, metadata,
-                                  flux_table,
-                                  stellar_params,
-                                  velocity_corrections,
-                                  abundances,
-                                  stellar_params_covar,
-                                  abundances_covar,
-                                  notes)
+        self.__pfsGAObject = PfsGAObject(
+            self.__coadd_merged.target,
+            self.__coadd_merged.observations,
+            self.__coadd_merged.wave,
+            self.__coadd_merged.flux,
+            self.__coadd_merged.mask,
+            self.__coadd_merged.sky,
+            self.__coadd_merged.covar,
+            self.__coadd_merged.covar2,
+            MaskHelper(**{ v: k for k, v in self.__coadd_merged.mask_flags.items() }),
+            metadata,
+            flux_table,
+            stellar_params,
+            velocity_corrections,
+            abundances,
+            stellar_params_covar,
+            abundances_covar,
+            notes)
 
         # Save output FITS file
-        dir, fn = self.__get_pfsGAObject_dir_filename()
-        self.__pfsGAObject.writeFits(os.path.join(dir, fn))
+        identity, filename = self.__repo.save_product(
+            self.__pfsGAObject,
+            variables={ 'datadir': self.config.outdir })
+        
+        logger.info(f'Output file saved to `{filename}`.')
 
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
-    
-    def __copy_flags(self, flags):
-        return MaskHelper(**flags.flags)
     
     def __get_stellar_params(self):
         # Extract stellar parameters from rvfit results
@@ -1154,19 +1137,19 @@ class GA1DPipeline(Pipeline):
             status=np.array(status),
         )
     
-    def __get_velocity_corrections(self):
-        visit = list(sorted(self.__pfsSingle.keys()))
+    def __get_velocity_corrections(self, observations):
+        # Assume observations are sorted by visit
 
         # TODO: not obs time data in any of the headers!
-        JD = [ 0.0 for v in visit]
-        helio = [ 0.0 for v in visit]
-        bary = [ 0.0 for v in visit]
+        JD = [ 0.0 for v in observations.visit]
+        helio = [ 0.0 for v in observations.visit]
+        bary = [ 0.0 for v in observations.visit]
 
         return VelocityCorrections(
-            visit=np.array(visit),
-            JD=np.array(JD),
-            helio=np.array(helio),
-            bary=np.array(bary),
+            visit=np.atleast_1d(observations.visit),
+            JD=np.atleast_1d(JD),
+            helio=np.atleast_1d(helio),
+            bary=np.atleast_1d(bary),
         )
     
     def __get_abundances(self):
