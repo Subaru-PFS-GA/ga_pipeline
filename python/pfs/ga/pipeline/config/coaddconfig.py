@@ -16,10 +16,11 @@ class CoaddConfig(Config):
     def __init__(self):
 
         self.coadd_arms = [ 'b', 'm', 'n' ]
+        self.no_data_flag = 'NO_DATA'
 
         self.stacker_args = {
             'binning': 'lin',
-            'binsize': 0.5,         # Angstroms
+            'binsize': 0.5,                     # Angstroms
         }
 
         self.trace_args = {

@@ -76,11 +76,17 @@ class RVFitConfig(Config):
         # TODO: Example configuration with `contnomr`, which currently has no arguments
         self.required_products = [ 'PfsConfig', 'PfsMerged' ]
         self.correction_model = 'contnorm'
-        self.correction_model_args = {}        
+        self.correction_model_args = {
+            'cont_per_arm': True,
+            'cont_per_exp': True,
+        }        
 
         # Arguments to pass to ModelGridTempFit
         # This is where we can set the parameter priors, etc.
         self.rvfit_args = {
+            'amplitude_per_arm': True,
+            'amplitude_per_exp': True,
+
             "M_H": [ -2.5, 0.0 ],
             "M_H_dist": [ "normal", -1.5, 0.5 ],
             "T_eff": [ 4000, 6000 ],
