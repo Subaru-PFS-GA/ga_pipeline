@@ -66,7 +66,9 @@ class Run(Script):
         self.__trace = GA1DPipelineTrace()
         self.__pipeline = GA1DPipeline(script=self, repo=self.__repo, trace=self.__trace)
 
-        # Override logging directory to use the same as the pipeline workdir
+        # Override logging directory to use the same as the workdir
+        # This is not the location where the pipeline itself will write the logs
+        # because that's the workdir of the output product
         log_file = os.path.basename(self.log_file)
         self.log_file = os.path.join(self.__repo.get_resolved_variable('workdir'), log_file)
 
@@ -104,8 +106,9 @@ class Run(Script):
 
         # Get the log file name and set figdir and logdir of the trace to the same directory
         logfile = self.__pipeline.get_product_logfile()
-        self.__trace.logdir = os.path.dirname(logfile)
-        self.__trace.figdir = os.path.dirname(logfile)
+        logdir = os.path.dirname(logfile)
+        self.__trace.logdir = logdir
+        self.__trace.figdir = logdir
 
         # Reconfigure logging according to the configuration
         self.push_log_settings()

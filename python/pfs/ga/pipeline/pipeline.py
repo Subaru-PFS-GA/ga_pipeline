@@ -125,7 +125,6 @@ class Pipeline():
     
     def __start_tracing(self):
         if self.__trace is not None:
-            self.__trace.figdir = self.__config.figdir
             logger.info(f'Tracing initialized. Figure directory is `{self.__config.figdir}`.')
 
     def __stop_tracing(self):
