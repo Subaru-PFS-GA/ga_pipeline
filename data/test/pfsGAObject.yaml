@@ -1,7 +1,7 @@
+workdir: /datascope/subaru/user/dobos/gapipe/work
 datadir: /datascope/subaru/data/commissioning
 rerundir: run17/20240604
-workdir: /datascope/subaru/user/dobos/gapipe/work/rerun/run17/20240604/pfsGAObject/10015/00001/1,1/pfsGAObject-10015-00001-1,1-0000000000000003-010-0x40137cf8387c4130
-outdir: /datascope/subaru/user/dobos/gapipe/out/rerun/run17/20240604/pfsGAObject/10015/00001/1,1
+outdir: null
 target:
   proposalId: S24A-EN16-GA1
   targetType: 1
@@ -166,29 +166,46 @@ arms:
     pix_per_res: 3
 ref_mag: hsc_g
 v_corr: barycentric
-mask_flags:
-- BAD
-- CR
-- SAT
-- UNMASKEDNAN
 rvfit:
   fit_arms:
   - b
   - m
+  - n
   require_all_arms: true
-  model_grid_path: /datascope/subaru/data/pfsspec/models/stellar/grid/phoenix/phoenix_HiRes/spectra.h5
+  model_grid_path: null
   model_grid_args: null
   model_grid_mmap: true
   model_grid_preload: false
-  psf_path: /datascope/subaru/data/pfsspec/subaru/pfs/psf/import/{arm}.real/gauss.h5
+  psf_path: null
   min_unmasked_pixels: 3000
-  correction_model: fluxcorr
+  mask_flags:
+  - BAD
+  - BAD_FIBERTRACE
+  - BAD_FLAT
+  - BAD_FLUXCAL
+  - BAD_SKY
+  - CR
+  - DETECTED
+  - DETECTED_NEGATIVE
+  - EDGE
+  - FIBERTRACE
+  - INTRP
+  - IPC
+  - NO_DATA
+  - REFLINE
+  - SAT
+  - SUSPECT
+  - UNMASKEDNAN
+  required_products:
+  - PfsConfig
+  - PfsMerged
+  correction_model: contnorm
   correction_model_args:
-    flux_corr: true
-    flux_corr_deg: 10
-    flux_corr_per_arm: true
-    flux_corr_per_exp: true
+    cont_per_arm: true
+    cont_per_exp: true
   rvfit_args:
+    amplitude_per_arm: true
+    amplitude_per_exp: true
     M_H:
     - -2.5
     - 0.0
@@ -215,10 +232,6 @@ rvfit:
     - -300
     - 300
     resampler: interp
-    flux_corr_per_arm: true
-    flux_corr_per_exp: true
-    amplitude_per_arm: true
-    amplitude_per_exp: true
   trace_args:
     plot_priors: true
     plot_rv_guess: true
@@ -235,36 +248,43 @@ rvfit:
         plot_processed_template: false
         plot_flux_err: false
         plot_residuals: true
-      pfsGA-RVFit-best-400nm-{id}:
-        wlim:
-        - 385
-        - 405
-        plot_spectrum: true
-        plot_processed_template: true
-        plot_flux_err: true
-        plot_residuals: false
-      pfsGA-RVFit-best-Ca-{id}:
-        wlim:
-        - 849
-        - 870
-        plot_spectrum: true
-        plot_processed_template: true
-        plot_flux_err: true
-        plot_residuals: false
     plot_params_priors: true
     plot_params_cov: true
-    plot_level: 1
 run_rvfit: true
 coadd:
   coadd_arms:
   - b
   - m
+  - n
+  no_data_flag: NO_DATA
   stacker_args:
     binning: lin
     binsize: 0.5
   trace_args: {}
 run_coadd: true
-chemfit: {}
+chemfit:
+  min_unmasked_pixels: 3000
+  mask_flags:
+  - BAD
+  - BAD_FIBERTRACE
+  - BAD_FLAT
+  - BAD_FLUXCAL
+  - BAD_SKY
+  - CR
+  - DETECTED
+  - DETECTED_NEGATIVE
+  - EDGE
+  - FIBERTRACE
+  - INTRP
+  - IPC
+  - NO_DATA
+  - REFLINE
+  - SAT
+  - SUSPECT
+  - UNMASKEDNAN
+  required_products:
+  - pfsConfig
+  - pfsMerged
 run_chemfit: false
 trace_args: {}
 logdir: null
