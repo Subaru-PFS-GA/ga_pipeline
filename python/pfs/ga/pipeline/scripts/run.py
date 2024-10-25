@@ -5,11 +5,10 @@ import logging
 
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo
 
-from .script import Script
+from ..common.script import Script
 from ..constants import Constants
-from ..config import GA1DPipelineConfig
-from ..ga1dpipeline import GA1DPipeline
-from ..ga1dpipelinetrace import GA1DPipelineTrace
+from ..gapipe import GAPipeline, GAPipelineTrace
+from ..gapipe.config import GAPipelineConfig
 from ..repo import PfsFileSystemConfig
 
 from ..setup_logger import logger
@@ -31,7 +30,9 @@ class Run(Script):
         self.__pipeline = None          # Pipeline object
         self.__trace = None             # Pipeline trace object
 
-        self.__config_files = None      # Pipeline configuration files
+        # Pipeline configuration files defined on the command line
+        # The pipeline will be executed for each of these files
+        self.__config_files = None      
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='?', help='Configuration file')
@@ -63,8 +64,8 @@ class Run(Script):
         super().prepare()
 
         # Create the pipeline and the trace object
-        self.__trace = GA1DPipelineTrace()
-        self.__pipeline = GA1DPipeline(script=self, repo=self.__repo, trace=self.__trace)
+        self.__trace = GAPipelineTrace()
+        self.__pipeline = GAPipeline(script=self, repo=self.__repo, trace=self.__trace)
 
         # Override logging directory to use the same as the workdir
         # This is not the location where the pipeline itself will write the logs
@@ -80,7 +81,7 @@ class Run(Script):
         if self.__config is not None:
             self.__config_files = [ self.__config ]
         else:
-            self.__config_files, _ = self.__repo.locate_product(GA1DPipelineConfig)
+            self.__config_files, _ = self.__repo.locate_product(GAPipelineConfig)
 
         for i, config_file in enumerate(self.__config_files):
             self.__run_pipeline(config_file)
@@ -88,7 +89,7 @@ class Run(Script):
     def __run_pipeline(self, config_file):
         
         # Load the configuration
-        config = GA1DPipelineConfig()
+        config = GAPipelineConfig()
         config.load(config_file, ignore_collisions=True)
         self.__update_directories(config)
 
@@ -126,6 +127,7 @@ class Run(Script):
         logger.info(f'Using configuration file(s) `{config.config_files}`.')
         
         # Validate the pipeline configuration
+        # TODO: make these pipeline steps
         self.__pipeline.validate_config()
         self.__pipeline.validate_libs()
         

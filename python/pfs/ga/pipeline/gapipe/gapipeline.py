@@ -21,18 +21,18 @@ from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.io import PfsSpectrumReader
 from pfs.ga.pfsspec.survey.pfs.utils import *
 
-from .setup_logger import logger
+from ..constants import Constants
+from ..util import Timer
+from ..common import Script, Pipeline, PipelineStepResults, PipelineError
+from ..repo import PfsFileSystemConfig
+from .config import GAPipelineConfig
+from .gapipelinetrace import GAPipelineTrace
+from .gapipelinestate import GAPipelineState
+from .steps import *
 
-from .constants import Constants
-from .util import Timer
-from .scripts.script import Script
-from .pipeline import Pipeline, StepResults
-from .pipelineerror import PipelineError
-from .config import GA1DPipelineConfig
-from .ga1dpipelinetrace import GA1DPipelineTrace
-from .repo import PfsFileSystemConfig
+from ..setup_logger import logger
 
-class GA1DPipeline(Pipeline):
+class GAPipeline(Pipeline):
     """
     Implements the Galactic Archeology Spectrum Processing Pipeline.
 
@@ -51,9 +51,9 @@ class GA1DPipeline(Pipeline):
 
     def __init__(self,
                  script: Script = None,
-                 config: GA1DPipelineConfig = None,
+                 config: GAPipelineConfig = None,
                  repo: FileSystemRepo = None,
-                 trace: GA1DPipelineTrace = None,
+                 trace: GAPipelineTrace = None,
                  id: str = None):
         """
         Initializes a GA Pipeline object for processing of individual exposures of a
@@ -63,10 +63,10 @@ class GA1DPipeline(Pipeline):
         ----------
         script: :obj:`Script`
             Script object for logging and command-line arguments
-        config: :obj:`GA1DPipelineConfig`
+        config: :obj:`GAPipelineConfig`
             Configuration of the GA pipeline
         connector: :obj:`FileSystemRepo`
-        trace: :obj:`GA1DPipelineTrace`
+        trace: :obj:`GAPipelineTrace`
             Trace object for logging and plotting
         """
         
@@ -74,15 +74,8 @@ class GA1DPipeline(Pipeline):
 
         self.__id = id                          # Identity represented as string
         self.__repo = repo
-
-        self._steps = self.__create_steps()
        
         # list of data products to be loaded
-        self.__required_product_types = None
-        self.__product_cache = None             # cache of loaded products
-
-        self.__output_product_type = PfsGAObject
-        self.__output_product = None            # output product
 
         self.__pfsGAObject = None
 
@@ -113,11 +106,30 @@ class GA1DPipeline(Pipeline):
 
         # TODO: reset anything else?
 
-    def __create_steps(self):
+    def create_context(self, state=None, trace=None):
+        context = super().create_context(state=state, trace=trace)
+        context.repo = self.__repo
+        return context
+
+    def create_state(self, pipeline=None, config=None):
+        """
+        Instantiate a state object that will be passed to each step of the pipeline.
+        """
+
+        return GAPipelineState(self.__id)
+    
+    def destroy_state(self, state):
+        """
+        Clean up the state object after the pipeline execution.
+        """
+        super().destroy_state(state)
+
+    def create_steps(self):
         return [
             {
+                'type': InitStep,
                 'name': 'init',
-                'func': self.__step_init,
+                'func': InitStep.run,
                 'critical': True,
             },
             {
@@ -196,15 +208,10 @@ class GA1DPipeline(Pipeline):
 
     id = property(__get_id, __set_id)
 
-    def __get_pfsGAObject(self):
-        return self.__pfsGAObject
-    
-    pfsGAObject = property(__get_pfsGAObject)
-
     #endregion
 
     def get_product_workdir(self):
-        return self.__repo.format_dir(GA1DPipelineConfig,
+        return self.__repo.format_dir(GAPipelineConfig,
                                            self.config.target.identity,
                                            variables={ 'datadir': self.config.workdir })
 
@@ -234,7 +241,7 @@ class GA1DPipeline(Pipeline):
         """
 
         dir = self.get_product_workdir()
-        filename = self.__repo.format_filename(GA1DPipelineConfig, self.config.target.identity)
+        filename = self.__repo.format_filename(GAPipelineConfig, self.config.target.identity)
         filename, _ = os.path.splitext(filename)
         if self.config.logdir is not None:
             return os.path.join(dir, self.config.logdir, filename + '.log')
@@ -273,14 +280,16 @@ class GA1DPipeline(Pipeline):
             `True` if the pipeline can proceed or 'False' if it cannot.
         """
 
+        # TODO: this should go to the init step
+
         # Verify output and log directories
-        self._test_dir('output', self.config.outdir, must_exist=False)
-        self._test_dir('work', self.config.workdir, must_exist=False)
-        self._test_dir('log', self.get_product_logdir(), must_exist=False)
-        self._test_dir('figure', self.get_product_figdir(), must_exist=False)
+        self.test_dir('output', self.config.outdir, must_exist=False)
+        self.test_dir('work', self.config.workdir, must_exist=False)
+        self.test_dir('log', self.get_product_logdir(), must_exist=False)
+        self.test_dir('figure', self.get_product_figdir(), must_exist=False)
         
-        self._test_dir('data', self.__repo.get_resolved_variable('datadir'))
-        self._test_dir('rerun', os.path.join(self.__repo.get_resolved_variable('datadir'),
+        self.test_dir('data', self.__repo.get_resolved_variable('datadir'))
+        self.test_dir('rerun', os.path.join(self.__repo.get_resolved_variable('datadir'),
                                              'rerun',
                                              self.__repo.get_resolved_variable('rerundir')))
         
@@ -288,11 +297,14 @@ class GA1DPipeline(Pipeline):
     
     def validate_libs(self):
         # TODO: write code to validate library versions and log git hash for each when available
+
+        # TODO: this should go to the init step
+
         pass
 
     #region Object and visit identity
         
-    def __enumerate_visits(self):
+    def enumerate_visits(self):
         """
         Enumerate the visits in the configs and return an identity for each.
         """
@@ -304,28 +316,7 @@ class GA1DPipeline(Pipeline):
     #endregion
     #region Load and validate input products
 
-    def __validate_input_product(self, product):
-        for i, visit, identity in self.__enumerate_visits():
-            if self.__product_cache is not None and product in self.__product_cache:
-                if issubclass(product, PfsFiberArray):
-                    # Data product contains a single object
-                    if visit in self.__product_cache[product]:
-                        if identity.objId in self.__product_cache[product][visit]:
-                            # Product is already in the cache, skip
-                            continue
-                elif issubclass(product, PfsFiberArraySet):
-                    # Data product contains multiple objects
-                    if visit in self.__product_cache[product]:
-                        # Product is already in the cache, skip
-                        continue
-                else:
-                    raise NotImplementedError('Product type not recognized.')
-                
-            # Product not found in cache of cache is empty, look up the file location
-            try:
-                self.__repo.locate_product(product, **identity.__dict__)
-            except FileNotFoundError:
-                raise PipelineError(f'{product.__name__} file for visit `{visit}` not available.')
+
                 
     def __load_input_products(self, product):
         """
@@ -350,7 +341,7 @@ class GA1DPipeline(Pipeline):
             self.__product_cache[product] = {}
 
         q = 0
-        for i, visit, identity in self.__enumerate_visits():
+        for i, visit, identity in self.enumerate_visits():
             if issubclass(product, PfsFiberArray):
                 # Data product contains a single object
                 if visit not in self.__product_cache[product]:
@@ -424,7 +415,7 @@ class GA1DPipeline(Pipeline):
 
         avail_arms = set()
 
-        for i, visit, identity in self.__enumerate_visits():
+        for i, visit, identity in self.enumerate_visits():
             if issubclass(product, PfsFiberArray):
                 arms = self.__product_cache[product][visit][identity.objId].observations.arm[0]
             elif issubclass(product, PfsFiberArraySet):
@@ -452,7 +443,7 @@ class GA1DPipeline(Pipeline):
 
         spectra = { arm: {} for arm in arms }
 
-        for i, visit, identity in self.__enumerate_visits():
+        for i, visit, identity in self.enumerate_visits():
             for arm in arms:
                 wave_limits = self.config.arms[arm]['wave']
                 spec = PfsStellarSpectrum()
@@ -500,61 +491,6 @@ class GA1DPipeline(Pipeline):
     #endregion
     #region Step: Init
 
-    def __step_init(self):
-        # Save the full configuration to the output directory, if it's not already there
-        dir = self.get_product_workdir()
-        fn = self.__repo.format_filename(GA1DPipelineConfig, self.config.target.identity)
-        fn = os.path.join(dir, fn)
-        if not os.path.isfile(fn):
-            self.config.save(fn)
-            logger.info(f'Runtime configuration file saved to `{fn}`.')
-
-        # Verify stellar template grids and PSF files
-        if self.config.run_rvfit:
-            for arm in self.config.rvfit.fit_arms:
-                if isinstance(self.config.rvfit.model_grid_path, dict):
-                    fn = self.config.rvfit.model_grid_path[arm].format(arm=arm)
-                else:
-                    fn = self.config.rvfit.model_grid_path.format(arm=arm)
-                
-                if not os.path.isfile(fn):
-                    raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
-                else:
-                    logger.info(f'Using synthetic spectrum grid `{fn}` for arm `{arm}`.')
-                
-                if self.config.rvfit.psf_path is not None:
-                    fn = self.config.rvfit.psf_path.format(arm=arm)
-                    if not os.path.isfile(fn):
-                        raise FileNotFoundError(f'PSF file `{fn}` not found.')
-                    else:
-                        logger.info(f'Using PSF file `{fn}` for arm `{arm}`.')
-
-        # TODO: verify chemfit template paths, factor out the two into their respective functions
-
-        # Compile the list of required input data products
-        self.__required_product_types = set()
-        if self.config.run_rvfit:
-            self.__required_product_types.update([ getattr(pfs.datamodel, t) for t in self.config.rvfit.required_products ])
-        if self.config.run_chemfit:
-            self.__required_product_types.update([ getattr(pfs.datamodel, t) for t in self.config.chemfit.required_products ])
-
-        # Verify that input data files are available or the input products
-        # are already in the cache
-        for t in self.__required_product_types:
-            self.__validate_input_product(t)
-
-        # TODO: Verify photometry / prior files
-
-        # TODO: add validation steps for CHEMFIT
-
-        # Create output directories, although these might already exists since
-        # the log files are already being written
-        self._create_dir('output', self.get_product_outdir())
-        self._create_dir('work', self.get_product_workdir())
-        self._create_dir('log', self.get_product_logdir())
-        self._create_dir('figure', self.get_product_figdir())
-
-        return StepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     #endregion
     #region Step: Load
@@ -581,7 +517,7 @@ class GA1DPipeline(Pipeline):
 
         target = None
 
-        for i, visit, identity in self.__enumerate_visits():
+        for i, visit, identity in self.enumerate_visits():
             for product in self.__required_product_types:
                 if issubclass(product, PfsFiberArray):
                     data = self.__product_cache[product][visit][identity.objId]
@@ -778,7 +714,7 @@ class GA1DPipeline(Pipeline):
     
         spectra = { arm: {} for arm in use_arms }
         for arm in use_arms:
-            for i, visit, identity in self.__enumerate_visits():
+            for i, visit, identity in self.enumerate_visits():
                 spec = input_spectra[arm][visit]
                 if spec is not None:
                     # Calculate mask bits
@@ -801,7 +737,7 @@ class GA1DPipeline(Pipeline):
                 spectra[arm][visit] = spec
 
         # Remove all None visits
-        for i, visit, identity in self.__enumerate_visits():
+        for i, visit, identity in self.enumerate_visits():
             non_zero = False
             for arm in use_arms:
                 if spectra[arm][visit] is not None:
@@ -1167,3 +1103,19 @@ class GA1DPipeline(Pipeline):
     def __step_cleanup(self):
         # TODO: Perform any cleanup
         return StepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def _save_exceptions(self, exceptions):
+        if exceptions is not None and len(exceptions) > 0:
+            # Get full path of log file without extension
+            logfile = self.get_product_logfile()
+            if logfile is not None:
+                logdir = os.path.dirname(logfile)
+                logfile = os.path.basename(logfile)
+                logfile = os.path.splitext(logfile)[0]
+                fn = os.path.join(logdir, logfile + '.traceback')
+                with open(fn, 'a') as f:
+                    for i in range(len(exceptions)):
+                        f.write(repr(exceptions[i]))
+                        f.write('\n')
+                        f.writelines(tracebacks[i])
+                        f.write('\n')

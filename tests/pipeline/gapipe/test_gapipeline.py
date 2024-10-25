@@ -1,13 +1,13 @@
 import os
 from unittest import TestCase
 
-from pfs.ga.pipeline import GA1DPipeline, GA1DPipelineTrace
-from pfs.ga.pipeline.config import GA1DPipelineConfig
-from tests.pipeline.config.configs import *
+from pfs.ga.pipeline.gapipe import GAPipeline, GAPipelineTrace
+from pfs.ga.pipeline.gapipe.config import GAPipelineConfig
+from tests.pipeline.gapipe.config.configs import *
 
-class TestGA1DPipeline(TestCase):
+class TestGAPipeline(TestCase):
     def get_test_config(self):
-        config = GA1DPipelineConfig()
+        config = GAPipelineConfig()
         config.load(TEST_CONFIG_EDR2_90006)
 
         workdir = os.path.expandvars(os.path.join('${GAPIPE_WORKDIR}', f'{config.target.objId:016x}'))
@@ -23,8 +23,8 @@ class TestGA1DPipeline(TestCase):
         return config
     
     def create_test_pipeline(self, config):
-        trace = GA1DPipelineTrace(config.figdir)
-        pipeline = GA1DPipeline(config, trace)
+        trace = GAPipelineTrace(config.figdir)
+        pipeline = GAPipeline(config, trace)
         return pipeline
 
     def test_validate_config(self):

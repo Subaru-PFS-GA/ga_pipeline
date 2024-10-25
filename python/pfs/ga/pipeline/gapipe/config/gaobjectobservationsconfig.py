@@ -1,4 +1,4 @@
-from .config import Config
+from ...common.config import Config
 
 class GAObjectObservationsConfig(Config):
     """

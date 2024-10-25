@@ -3,9 +3,10 @@ import numpy as np
 from pfs.ga.pfsspec.core.plotting import SpectrumPlot, styles
 from pfs.ga.pfsspec.core.util.args import *
 from pfs.ga.pfsspec.core import Trace, SpectrumTrace
-from .pipelinetrace import PipelineTrace
 
-class GA1DPipelineTrace(PipelineTrace, SpectrumTrace):
+from ..common import PipelineTrace
+
+class GAPipelineTrace(PipelineTrace, SpectrumTrace):
     def __init__(self,
                  figdir='.',
                  logdir='.',

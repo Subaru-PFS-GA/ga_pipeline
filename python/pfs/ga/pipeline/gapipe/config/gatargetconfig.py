@@ -2,7 +2,7 @@ from collections.abc import Iterable
 
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
-from .config import Config
+from ...common.config import Config
 from .gaobjectidentityconfig import GAObjectIdentityConfig
 from .gaobjectobservationsconfig import GAObjectObservationsConfig
 

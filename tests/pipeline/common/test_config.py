@@ -4,7 +4,7 @@ from datetime import datetime, date
 from unittest import TestCase
 from typing import List, Dict
 
-from pfs.ga.pipeline.config.config import Config
+from pfs.ga.pipeline.common import Config
 
 class SubConfig(Config):
     def __init__(self):

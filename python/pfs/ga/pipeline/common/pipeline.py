@@ -1,22 +1,20 @@
 import os
 import traceback
 from collections import namedtuple
+from types import SimpleNamespace, MethodType
 try:
     import debugpy
 except ModuleNotFoundError:
     debugpy = None
 
-from .util import Timer
-from .scripts.script import Script
-from .constants import *
-from .config.pipelineconfig import PipelineConfig
+from ..util import Timer
+from .script import Script
+from .pipelineerror import PipelineError
+from .pipelineconfig import PipelineConfig
 from .pipelinetrace import PipelineTrace
-from .pipelineexception import PipelineException
+from .pipelinestep import PipelineStep, PipelineStepResults
 
 from .setup_logger import logger
-
-# Create a named tuple for the pipeline step
-StepResults = namedtuple('StepResults', ['success', 'skip_remaining', 'skip_substeps'])
 
 class Pipeline():
     def __init__(self,
@@ -24,14 +22,13 @@ class Pipeline():
                  config: PipelineConfig = None,
                  trace: PipelineTrace = None):
 
-        self.__script = script
-        self.__config = config
-        self.__trace = trace
+        self.__script = script          # Caller command-line script
 
-        self.__exceptions = []
-        self.__tracebacks = []
+        self.__config = config          # Pipeline configuration
+        self.__trace = trace            # Pipeline tracing
 
-        self._steps = None
+        self.__exceptions = []          # Stores exceptions raised during execution
+        self.__tracebacks = []          # Stores tracebacks for exceptions
 
     def reset(self):
         pass
@@ -71,29 +68,13 @@ class Pipeline():
         return self.__tracebacks
     
     tracebacks = property(__get_tracebacks)
-    
-    def validate_config(self):
-        raise NotImplementedError()
-    
-    def execute(self):
-        """
-        Execute the pipeline steps sequentially and return the output PfsGAObject containing
-        the inferred parameters and the co-added spectrum.
-        """
 
-        self.__start_tracing()
-        self.__execute_steps(self._steps)
-        self.__stop_tracing()
+    #region Utility function
 
-        # Save exceptions to a file and reset them so that
-        # they are not reported again on the driver script level
-        self.__save_exceptions()
-        self.__reset_exceptions()
-
-    def _create_dir(self, name, dir):
+    def create_dir(self, name, dir):
         self.script._create_dir(name, dir, logger=logger)
 
-    def _test_dir(self, name, dir, must_exist=True):
+    def test_dir(self, name, dir, must_exist=True):
         """Verify that a directory exists and is accessible."""
 
         if dir is None:
@@ -106,7 +87,7 @@ class Pipeline():
         else:
             logger.info(f'Using {name} directory `{dir}`.')
 
-    def _test_file(self, name, filename, must_exists=True):
+    def test_file(self, name, filename, must_exists=True):
         """Verify that a file exists and is accessible."""
         
         if not os.path.isfile(filename):
@@ -120,8 +101,65 @@ class Pipeline():
     def get_loglevel(self):
         raise NotImplementedError()
 
-    def get_product_logfile(self):
+    #endregion
+    
+    def create_context(self, state=None, trace=None):
+        """
+        Returns a dictionary of objects that are passed to the worker functions of the
+        steps. The worker functions can use these context objects to read and write
+        data that is shared across steps.
+        """
+
+        context = SimpleNamespace(
+            pipeline = self,
+            config = self.__config,
+            state = state,
+            trace = trace
+        )
+
+        return context
+    
+    def create_state(self, pipeline=None, config=None):
+        """
+        Instantiate a state object that will be passed to each step of the pipeline.
+        """
+        return None
+    
+    def destroy_state(self, state):
+        """Clean up the state object after the pipeline execution."""
+        pass
+
+    def create_steps(self):
         raise NotImplementedError()
+    
+    def execute(self):
+        """
+        Execute the pipeline steps sequentially and return the output PfsGAObject containing
+        the inferred parameters and the co-added spectrum.
+        """
+
+        self.__start_tracing()
+
+        # Call the pipeline to return the step definitions
+        steps = self.create_steps()
+
+        # Create a new state for the pipeline and wrap it into a context that will
+        # be passed to the worker functions of the steps
+        state = self.create_state()
+        context = self.create_context(state=state, trace=self.__trace)
+
+        # Execute the steps one by one
+        self.__execute_steps(steps, context)
+        
+        # Clean up the state
+        self.destroy_state(state)
+        
+        self.__stop_tracing()
+
+        # Save exceptions to a file and reset them so that
+        # they are not reported again on the driver script level
+        self._save_exceptions(self.__exceptions, self.__tracebacks)
+        self.__reset_exceptions()
     
     def __start_tracing(self):
         if self.__trace is not None:
@@ -131,25 +169,42 @@ class Pipeline():
         if self.__trace is not None:
             logger.info(f'Tracing stopped.')
 
-    def __execute_steps(self, steps):
+    def __execute_steps(self, steps, context, step_instance=None):
         """Execute a list of processing steps, and optionally any substeps"""
+
+        top_level = step_instance is None
 
         success = True
         for i, step in enumerate(steps):
+            
+            # If this is a top level step, instantiate the step class
+            if top_level:
+                step_instance = step['type']()
+
             if 'func' in step:
-                suc, skip_remaining, skip_substeps = self.__execute_step(step['name'], step['func'], step['critical'])
+                suc, skip_remaining, skip_substeps = self.__execute_step(
+                    step_instance,
+                    context,
+                    step['name'],
+                    step['func'],
+                    step['critical'])
+                
                 success = success and suc
                 if skip_remaining:
                     break
 
             # Call recursively for substeps
             if not skip_substeps and 'substeps' in step:
-                suc = self.__execute_steps(step['substeps'])
+                suc = self.__execute_steps(step['substeps'], context, step_instance=step_instance)
                 success = success and suc
+
+            # If this is a top level step, delete the instance
+            if top_level:
+                del step_instance
 
         return success
 
-    def __execute_step(self, name, func, critical):
+    def __execute_step(self, step_instance, context, name, func, critical):
         """
         Execute a single processing step. Handle exceptions and return `True` if the
         execution succeeded.
@@ -162,10 +217,12 @@ class Pipeline():
             try:
                 logger.info(start_message)
                 
-                # TODO: Create named tuple for the return values
-                step_results = func()
+                # Call the step or substep worker function of the step instance
+                # ff = MethodType(func, step_instance)            # Bind the method to the instance
+                step_results = func(step_instance, context)
+
                 if not step_results.success and critical:
-                    raise PipelineException(f'Pipeline step `{name}` failed and is critical. Stopping pipeline.')
+                    raise PipelineError(f'Pipeline step `{name}` failed and is critical. Stopping pipeline.')
 
                 logger.info(timer.format_message(stop_message))
                 return step_results
@@ -194,22 +251,8 @@ class Pipeline():
     def _get_log_message_step_error(self, name, ex):
         return f'Pipeline step `{name}` failed with error `{type(ex).__name__}`.'
     
-    def __save_exceptions(self):
-        if self.__exceptions is not None and len(self.__exceptions) > 0:
-            
-            # Get full path of log file without extension
-            logfile = self.get_product_logfile()
-            if logfile is not None:
-                logdir = os.path.dirname(logfile)
-                logfile = os.path.basename(logfile)
-                logfile = os.path.splitext(logfile)[0]
-                fn = os.path.join(logdir, logfile + '.traceback')
-                with open(fn, 'a') as f:
-                    for i in range(len(self.__exceptions)):
-                        f.write(repr(self.__exceptions[i]))
-                        f.write('\n')
-                        f.writelines(self.__tracebacks[i])
-                        f.write('\n')
+    def _save_exceptions(self, exceptions, tracebacks):
+        pass
 
     def __reset_exceptions(self):
         self.__exceptions = []

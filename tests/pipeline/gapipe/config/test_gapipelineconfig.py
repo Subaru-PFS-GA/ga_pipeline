@@ -1,20 +1,20 @@
 import os
 from unittest import TestCase
 
-from pfs.ga.pipeline.config import *
+from pfs.ga.pipeline.gapipe.config import *
 from .configs import *
 
 class TestPipeline(TestCase):
     def test_init(self):
-        config = GA1DPipelineConfig()
+        config = GAPipelineConfig()
 
     def test_save(self):
-        config = GA1DPipelineConfig()
+        config = GAPipelineConfig()
         config.save('./tmp/test/pfsGAConfig.yaml')
         config.save('./tmp/test/pfsGAConfig.json')
 
     def test_load(self):
-        config = GA1DPipelineConfig()
+        config = GAPipelineConfig()
         config.load('./data/test/pfsGAObject.yaml', ignore_collisions=True)
 
         self.assertIsInstance(config.target, GATargetConfig)

@@ -1,4 +1,4 @@
-from .ga1dpipelineconfig import GA1DPipelineConfig
+from .gapipelineconfig import GAPipelineConfig
 from .gatargetconfig import GATargetConfig
 from .gaobjectidentityconfig import GAObjectIdentityConfig
 from .gaobjectobservationsconfig import GAObjectObservationsConfig

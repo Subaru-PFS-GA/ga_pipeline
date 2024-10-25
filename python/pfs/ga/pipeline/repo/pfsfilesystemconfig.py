@@ -6,9 +6,9 @@ from pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import IntFilter, HexFilter, DateFilter, StringFilter
 from pfs.ga.pfsspec.survey.pfs import PfsFileSystemConfig as PfsFileSystemConfigBase
 
-from ..config import GA1DPipelineConfig
+from ..gapipe.config import GAPipelineConfig
 
-# Extend the basic PfsFileSystemConfig with the GA1DPipelineConfig
+# Extend the basic PfsFileSystemConfig with the GAPipelineConfig
 
 PfsFileSystemConfig = SimpleNamespace(
     root = '$datadir',
@@ -20,7 +20,7 @@ PfsFileSystemConfig = SimpleNamespace(
     products = {
         **PfsFileSystemConfigBase.products,
 
-        GA1DPipelineConfig: SimpleNamespace(
+        GAPipelineConfig: SimpleNamespace(
             params = SimpleNamespace(
                 catId = IntFilter(name='catId', format='{:05d}'),
                 tract = IntFilter(name='tract', format='{:05d}'),
@@ -35,7 +35,7 @@ PfsFileSystemConfig = SimpleNamespace(
             dir_format = '$workdir/rerun/$rerundir/pfsGAObject/{catId}/{tract}/{patch}/pfsGAObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsGAObject-{catId}-{tract}-{patch}-{objId}-{nVisit}-0x{pfsVisitHash}.yaml',
             load = lambda identity, filename, dir:
-                GA1DPipelineConfig.from_file(path=os.path.join(dir, filename)),
+                GAPipelineConfig.from_file(path=os.path.join(dir, filename)),
         ),
     }
 )

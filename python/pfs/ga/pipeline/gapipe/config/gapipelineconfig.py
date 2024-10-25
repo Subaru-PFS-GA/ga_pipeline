@@ -1,10 +1,10 @@
-from .pipelineconfig import PipelineConfig
+from ...common import PipelineConfig
 from .gatargetconfig import GATargetConfig
 from .rvfitconfig import RVFitConfig
 from .chemfitconfig import ChemfitConfig
 from .coaddconfig import CoaddConfig
 
-class GA1DPipelineConfig(PipelineConfig):
+class GAPipelineConfig(PipelineConfig):
     """
     Galactic Archeology Spectrum Processing Pipeline configuration.
     """

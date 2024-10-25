@@ -1,4 +1,3 @@
 from .constants import *
-from .ga1dpipeline import GA1DPipeline
-from .ga1dpipelinetrace import GA1DPipelineTrace
-from .pipelineexception import PipelineException
+from .gapipe.gapipeline import GAPipeline
+from .gapipe.gapipelinetrace import GAPipelineTrace
