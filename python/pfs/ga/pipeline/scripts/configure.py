@@ -11,11 +11,9 @@ from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo
 
-from ..constants import Constants
-from ..config import *
-from ..pipeline import PipelineException
+from ..common import Script, PipelineError
+from ..gapipe.config import *
 from ..repo import PfsFileSystemConfig
-from .script import Script
 
 from ..setup_logger import logger
 
@@ -36,7 +34,7 @@ class Configure(Script):
 
     Variables
     ---------
-    config : GA1DPipelineConfig
+    config : GAPipelineConfig
         Pipeline configuration template
     workdir : str
         Working directory for the pipeline job. The log file, as well as the config
@@ -76,7 +74,7 @@ class Configure(Script):
         # Parse the identity param filters
         self.__repo.init_from_args(self)
 
-        self.__config = GA1DPipelineConfig()
+        self.__config = GAPipelineConfig()
 
         # Load the configuration template file
         config_files = self.get_arg('config', args)
@@ -210,7 +208,7 @@ class Configure(Script):
             try:
                 filename, identity = self.__repo.locate_product(PfsConfig, visit=visit)
             except FileNotFoundError:
-                raise PipelineException(f'No pfsConfig file found for visit {visit}.')
+                raise PipelineError(f'No pfsConfig file found for visit {visit}.')
 
             pfsConfig, config_identity, _ = self.__repo.load_product(PfsConfig, filename=filename)
 
@@ -307,8 +305,8 @@ class Configure(Script):
 
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
-        dir = self.__repo.format_dir(GA1DPipelineConfig, target.identity)
-        config_file = self.__repo.format_filename(GA1DPipelineConfig, target.identity)
+        dir = self.__repo.format_dir(GAPipelineConfig, target.identity)
+        config_file = self.__repo.format_filename(GAPipelineConfig, target.identity)
 
         # Name of the output pipeline configuration
         filename = os.path.join(dir, config_file)

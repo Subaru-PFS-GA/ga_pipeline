@@ -6,10 +6,10 @@ import logging
 import numpy as np
 
 from pfs.datamodel import *
+from pfs.ga.pfsspec.survey.repo import FileSystemRepo
 
 from ..constants import Constants
-from ..data import FileSystemConnector
-from .script import Script
+from ..common.script import Script
 
 from ..setup_logger import logger
 
@@ -93,7 +93,7 @@ class Data(Script):
         Create a connector to the file system.
         """
 
-        connector = FileSystemConnector()
+        connector = FileSystemRepo()
         return connector
 
     def prepare(self):
