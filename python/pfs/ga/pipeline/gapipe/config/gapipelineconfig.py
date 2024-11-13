@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from ...common import PipelineConfig
 from .gatargetconfig import GATargetConfig
 from .rvfitconfig import RVFitConfig
@@ -18,7 +20,7 @@ class GAPipelineConfig(PipelineConfig):
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
         self.rerundir = self._get_env('GAPIPE_RERUNDIR')      # Path to rerun data, absolute or relative to `datadir`
-        self.outdir = None
+        self.outdir = self._get_env('GAPIPE_OUTDIR')          # Pipeline output directory
 
         # GA target object configuration
         self.target = target
@@ -65,4 +67,11 @@ class GAPipelineConfig(PipelineConfig):
         
         super().__init__()
 
-        
+    def enumerate_visits(self):
+        """
+        Enumerate the visits in the configs and return an identity for each.
+        """
+
+        for i, visit in enumerate(sorted(self.target.observations.visit)):
+            identity = SimpleNamespace(**self.target.get_identity(visit))
+            yield i, visit, identity

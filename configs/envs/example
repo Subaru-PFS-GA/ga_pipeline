@@ -3,15 +3,14 @@ export GAPIPE_CONDAPATH="~/miniconda3"
 export GAPIPE_CONDAENV="gapipe"
 export GAPIPE_DEBUGPORT=5678
 
-export GAPIPE_WORKDIR="~/project/ga_pipeline/temp"
-export GAPIPE_DATADIR="~/data/edr2/rerun/"
+export GAPIPE_WORKDIR="~/project/ga_pipeline/work"
+export GAPIPE_OUTDIR="~/project/ga_pipeline/out"
+export GAPIPE_DATADIR="~/data/edr2/"
 export GAPIPE_RERUNDIR="run15"
-export GAPIPE_SYNTH_GRID="~/data/pfsspec/models/stellar/grid/phoenix/phoenix_HiRes/spectra.h5"
-export GAPIPE_ARM_PSF="~/data/pfsspec/subaru/pfs/psf/import/{arm}.real/gauss.h5"
 
 export PFSSPEC_ROOT=/home/dobos/project/ga_pfsspec_all
 export PFSSPEC_DATA="~/data/pfsspec"
 
-export PYTHONPATH=".:~/project/ga_datamodel/python:~/project/Subaru-PFS/datamodel/python"
+export PYTHONPATH=".:~/project/Subaru-PFS/datamodel/python"
 
 export DISPLAY=localhost:22
