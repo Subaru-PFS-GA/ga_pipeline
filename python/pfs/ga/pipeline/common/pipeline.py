@@ -17,7 +17,7 @@ from .pipelinestep import PipelineStep, PipelineStepResults
 from .setup_logger import logger
 
 class Pipeline():
-    def __init__(self,
+    def __init__(self, /,
                  script: Script = None,
                  config: PipelineConfig = None,
                  trace: PipelineTrace = None):
@@ -72,7 +72,16 @@ class Pipeline():
     #region Utility function
 
     def create_dir(self, name, dir):
-        self.script._create_dir(name, dir, logger=logger)
+        """Create a directory if it does not exist."""
+
+        dir = os.path.join(os.getcwd(), dir)
+        if not os.path.isdir(dir):
+            os.makedirs(dir, exist_ok=True)
+            logger.debug(f'Created {name} directory `{dir}`.')
+            return True
+        else:
+            logger.debug(f'Found existing {name} directory `{dir}`.')
+            return False
 
     def test_dir(self, name, dir, must_exist=True):
         """Verify that a directory exists and is accessible."""
@@ -192,6 +201,8 @@ class Pipeline():
                 success = success and suc
                 if skip_remaining:
                     break
+            else:
+                PipelineError(f'Pipeline step `{step["name"]}` does not have a worker function.')
 
             # Call recursively for substeps
             if not skip_substeps and 'substeps' in step:

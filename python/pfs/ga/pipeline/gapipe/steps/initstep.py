@@ -13,6 +13,13 @@ class InitStep(PipelineStep):
         super().__init__(name)
     
     def run(self, context):
+
+        # Create output directories, although these might already exists since
+        # the log files are already being written
+        context.pipeline.create_dir('output', context.pipeline.get_product_outdir())
+        context.pipeline.create_dir('work', context.pipeline.get_product_workdir())
+        context.pipeline.create_dir('log', context.pipeline.get_product_logdir())
+        context.pipeline.create_dir('figure', context.pipeline.get_product_figdir())
         
         # Save the full configuration to the output directory, if it's not already there
         dir = context.pipeline.get_product_workdir()
@@ -55,29 +62,22 @@ class InitStep(PipelineStep):
 
         # Compile the list of required input data products. The data products
         # are identified by their type. The class definitions are located in pfs.datamodel
-        context.state.required_product_types = set()
+        context.pipeline.required_product_types = set()
         if context.config.run_rvfit:
-            context.state.required_product_types.update(
+            context.pipeline.required_product_types.update(
                 [ getattr(pfs.datamodel, t) for t in context.config.rvfit.required_products ])
         if context.config.run_chemfit:
-            context.state.required_product_types.update(
+            context.pipeline.required_product_types.update(
                 [ getattr(pfs.datamodel, t) for t in context.config.chemfit.required_products ])
 
         # Verify that input data files are available or the input products
         # are already in the cache
-        for t in context.state.required_product_types:
+        for t in context.pipeline.required_product_types:
             self.__validate_input_product(context, t)
 
         # TODO: Verify photometry / prior files
 
         # TODO: add validation steps for CHEMFIT
-
-        # Create output directories, although these might already exists since
-        # the log files are already being written
-        context.pipeline.create_dir('output', context.pipeline.get_product_outdir())
-        context.pipeline.create_dir('work', context.pipeline.get_product_workdir())
-        context.pipeline.create_dir('log', context.pipeline.get_product_logdir())
-        context.pipeline.create_dir('figure', context.pipeline.get_product_figdir())
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -88,17 +88,17 @@ class InitStep(PipelineStep):
         # available in the data repository. We only identify the products here,
         # do no load them.
 
-        for i, visit, identity in context.pipeline.enumerate_visits():
-            if context.state.product_cache is not None and product in context.state.product_cache:
+        for i, visit, identity in context.config.enumerate_visits():
+            if context.pipeline.product_cache is not None and product in context.pipeline.product_cache:
                 if issubclass(product, PfsFiberArray):
                     # Data product contains a single object
-                    if visit in context.state.product_cache[product]:
-                        if identity.objId in context.state.product_cache[product][visit]:
+                    if visit in context.pipeline.product_cache[product]:
+                        if identity.objId in context.pipeline.product_cache[product][visit]:
                             # Product is already in the cache, skip
                             continue
                 elif issubclass(product, PfsFiberArraySet):
                     # Data product contains multiple objects
-                    if visit in context.state.product_cache[product]:
+                    if visit in context.pipeline.product_cache[product]:
                         # Product is already in the cache, skip
                         continue
                 else:

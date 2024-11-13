@@ -96,11 +96,6 @@ class Run(Script):
         # Generate a string ID for the object being processed
         id = str(config.target.identity)
 
-        # Update the trace object used for logging and plotting
-        self.__trace.reset()
-        self.__trace.init_from_args(self, config.trace_args)
-        self.__trace.update()
-
         # Update the pipeline object
         self.__pipeline.reset()
         self.__pipeline.update(config=config, id=id)
@@ -108,8 +103,11 @@ class Run(Script):
         # Get the log file name and set figdir and logdir of the trace to the same directory
         logfile = self.__pipeline.get_product_logfile()
         logdir = os.path.dirname(logfile)
-        self.__trace.logdir = logdir
-        self.__trace.figdir = logdir
+
+        # Update the trace object used for logging and plotting
+        self.__trace.reset()
+        self.__trace.init_from_args(self, config.trace_args)
+        self.__trace.update(figdir=logdir, logdir=logdir, id=id)
 
         # Reconfigure logging according to the configuration
         self.push_log_settings()
@@ -125,11 +123,6 @@ class Run(Script):
         self.start_logging()
 
         logger.info(f'Using configuration file(s) `{config.config_files}`.')
-        
-        # Validate the pipeline configuration
-        # TODO: make these pipeline steps
-        self.__pipeline.validate_config()
-        self.__pipeline.validate_libs()
         
         # Execute the pipeline
         self.__pipeline.execute()
