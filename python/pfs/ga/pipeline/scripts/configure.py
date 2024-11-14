@@ -131,27 +131,101 @@ class Configure(Script):
 
     def run(self):
         """
-        Find all the pfsSingle files that match the filters and generate a config file for each.
+        Find all the pfsSingle or pfsConfig files that match the filters and generate a config file for each.
         """
 
         files = ' '.join(self.__config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
-        # Find all the pfsSingle files that match the filters
-        targets, _ = self.__find_targets()
+        # Find all the pfsSingle or pfsConfig files that match the filters
+        # TODO: add option to use either pfsSingle or pfsConfig files
+        # targets, _ = self.__find_targets_pfsSingle()
+        targets = self.__find_targets_pfsConfig()
 
         if len(targets) == 0:
-            logger.warning('No pfsSingle files found matching the filters.')
+            logger.warning('No pfsSingle or Config files, nor object within them found matching the filters.')
             return
         
         # Generate the configuration file for each target
         self.__generate_config_files(targets)
 
-    def __find_targets(self):
+    def __find_targets_pfsConfig(self):
         """
-        Find all the pfsSingle files that match the filters and parse the
-        filenames into a dictionary of targets. Then load the relevant pfsConfig
-        files to get the observation details (fiberId, etc).
+        Find all the pfsConfig files that match the filters and convert the object
+        lists into a dictionary of targets.
+        """
+
+        # TODO: This function now finds observations by looking of PfsSIngle files.
+        #       Use some database instead.
+
+        logger.info(f'Finding pfsConfig files matching the following filters:')
+        logger.info(f'    visit: {repr(self.__repo.filters.visit)}')
+
+        filenames, identities = self.__repo.find_product(PfsConfig)
+
+        logger.info(f'Found {len(filenames)} pfsConfig files matching the filters.')
+
+        # Create a dict keyed by objId and load the pfsConfig files of each visit to get the fiberId etc.
+        targets = {}
+        for i, filename in enumerate(filenames):
+            pfsConfig, config_identity, _ = self.__repo.load_product(PfsConfig, filename=filename)
+            obsTime = datetime.combine(config_identity.date, datetime.min.time())
+            expTime = np.nan
+
+            for j, objId in enumerate(pfsConfig.objId):
+                if objId != -1 \
+                    and self.__repo.filters.objId.match(objId) \
+                    and self.__repo.filters.catId.match(pfsConfig.catId[j]) \
+                    and self.__repo.filters.tract.match(pfsConfig.tract[j]) \
+                    and self.__repo.filters.patch.match(pfsConfig.patch[j]) \
+                    and self.__repo.filters.spectrograph.match(pfsConfig.spectrograph[j]) \
+                    and self.__repo.filters.arm.match(pfsConfig.arms):
+
+                    if objId not in targets:
+                        targets[objId] = GATargetConfig(
+                            identity = GAObjectIdentityConfig(
+                                catId = pfsConfig.catId[j],
+                                tract = pfsConfig.tract[j],
+                                patch = pfsConfig.patch[j],
+                                objId = objId),
+                            observations = GAObjectObservationsConfig(
+                                visit = [],
+                                arm = {},
+                                spectrograph = {},
+                                pfsDesignId = {},
+                                fiberId = {},
+                                fiberStatus = {},
+                                pfiNominal = {},
+                                pfiCenter = {},
+                                obsTime = {},
+                                expTime = {},
+                            ))
+                    
+                    target = targets[objId]
+                    target.observations.visit.append(identities.visit[i])
+
+                    self.__load_target_from_pfsConfig(target, objId, 
+                                                      pfsConfig.visit, pfsConfig, j,
+                                                      obsTime, expTime)
+
+        if len(targets) == 0:
+            return targets, filenames
+
+        # Report some statistics in the log
+        unique_visits = np.unique(np.concatenate([ target.observations.visit for _, target in targets.items() ]))
+        logger.info(f'Targets span {len(unique_visits)} unique visits.')
+
+        # Update targets: sort observations and calculate nVisit and pfsVisitHash
+        for _, target in targets.items():
+            self.__sort_target_observations_by_visit(target)
+            self.__update_target_identity(target)
+
+        return targets
+
+    def __find_targets_pfsSingle(self):
+        """
+        Find all the pfsSingle files that match the filters and convert the object
+        lists into a dictionary of targets.
         """
 
         # TODO: This function now finds observations by looking of PfsSIngle files.
@@ -194,6 +268,9 @@ class Configure(Script):
                     ))
                 
             targets[objId].observations.visit.append(identities.visit[i])
+
+        if len(targets) == 0:
+            return targets, filenames
                 
         # Report some statistics in the log
         unique_visits = np.unique(np.concatenate([ target.observations.visit for _, target in targets.items() ]))
@@ -201,7 +278,6 @@ class Configure(Script):
 
         # Load the pfsConfig files of each visit to get the fiberId etc.
         for visit in unique_visits:
-
             logger.info(f'Finding pfsConfig file matching the following filters:')
             logger.info(f'    visit: {visit}')
 
@@ -211,64 +287,73 @@ class Configure(Script):
                 raise PipelineError(f'No pfsConfig file found for visit {visit}.')
 
             pfsConfig, config_identity, _ = self.__repo.load_product(PfsConfig, filename=filename)
+            obsTime = datetime.combine(config_identity.date, datetime.min.time())
+            expTime = np.nan
 
             for i, objId in enumerate(pfsConfig.objId):
                 if objId in targets:
                     target = targets[objId]
-
-                    if target.proposalId is None:
-                        target.proposalId = pfsConfig.proposalId[i]
-                    elif target.proposalId != pfsConfig.proposalId[i]:
-                        logger.warning(f'proposalId mismatch for objId {objId}: {target.proposalId} != {pfsConfig.proposalId[i]}')
-                    
-                    if target.targetType is None:
-                        target.targetType = pfsConfig.targetType[i]
-                    elif target.targetType != pfsConfig.targetType[i]:
-                        logger.warning(f'targetType mismatch for objId {objId}: {target.targetType} != {pfsConfig.targetType[i]}')
-
-                    if target.identity.catId != pfsConfig.catId[i]:
-                        logger.warning(f'catId mismatch for objId {objId}: {target.identity.catId} != {pfsConfig.catId[i]}')
-
-                    target.observations.arm[visit] = pfsConfig.arms             # TODO: Normalize order of arms?
-                    target.observations.spectrograph[visit] = pfsConfig.spectrograph[i]
-                    target.observations.pfsDesignId[visit] = pfsConfig.pfsDesignId
-                    target.observations.fiberId[visit] = pfsConfig.fiberId[i]
-                    target.observations.fiberStatus[visit] = pfsConfig.fiberStatus[i]
-                    target.observations.pfiNominal[visit] = pfsConfig.pfiNominal[i]
-                    target.observations.pfiCenter[visit] = pfsConfig.pfiCenter[i]
-                    
-                    # TODO: update this to get exact time, not just the date
-                    target.observations.obsTime[visit] = datetime.combine(config_identity.date, datetime.min.time())
-
-                    # TODO update this once exposure time appears in the pfsConfig file
-                    target.observations.expTime[visit] = np.nan
-
-        def sort_by_visit(observations, values):
-            return np.array([ values[v] for v in observations.visit ])
+                    self.__load_target_from_pfsConfig(target, objId, visit, pfsConfig, i, obsTime, expTime)
 
         # Update targets: sort observations and calculate nVisit and pfsVisitHash
         for _, target in targets.items():
-            observations = target.observations
-
-            # Convert the dict to numpy arrays, and sort them by visit
-            idx = np.argsort(observations.visit)
-            observations.visit = np.array(observations.visit)[idx]
-
-            observations.arm = sort_by_visit(observations, observations.arm)
-            observations.spectrograph = sort_by_visit(observations, observations.spectrograph)
-            observations.pfsDesignId = sort_by_visit(observations, observations.pfsDesignId)
-            observations.fiberId = sort_by_visit(observations, observations.fiberId)
-            observations.fiberStatus = sort_by_visit(observations, observations.fiberStatus)
-            observations.pfiNominal = sort_by_visit(observations, observations.pfiNominal)
-            observations.pfiCenter = sort_by_visit(observations, observations.pfiCenter)
-            observations.obsTime = sort_by_visit(observations, observations.obsTime)
-            observations.expTime = sort_by_visit(observations, observations.expTime)
-
-            # Update the identity
-            target.identity.nVisit = wraparoundNVisit(len(observations.visit))
-            target.identity.pfsVisitHash = calculatePfsVisitHash(observations.visit)
+            self.__sort_target_observations_by_visit(target)
+            self.__update_target_identity(target)
 
         return targets, filenames
+    
+    def __load_target_from_pfsConfig(self, target, objId, visit, pfsConfig, i, obsTime, expTime):
+        if target.proposalId is None:
+            target.proposalId = pfsConfig.proposalId[i]
+        elif target.proposalId != pfsConfig.proposalId[i]:
+            logger.warning(f'proposalId mismatch for objId {objId}: {target.proposalId} != {pfsConfig.proposalId[i]}')
+        
+        if target.targetType is None:
+            target.targetType = pfsConfig.targetType[i]
+        elif target.targetType != pfsConfig.targetType[i]:
+            logger.warning(f'targetType mismatch for objId {objId}: {target.targetType} != {pfsConfig.targetType[i]}')
+
+        if target.identity.catId != pfsConfig.catId[i]:
+            logger.warning(f'catId mismatch for objId {objId}: {target.identity.catId} != {pfsConfig.catId[i]}')
+
+        target.observations.arm[visit] = pfsConfig.arms             # TODO: Normalize order of arms?
+        target.observations.spectrograph[visit] = pfsConfig.spectrograph[i]
+        target.observations.pfsDesignId[visit] = pfsConfig.pfsDesignId
+        target.observations.fiberId[visit] = pfsConfig.fiberId[i]
+        target.observations.fiberStatus[visit] = pfsConfig.fiberStatus[i]
+        target.observations.pfiNominal[visit] = pfsConfig.pfiNominal[i]
+        target.observations.pfiCenter[visit] = pfsConfig.pfiCenter[i]
+        
+        # TODO: update this to get exact time, not just the date
+        target.observations.obsTime[visit] = obsTime
+
+        # TODO update this once exposure time appears in the pfsConfig file
+        target.observations.expTime[visit] = expTime
+
+    def __sort_target_observations_by_visit(self, target):
+        def sort_by_visit(observations, values):
+            return np.array([ values[v] for v in observations.visit ])
+
+        observations = target.observations
+
+        # Convert the dict to numpy arrays, and sort them by visit
+        idx = np.argsort(observations.visit)
+        observations.visit = np.array(observations.visit)[idx]
+
+        observations.arm = sort_by_visit(observations, observations.arm)
+        observations.spectrograph = sort_by_visit(observations, observations.spectrograph)
+        observations.pfsDesignId = sort_by_visit(observations, observations.pfsDesignId)
+        observations.fiberId = sort_by_visit(observations, observations.fiberId)
+        observations.fiberStatus = sort_by_visit(observations, observations.fiberStatus)
+        observations.pfiNominal = sort_by_visit(observations, observations.pfiNominal)
+        observations.pfiCenter = sort_by_visit(observations, observations.pfiCenter)
+        observations.obsTime = sort_by_visit(observations, observations.obsTime)
+        observations.expTime = sort_by_visit(observations, observations.expTime)
+
+    def __update_target_identity(self, target):
+        # Update the identity
+        target.identity.nVisit = wraparoundNVisit(len(target.observations.visit))
+        target.identity.pfsVisitHash = calculatePfsVisitHash(target.observations.visit)
     
     def __generate_config_files(self, targets):
         """
