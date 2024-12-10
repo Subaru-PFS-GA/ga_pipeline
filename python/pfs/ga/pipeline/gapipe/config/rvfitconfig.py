@@ -61,6 +61,13 @@ class RVFitConfig(Config):
             'UNMASKEDNAN'
         ]
 
+        self.required_products = [ ]
+        self.correction_model = None
+        self.correction_model_args = {}
+
+        self.wave_include = None
+        self.wave_exclude = None
+
         # Correction model to use, either 'fluxcorr' or 'contnorm'. Use 'fluxcorr' for
         # flux correcting the fluxed stellar templates and 'contnorm' to continuum-normalize the
         # observations when fitting with normalized templates.
@@ -74,12 +81,12 @@ class RVFitConfig(Config):
         # }
 
         # TODO: Example configuration with `contnomr`, which currently has no arguments
-        self.required_products = [ 'PfsConfig', 'PfsMerged' ]
-        self.correction_model = 'contnorm'
-        self.correction_model_args = {
-            'cont_per_arm': True,
-            'cont_per_exp': True,
-        }        
+        # self.required_products = [ 'PfsConfig', 'PfsMerged' ]
+        # self.correction_model = 'contnorm'
+        # self.correction_model_args = {
+        #     'cont_per_arm': True,
+        #     'cont_per_exp': True,
+        # }
 
         # Arguments to pass to ModelGridTempFit
         # This is where we can set the parameter priors, etc.
@@ -110,7 +117,7 @@ class RVFitConfig(Config):
                 # Default plots of RVFit results
                 'pfsGA-RVFit-best-{id}': dict(
                     plot_spectrum=True, plot_processed_template=True,
-                    plot_flux_err=True, plot_residuals=False),
+                    plot_flux_err=False, plot_residuals=False),
                 'pfsGA-RVFit-residuals-{id}': dict(
                     plot_spectrum=False, plot_processed_template=False,
                     plot_flux_err=False, plot_residuals=True),

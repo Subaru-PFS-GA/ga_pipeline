@@ -116,6 +116,9 @@ class RVFitStep(PipelineStep):
         rvfit.template_grids = template_grids
         rvfit.template_psf = template_psfs
 
+        rvfit.wave_include = context.config.rvfit.wave_include
+        rvfit.wave_exclude = context.config.rvfit.wave_exclude
+
         # Initialize the components from the configuration
         rvfit.init_from_args(None, None, context.config.rvfit.rvfit_args)
         rvfit.correction_model.init_from_args(None, None, context.config.rvfit.correction_model_args)
@@ -142,20 +145,23 @@ class RVFitStep(PipelineStep):
                 if spec is not None:
                     # Calculate mask bits
                     if mask_flags is not None:
-                        mask_bits = spec.get_mask_bits(mask_flags)
+                        spec.mask_bits = spec.get_mask_bits(mask_flags)
                     else:
-                        mask_bits = None
+                        spec.mask_bits = None
 
-                    # Calculate mask
-                    mask = context.pipeline.rvfit.get_full_mask(spec, mask_bits=mask_bits)
+                    # Calculate mask. True values mean pixels are not masked and to be
+                    # included in the fit.
+                    mask = context.pipeline.rvfit.get_full_mask(spec)
+                    masked_count = (~mask).sum()
 
-                    if mask.sum() == 0:
+                    if masked_count == 0:
                         logger.warning(f'All pixels in spectrum {spec.get_name()} are masked.')
                         spec = None
-                    elif mask.sum() < context.config.rvfit.min_unmasked_pixels:
-                        logger.warning(f'Not enough unmasked pixels in spectrum {spec.get_name()}.')
-                        if skip_mostly_masked:
-                            spec = None
+                    elif skip_mostly_masked and (mask.size - masked_count < context.config.rvfit.min_unmasked_pixels):
+                        logger.warning(f'Not enough unmasked pixels in spectrum {spec.get_name()}, '
+                                       f'required at least {context.config.rvfit.min_unmasked_pixels}, '
+                                       f'found only {mask.size - masked_count}.')
+                        spec = None
 
                 spectra[arm][visit] = spec
 

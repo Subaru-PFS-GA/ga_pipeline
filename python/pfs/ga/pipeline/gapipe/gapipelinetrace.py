@@ -59,7 +59,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         if self.plot_exposures:
             self._plot_spectra('pfsGA-exposures-{id}',
                                spectra,
-                               plot_spectrum=True, plot_flux_err=True, plot_mask=False,
+                               plot_spectrum=True, plot_flux_err=True, plot_mask=True,
                                title='Input spectra - {id}',
                                nrows=2, ncols=1, diagram_size=(6.5, 3.5))
             
