@@ -81,7 +81,7 @@ class Run(Script):
         if self.__config is not None:
             self.__config_files = [ self.__config ]
         else:
-            self.__config_files, _ = self.__repo.locate_product(GAPipelineConfig)
+            self.__config_files, _ = self.__repo.find_product(GAPipelineConfig)
 
         for i, config_file in enumerate(self.__config_files):
             self.__run_pipeline(config_file)
