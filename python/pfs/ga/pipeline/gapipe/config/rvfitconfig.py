@@ -101,7 +101,9 @@ class RVFitConfig(Config):
             "log_g": [ 1.5, 5.5 ],
             "log_g_dist": [ "normal", 3.5, 1.0 ],
             "a_M": 0.0,
-            "rv": [-300, 300],
+            
+            "rv": [-400, 400],
+            "rv_step": 20,
 
             "resampler": "interp",              # Resampler to use for resampling model grid
         }
