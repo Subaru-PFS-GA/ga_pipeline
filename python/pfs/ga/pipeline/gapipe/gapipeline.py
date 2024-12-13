@@ -377,12 +377,51 @@ class GAPipeline(Pipeline):
 
         return avail_arms
     
+    def __read_spectrum(self, products, reader, visit, arm, identity, wave_limits):
+        spec = PfsStellarSpectrum()
+        found = False
+
+        # Make sure PfsDesign is read first if it's in the list of products because
+        # other products might need information from it
+        # Cannot read a spectrum from a design file but can update its metadata
+        for t in products:
+            if issubclass(t, PfsDesign):
+                data = self.product_cache[t][visit]
+                if reader.is_available(data, arm=arm, objid=identity.objId):
+                    reader.read_from_pfsDesign(data, spec, arm=arm, objid=identity.objId)
+                else:
+                    return False, None
+        
+        for t in products:
+            if issubclass(t, PfsFiberArray):
+                data = self.product_cache[t][visit][identity.objId]
+                if reader.is_available(data, arm=arm):
+                    reader.read_from_pfsFiberArray(data, spec, arm=arm, wave_limits=wave_limits)
+                    found = True
+                else:
+                    return False, None
+            elif issubclass(t, PfsFiberArraySet):
+                data = self.product_cache[t][visit]
+                if reader.is_available(data, arm=arm):
+                    reader.read_from_pfsFiberArraySet(data, spec, arm=arm,
+                                                        fiberid=spec.fiberid,
+                                                        wave_limits=wave_limits)
+                    found = True
+                else:
+                    return False, None
+            elif issubclass(t, PfsDesign):
+                pass
+            else:
+                raise NotImplementedError('Product type not recognized.')
+            
+        return found, spec
+    
     def read_spectra(self, products, arms):
         # Extract spectra from the input products for each visit in a format
         # required by pfsspec. Also return observation metadata which will be
         # required for the final output data product PfsGAObject.
 
-        r = PfsSpectrumReader()
+        reader = PfsSpectrumReader()
 
         read_count = 0
         skipped_count = 0
@@ -392,38 +431,9 @@ class GAPipeline(Pipeline):
         for i, visit, identity in self.config.enumerate_visits():
             for arm in arms:
                 wave_limits = self.config.arms[arm]['wave']
-                spec = PfsStellarSpectrum()
-                read = False
+                found, spec = self.__read_spectrum(products, reader, visit, arm, identity, wave_limits)
 
-                # Make sure PfsDesign is read first if it's in the list of products because
-                # other products might need information from it
-                # Cannot read a spectrum from a design file but can update its metadata
-                for t in products:
-                    if issubclass(t, PfsDesign):
-                        data = self.product_cache[t][visit]
-                        r.read_from_pfsDesign(data, spec, arm=arm,
-                                                objid=identity.objId)
-                
-                for t in products:
-                    if issubclass(t, PfsFiberArray):
-                        data = self.product_cache[t][visit][identity.objId]
-                        # TODO is the arm available?
-                        raise NotImplementedError()
-                        r.read_from_pfsFiberArray(data, spec, arm=arm, wave_limits=wave_limits)
-                        read = True
-                    elif issubclass(t, PfsFiberArraySet):
-                        data = self.product_cache[t][visit]
-                        if arm in data.identity.arm:
-                            r.read_from_pfsFiberArraySet(data, spec, arm=arm,
-                                                         fiberid=spec.fiberid,
-                                                         wave_limits=wave_limits)
-                            read = True
-                    elif issubclass(t, PfsDesign):
-                        pass
-                    else:
-                        raise NotImplementedError('Product type not recognized.')
-
-                if read:
+                if found:
                     spectra[arm][visit] = spec
                     read_count += 1
                 else:
