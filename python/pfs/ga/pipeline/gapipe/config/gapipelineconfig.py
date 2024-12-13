@@ -30,21 +30,44 @@ class GAPipelineConfig(PipelineConfig):
         # GA pipeline configuration
 
         # Arm definitions with defaults
+
+        # These values are safe only when the M arm is used
+        # self.arms = { 
+        #     'b': dict(
+        #         wave = [ 3500, 6600 ],
+        #         pix_per_res = 3,
+        #     ),
+        #     'r': dict(
+        #         wave = [ 6600, 9300 ],
+        #         pix_per_res = 3,
+        #     ),
+        #     'm': dict(
+        #         wave = [ 6900, 9000 ],
+        #         pix_per_res = 4,
+        #     ),
+        #     'n': dict(
+        #         wave = [ 9300, 12600 ],
+        #         pix_per_res = 3,
+        #     ),
+        # }
+        
+        # These values ignore the overlap between arms when the R arm is used
         self.arms = { 
             'b': dict(
-                wave = [ 3800, 6500 ],
+                wave = [ 3500, 6200 ],
                 pix_per_res = 3,
             ),
             'r': dict(
-                wave = [ 6300, 9700 ],
+                wave = [ 6600, 9300 ],
                 pix_per_res = 3,
             ),
             'm': dict(
-                wave = [ 7100, 8850 ],
+                # wave = [ 6900, 9000 ],
+                wave = [ 7050, 8850 ],
                 pix_per_res = 4,
             ),
             'n': dict(
-                wave = [ 9400, 12600 ],
+                wave = [ 9900, 12600 ],
                 pix_per_res = 3,
             ),
         }
