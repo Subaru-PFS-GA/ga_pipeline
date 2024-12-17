@@ -59,7 +59,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         if self.plot_exposures:
             self._plot_spectra('pfsGA-exposures-{id}',
                                spectra,
-                               plot_spectrum=True, plot_flux_err=True, plot_mask=True,
+                               plot_flux=True, plot_flux_err=True, plot_mask=True,
                                title='Input spectra - {id}',
                                nrows=2, ncols=1, diagram_size=(6.5, 3.5))
             
@@ -70,7 +70,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         
         pass
 
-    def on_coadd_eval_correction(self, spectra, templates, flux_corr, spec_norm, temp_norm):
+    def on_coadd_eval_correction(self, spectra, templates, corrections, correction_masks, spec_norm, temp_norm):
         """Fired when the flux correction is evaluated."""
 
         if self.plot_flux_correction or self.plot_level >= Trace.PLOT_LEVEL_DEBUG:
@@ -88,8 +88,8 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
             for arm, specs in spectra.items():
                 for i, spec in enumerate(specs):
                     if spec is not None:
-                        # s = styles.lightgray_line(**styles.thin_line())
-                        p.plot_spectrum(spec, flux_corr=flux_corr[arm][i], auto_limits=True)
+                        s = styles.lightgray_line(**styles.thin_line())
+                        p.plot_spectrum(spec, auto_limits=True)
 
             f.match_limits()
 

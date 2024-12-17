@@ -117,12 +117,12 @@ class RVFitConfig(Config):
             'plot_input_spec': True,
             'plot_fit_spec': {
                 # Default plots of RVFit results
-                'pfsGA-RVFit-best-{id}': dict(
-                    plot_spectrum=True, plot_processed_template=True,
-                    plot_flux_err=False, plot_residuals=False),
+                'pfsGA-RVFit-best-full-{id}': dict(
+                    plot_flux=True, plot_template=True,
+                    normalize_cont=True),
                 'pfsGA-RVFit-residuals-{id}': dict(
-                    plot_spectrum=False, plot_processed_template=False,
-                    plot_flux_err=False, plot_residuals=True),
+                    plot_residual=True,
+                    normalize_cont=True),
             },
             'plot_params_priors': True,
             'plot_params_cov': True

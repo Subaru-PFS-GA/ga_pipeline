@@ -282,7 +282,7 @@ class RVFitStep(PipelineStep):
         # continuum or flux correction function
         spectra = context.pipeline.rvfit_spectra
         templates = self.__rvfit_coadd_get_templates(context, spectra)
-        corrections = self.__rvfit_coadd_eval_correction(context, spectra, templates)
+        corrections, correction_masks = self.__rvfit_coadd_eval_correction(context, spectra, templates)
         
         # We can only coadd arms that have been used for RV fitting
         coadd_arms = set(context.config.coadd.coadd_arms).intersection(spectra.keys())
@@ -420,17 +420,17 @@ class RVFitStep(PipelineStep):
         # flux correction, or a model fitted to continuum pixels. The correction model
         # is used to normalize the spectra before coadding.
 
-        corr = context.pipeline.rvfit.eval_correction(
+        pp_specs, pp_temps, corrections, correction_masks = context.pipeline.rvfit.eval_correction(
             spectra,
             templates,
             context.pipeline.rvfit_results.rv_fit,
             a=context.pipeline.rvfit_results.a_fit)
         
         if context.trace is not None:
-            context.trace.on_coadd_eval_correction(spectra, templates, corr,
-                                                context.pipeline.rvfit.spec_norm, context.pipeline.rvfit.temp_norm)
+            context.trace.on_coadd_eval_correction(spectra, templates, corrections, correction_masks,
+                                                   context.pipeline.rvfit.spec_norm, context.pipeline.rvfit.temp_norm)
         
-        return corr
+        return corrections, correction_masks
     
     #endregion
     #region Cleanup

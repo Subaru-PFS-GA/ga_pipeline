@@ -57,11 +57,11 @@ TEST_CONFIG_RUN17_10015 = dict(
                 'pfsGA-RVFit-best-400nm-{id}': dict(
                     wlim=[385, 405],
                     plot_spectrum=True, plot_processed_template=True,
-                    plot_flux_err=True, plot_residuals=False),
+                    plot_flux_err=True, plot_residual=False),
                 'pfsGA-RVFit-best-Ca-{id}': dict(
                     wlim=[849, 870],
                     plot_spectrum=True, plot_processed_template=True,
-                    plot_flux_err=True, plot_residuals=False),
+                    plot_flux_err=True, plot_residual=False),
             }
         ),
     ),
