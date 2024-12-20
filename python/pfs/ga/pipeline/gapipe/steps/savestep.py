@@ -20,21 +20,21 @@ class SaveStep(PipelineStep):
 
         stellar_params = self.__get_stellar_params(context)
         stellar_params_covar = context.pipeline.rvfit_results.cov
-        velocity_corrections = self.__get_velocity_corrections(context.pipeline.coadd_merged.observations)
+        velocity_corrections = self.__get_velocity_corrections(context.pipeline.coadd_results.spectrum.observations)
         abundances = self.__get_abundances(context)
         abundances_covar = None
         notes = PfsGAObjectNotes()
 
         context.pipeline.pfsGAObject = PfsGAObject(
-            context.pipeline.coadd_merged.target,
-            context.pipeline.coadd_merged.observations,
-            context.pipeline.coadd_merged.wave,
-            context.pipeline.coadd_merged.flux,
-            context.pipeline.coadd_merged.mask,
-            context.pipeline.coadd_merged.sky,
-            context.pipeline.coadd_merged.covar,
-            context.pipeline.coadd_merged.covar2,
-            MaskHelper(**{ v: k for k, v in context.pipeline.coadd_merged.mask_flags.items() }),
+            context.pipeline.coadd_results.spectrum.target,
+            context.pipeline.coadd_results.spectrum.observations,
+            context.pipeline.coadd_results.spectrum.wave,
+            context.pipeline.coadd_results.spectrum.flux,
+            context.pipeline.coadd_results.spectrum.mask,
+            context.pipeline.coadd_results.spectrum.sky,
+            context.pipeline.coadd_results.spectrum.covar,
+            context.pipeline.coadd_results.spectrum.covar2,
+            MaskHelper(**{ v: k for k, v in context.pipeline.coadd_results.spectrum.mask_flags.items() }),
             metadata,
             flux_table,
             stellar_params,

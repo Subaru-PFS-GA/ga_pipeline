@@ -91,10 +91,11 @@ class GAPipeline(Pipeline):
         self.rvfit_psfs = None                # PSFs for RV fitting
         self.rvfit_results = None             # Results from RVFit
 
-        self.stacker = None                   # Stacker object
+        self.stacker = None                   # SpectrumStacker object
 
-        self.coadd_spectra = None
-        self.coadd_merged = None
+        self.coadd_arms = None
+        self.coadd_spectra = None             # Spectra used for coaddition
+        self.coadd_results = None             # Results from coaddition
 
     def update(self, script=None, config=None, repo=None, trace=None, id=None):
         super().update(script=script, config=config, trace=trace)
@@ -166,13 +167,20 @@ class GAPipeline(Pipeline):
             {
                 'type': RVFitStep,
                 'name': 'rvfit',
-                'func': RVFitStep.validate,
-                'critical': False,
+                'func': RVFitStep.validate_config,
+                'critical': True,
                 'substeps': [
                     {
                         'name': 'rvfit_load',
                         'func': RVFitStep.load,
                         'critical': True,
+                        'substeps': [
+                            {
+                                'name': 'rvfit_load_validate',
+                                'func': RVFitStep.validate_data,
+                                'critical': True
+                            }
+                        ]
                     },
                     {
                         'name': 'rvfit_preprocess',

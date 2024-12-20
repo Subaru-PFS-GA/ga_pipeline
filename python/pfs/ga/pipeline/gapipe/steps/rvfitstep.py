@@ -3,7 +3,7 @@ import os
 from pfs.datamodel import *
 from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
-from pfs.ga.pfsspec.core.obsmod.stacking import Stacker, StackerTrace
+from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
@@ -19,9 +19,9 @@ class RVFitStep(PipelineStep):
 
     #region Run
 
-    def validate(self, context):
+    def validate_config(self, context):
         """
-        Initialize the RV fitting step.
+        RV fitting pre-validation.
         """
         
         if not context.config.run_rvfit:
@@ -248,6 +248,27 @@ class RVFitStep(PipelineStep):
 
     
     #endregion
+    #region Validate data
+
+    def validate_data(self, context):
+        """
+        """
+
+        spectra = context.pipeline.rvfit_spectra
+
+        # Make sure that the bit flags are the same for all spectra
+        # TODO: any more validation here?
+        mask_flags = None
+        for arm in spectra:
+            for s in spectra[arm]:
+                if s is not None:
+                    if mask_flags is None:
+                        mask_flags = s.mask_flags
+                    elif mask_flags != s.mask_flags:
+                        logger.warning('Mask flags are not the same for all spectra.')
+
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+    
     #region Preprocess
 
     def preprocess(self, context):
@@ -268,6 +289,7 @@ class RVFitStep(PipelineStep):
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
+    #endregion
     #region Coadd
 
     def coadd(self, context):
@@ -278,112 +300,145 @@ class RVFitStep(PipelineStep):
             logger.info('Spectrum stacking is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=True, skip_substeps=True)
         
-        # Use the same input as for RV fitting and evaluate the templates and the
-        # continuum or flux correction function
-        spectra = context.pipeline.rvfit_spectra
-        templates = self.__rvfit_coadd_get_templates(context, spectra)
-        corrections, correction_masks = self.__rvfit_coadd_eval_correction(context, spectra, templates)
-        
         # We can only coadd arms that have been used for RV fitting
-        coadd_arms = set(context.config.coadd.coadd_arms).intersection(spectra.keys())
+        coadd_arms = set(context.config.coadd.coadd_arms).intersection(context.pipeline.rvfit_spectra.keys())
 
         if len(coadd_arms) < len(context.config.coadd.coadd_arms):
             logger.warning('Not all arms required for co-adding are available from rvfit.')
+        
+        # Use the same input as for RV fitting but limit the arms to those we want to coadd
+        context.pipeline.coadd_spectra = { arm: [ s for s in context.pipeline.rvfit_spectra[arm] if s is not None ] for arm in coadd_arms }
+        spectra = context.pipeline.coadd_spectra
+        
+        # Add the extra mask flags to the spectra and then determine the mask values
+        self.__coadd_add_extra_flags(context, spectra)
+        no_data_bit, no_continuum_bit, exclude_bits, mask_flags = self.__coadd_get_mask_flags(context, spectra)
 
-        # Make sure that the bit flags are the same for all spectra
-        # TODO: any more validation here?
-        no_data_bit = None
-        mask_flags = None
-        for arm in spectra:
-            for s in spectra[arm]:
-                if s is not None:
-                    if no_data_bit is None:
-                        no_data_bit = s.get_mask_bits([ context.config.coadd.no_data_flag ])
+        # Plot the input spectra
+        if context.trace is not None:
+            context.trace.on_coadd_start_stack(
+                { arm: [ s for s in spectra[arm] if s is not None ] for arm in spectra },
+                no_continuum_bit, exclude_bits)
+                
+        # TODO: move these below to the tempfit class instead?
 
-                    if mask_flags is None:
-                        mask_flags = s.mask_flags
-                    elif mask_flags != s.mask_flags:
-                        logger.warning('Mask flags are not the same for all spectra.')
+        # Evaluate the templates and the correction model for each arm and exposure at the best fit parameters
+        templates = self.__coadd_get_templates(context, spectra)
+        corrections, correction_masks = self.__coadd_eval_correction(context, spectra, templates)
+
+        # Calculate the normalization factor that rescales the correction models to the original
+        # physical flux unit of the spectra.
+        norm = context.pipeline.rvfit.spec_norm if context.pipeline.rvfit.spec_norm is not None else 1.0
+        norm /= context.pipeline.rvfit.temp_norm if context.pipeline.rvfit.temp_norm is not None else 1.0
+
+        # Append the correction model to the spectra. This will leaver the mask and flux
+        # intact and only attach the `cont` or `flux_corr` attribute to the spectra.
+        context.pipeline.rvfit.correction_model.apply_correction(spectra, corrections, correction_masks,
+                                                                 apply_flux=False, apply_mask=True,
+                                                                 mask_bit=no_continuum_bit,
+                                                                 normalization=norm)
+        
+        # Plot the corrected spectra
+        # if context.trace is not None:
+        #     context.trace.on_coadd_start_stack(
+        #         { arm: [ s for s in spectra[arm] if s is not None ] for arm in context.config.coadd.coadd_arms },
+        #         no_continuum_bit, exclude_bits)
 
         # Initialize the stacker algorithm
-        context.pipeline.stacker = self.__rvfit_coadd_init(context)
+        context.pipeline.stacker = self.__coadd_init_stacker(context,
+                                                             no_data_bit=no_data_bit,
+                                                             exclude_bits=exclude_bits)
 
         # TODO: add trace hook to plot the templates and corrections?
 
-        coadd_spectra = {}
-        for arm in spectra:
-            # Only stack those spectra that are not masked or otherwise None
-            ss = [ s for s in spectra[arm] if s is not None ]
-            fc = [ f for f in corrections[arm] if f is not None ]
-            if len(ss) > 0:
-                stacked_wave, stacked_wave_edges, stacked_flux, stacked_error, stacked_weight, stacked_mask = \
-                    context.pipeline.stacker.stack(ss, flux_corr=fc)
-                
-                # Mask out bins where the weight is zero
-                # TODO: move this to the stacker algorithm
-                stacked_mask = np.where(stacked_weight == 0, stacked_mask | no_data_bit, stacked_mask)
+        # TODO: when working with pfsMerged files, verify that errors are properly taken into account
+        #       and correct weighting with the errors is done by the stacker
 
-                # Create a spectrum
-                spec = PfsStellarSpectrum()
+        # Generate the stacked spectrum
+        coadd_spectrum = context.pipeline.stacker.stack(
+            [ s for arm in context.config.coadd.coadd_arms for s in spectra[arm] if s is not None ])
+        
+        # TODO: evaluate the best fit model, continuum, etc that might be interesting
 
-                # TODO: fill in ids?
-                #       calculate S/N etc.
-
-                spec.wave = stacked_wave
-                spec.wave_edges = stacked_wave_edges
-                spec.flux = stacked_flux
-                spec.flux_err = stacked_error
-                spec.mask = stacked_mask
-
-                coadd_spectra[arm] = spec
-            else:
-                coadd_spectra[arm] = None
-
-        # Merge arms into a single spectrum
-        # TODO: this won't work with overlapping arms! Need to merge them properly.
-        arms = sort_arms(spectra.keys())
-        coadd_merged = PfsStellarSpectrum()
-        coadd_merged.wave = np.concatenate([ coadd_spectra[arm].wave for arm in arms ])
-        coadd_merged.wave_edges = np.concatenate([ coadd_spectra[arm].wave_edges for arm in arms ])
-        coadd_merged.flux = np.concatenate([ coadd_spectra[arm].flux for arm in arms ])
-        coadd_merged.flux_err = np.concatenate([ coadd_spectra[arm].flux_err for arm in arms ])
-        coadd_merged.mask = np.concatenate([ coadd_spectra[arm].mask for arm in arms ])
+        if context.trace is not None:
+            context.trace.on_coadd_finish_stack(coadd_spectrum, context.config.coadd.coadd_arms, no_continuum_bit, exclude_bits)
 
         # TODO: sky? covar? covar2? - these are required for a valid PfsFiberArray
-        coadd_merged.sky = np.zeros(coadd_merged.wave.shape)
-        coadd_merged.covar = np.zeros((3,) + coadd_merged.wave.shape)
-        coadd_merged.covar2 = np.zeros((1, 1), dtype=np.float32)
+        coadd_spectrum.sky = np.zeros(coadd_spectrum.wave.shape)
+        coadd_spectrum.covar = np.zeros((3,) + coadd_spectrum.wave.shape)
+        coadd_spectrum.covar2 = np.zeros((1, 1), dtype=np.float32)
 
         # Merge observation metadata
+        # TODO: move this to the final save step, do not attach metadata to
+        #       the coadded spectrum because it might not have all arms that
+        #       we used in the processing
+
+        # TODO: actually, we might want to save the coadd file separately from the RVFit results
+
         observations = []
         target = None
-        mask_flags = None
         for arm in context.pipeline.rvfit_spectra:
             for s in context.pipeline.rvfit_spectra[arm]:
                 if s is not None:
                     observations.append(s.observations)
                     if target is None:
                         target = s.target
-                        mask_flags = s.mask_flags
         
         # Merge all observations into a final list
-        coadd_merged.target = target
-        coadd_merged.observations = merge_observations(observations)
-        coadd_merged.mask_flags = mask_flags
+        coadd_spectrum.target = target
+        coadd_spectrum.observations = merge_observations(observations)
+        coadd_spectrum.mask_flags = mask_flags
 
-        context.pipeline.coadd_spectra = coadd_spectra
-        context.pipeline.coadd_merged = coadd_merged
+        context.pipeline.coadd_results = SimpleNamespace(
+            spectrum = coadd_spectrum
+        )
 
-        # TODO: do we need mode metadata?
+        # TODO: do we need more metadata?
 
         # TODO: trace hook
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
-    def __rvfit_coadd_init(self, context):
-        # Initialize the trace object if tracing is enabled for the pipeline
+    def __coadd_add_extra_flags(self, context, spectra):
+        for arm in spectra:
+            for s in spectra[arm]:
+                if s is not None:
+                    s.mask_flags.update(context.config.coadd.extra_mask_flags)
+    
+    def __coadd_get_mask_flags(self, context, spectra):
+        """
+        Return mask bits and mask flags which are supposed to be valid for all spectra.
+
+        Returns
+        -------
+        no_data_bit : int
+            The bit mask for the no data flag.
+        no_continuum_bit : int
+            The bit mask for the no continuum flag.
+        mask_flags : dict
+            The dictionary of mask flags
+        """
+
+        for arm in spectra:
+            for s in spectra[arm]:
+                if s is not None:
+                    mask_flags = s.mask_flags
+
+                    no_data_bit = s.get_mask_bits([ context.config.coadd.mask_flag_no_data ])
+                    no_continuum_bit = s.get_mask_bits([ context.config.coadd.mask_flag_no_continuum ])
+                    exclude_bits = s.get_mask_bits(context.config.coadd.mask_flags_exclude)
+
+                    return no_data_bit, no_continuum_bit, exclude_bits, mask_flags
+    
+    def __coadd_init_stacker(self, context,
+                             no_data_bit=1,
+                             exclude_bits=0):
+        """
+        Initialize the trace object if tracing is enabled for the pipeline
+        """
+
         if context.trace is not None:
-            trace = StackerTrace(id=context.id)
+            trace = SpectrumStackerTrace(id=context.id)
             trace.init_from_args(None, None, context.config.coadd.trace_args)
 
             # Set output directories based on pipeline trace
@@ -396,12 +451,15 @@ class RVFitStep(PipelineStep):
             trace = None
 
         # Initialize the stacker object
-        stacker = Stacker(trace)
+        stacker = SpectrumStacker(trace)
+        stacker.spectrum_type = PfsStellarSpectrum
+        stacker.mask_no_data_bit = no_data_bit
+        stacker.mask_exclude_bits = exclude_bits
         stacker.init_from_args(None, None, context.config.coadd.stacker_args)
 
         return stacker
     
-    def __rvfit_coadd_get_templates(self, context, spectra):
+    def __coadd_get_templates(self, context, spectra):
         # Return the templates at the best fit parameters
 
         # Interpolate the templates to the best fit parameters
@@ -414,7 +472,7 @@ class RVFitStep(PipelineStep):
 
         return templates
     
-    def __rvfit_coadd_eval_correction(self, context, spectra, templates):
+    def __coadd_eval_correction(self, context, spectra, templates):
         # Evaluate the correction for every exposure of each arm.
         # Depending on the configuration, the correction is either a multiplicative
         # flux correction, or a model fitted to continuum pixels. The correction model

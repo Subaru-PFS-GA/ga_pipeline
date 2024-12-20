@@ -20,6 +20,8 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         self.plot_exposures = True
         self.plot_flux_correction = True
 
+        self.plot_coadd_input = True
+
         super().__init__(figdir=figdir, logdir=logdir,
                          plot_inline=plot_inline, 
                          plot_level=plot_level,
@@ -95,4 +97,55 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
 
             self.flush_figures()
 
+    def on_coadd_start_stack(self, spectra, no_continuum_bit, exclude_bits):
+        """
+        Fired when the coaddition process starts.
         
+        Parameters
+        ----------
+        spectra : dict
+            The dictionary of spectra, the continuum model or the flux correction attached
+            but not applied yet.
+        no_continuum_bit : int
+            The bit mask for the no continuum flag.
+        exclude_bits : list
+            The list of bit masks to exclude from coadding.
+        """
+
+        if self.plot_coadd_input:
+            self._plot_spectra('pfsGA-Coadd-input-{id}',
+                               spectra,
+                               plot_flux=True, plot_flux_err=True, plot_mask=True,
+                               mask_bits=no_continuum_bit | exclude_bits,
+                               normalize_cont=True, apply_flux_corr=True,
+                               title='Coadd input spectra - {id}',
+                               nrows=2, ncols=1, diagram_size=(6.5, 3.5))
+
+            self.flush_figures()
+
+    def on_coadd_finish_stack(self, spectrum, arms, no_continuum_bit, exclude_bits):
+        """
+        Fired when the coaddition process finishes.
+        
+        Parameters
+        ----------
+        spectra : dict
+            The dictionary of spectra, the continuum model or the flux correction attached
+            but not applied yet.
+        no_continuum_bit : int
+            The bit mask for the no continuum flag.
+        exclude_bits : list
+            The list of bit masks to exclude from coadding.
+        """
+
+        if self.plot_coadd_input:
+            self._plot_spectrum('pfsGA-Coadd-stack-{id}',
+                                arm=arms,
+                                spectrum=spectrum,
+                                plot_flux=True, plot_flux_err=True, plot_mask=True,
+                                mask_bits=no_continuum_bit | exclude_bits,
+                                normalize_cont=False, apply_flux_corr=False,
+                                title='Coadd stacked spectrum - {id}',
+                                diagram_size=(6.5, 3.5))
+
+            self.flush_figures()
