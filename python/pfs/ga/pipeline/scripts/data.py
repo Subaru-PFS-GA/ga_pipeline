@@ -7,7 +7,7 @@ import numpy as np
 
 from pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo
-from pfs.ga.pfsspec.survey.pfs import PfsFileSystemConfig
+from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemConfig
 
 from ..constants import Constants
 from ..common.script import Script
@@ -94,9 +94,7 @@ class Data(Script):
         Create a connector to the file system.
         """
 
-        connector = FileSystemRepo(
-            config = PfsFileSystemConfig
-        )
+        connector = FileSystemRepo(config=PfsGen3FileSystemConfig)
         return connector
 
     def prepare(self):
