@@ -8,6 +8,12 @@ export GAPIPE_OUTDIR="~/project/ga_pipeline/out"
 export GAPIPE_DATADIR="~/data/edr2/"
 export GAPIPE_RERUNDIR="run15"
 
+export PFSSPEC_PFS_DATADIR="/work/datastore"
+export PFSSPEC_PFS_RERUNDIR="u/kiyoyabe/processing/./run20/20250228a"
+export PFSSPEC_PFS_RERUN="u_kiyoyabe_processing_run20_20250228a"
+export PFSSPEC_PFS_DESIGNDIR="/data/."
+export PFSSPEC_PFS_CONFIGDIR="/work/datastore/PFS/raw/./pfsConfig"
+
 export PFSSPEC_ROOT=/home/dobos/project/ga_pfsspec_all
 export PFSSPEC_DATA="~/data/pfsspec"
 
