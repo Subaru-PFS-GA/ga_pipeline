@@ -7,16 +7,16 @@ import numpy as np
 
 from pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo
-from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemConfig
+from pfs.ga.pfsspec.survey.pfs import PfsFileSystemConfig
 
 from ..constants import Constants
 from ..common.script import Script
 
 from ..setup_logger import logger
 
-class Data(Script):
+class Repo(Script):
     """
-    Search PFS data files and print useful information about them.
+    Search PFS repo for data files and print useful information about them.
 
     This script works by reading the file system and contents of FITS files only,
     without relying on Butler.
@@ -94,7 +94,9 @@ class Data(Script):
         Create a connector to the file system.
         """
 
-        connector = FileSystemRepo(config=PfsGen3FileSystemConfig)
+        connector = FileSystemRepo(
+            config = PfsFileSystemConfig
+        )
         return connector
 
     def prepare(self):
@@ -260,7 +262,7 @@ class Data(Script):
             raise e
 
 def main():
-    script = Data()
+    script = Repo()
     script.execute()
 
 if __name__ == "__main__":

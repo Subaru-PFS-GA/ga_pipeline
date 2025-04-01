@@ -84,8 +84,8 @@ EOF
 # Register entrypoint functions
 
 # Search and show information about PFS data products
-function gapipe-data() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.data" "$@"
+function gapipe-repo() {
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.repo" "$@"
 }
 
 # Configure GA 1D pipeline tasks for a list of data products
