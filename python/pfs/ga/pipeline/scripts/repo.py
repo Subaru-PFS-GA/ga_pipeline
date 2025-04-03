@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 
-import os
+import os, sys
 from types import SimpleNamespace
 import logging
 import numpy as np
+import pandas as pd
+import commentjson as json
 
 from pfs.datamodel import *
-from pfs.ga.pfsspec.survey.repo import FileSystemRepo
-from pfs.ga.pfsspec.survey.pfs import PfsFileSystemConfig
+from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
 
 from ..constants import Constants
-from ..common.script import Script
+from ..common import Script, ConfigJSONEncoder
 
 from ..setup_logger import logger
 
@@ -30,9 +31,13 @@ class Repo(Script):
                 help = 'Print information about the data root and rerun directory',
                 run = self.__run_info
             ),
-            'search': SimpleNamespace(
+            'find-product': SimpleNamespace(
                 help = 'Search for files of a given product type',
-                run = self.__run_search
+                run = self.__run_find_product
+            ),
+            'find-object': SimpleNamespace(
+                help = 'Search for object withing pfsConfig files',
+                run = self.__run_find_object
             ),
             'show': SimpleNamespace(
                 help = 'Print information about a given file',
@@ -61,6 +66,8 @@ class Repo(Script):
         self.__command = None           # Command to execute
         self.__filename = None          # Path of the input file
         self.__product = None           # Product to be processed
+        self.__format = 'table'         # Output format
+        self.__top = None
 
         self.__connector = self.__create_data_connector()
 
@@ -70,6 +77,8 @@ class Repo(Script):
                      help='Command')
         self.add_arg('in', type=str, nargs='?',
                      help='Product type or filename')
+        self.add_arg('--format', type=str)
+        self.add_arg('--top', type=int)
         self.__connector.add_args(self)
 
         super()._add_args()
@@ -87,6 +96,9 @@ class Repo(Script):
         
         self.__connector.init_from_args(self)
 
+        self.__format = self.get_arg('format', args, self.__format)
+        self.__top = self.get_arg('top', args, self.__top)
+
         super()._init_from_args(args)
 
     def __create_data_connector(self):
@@ -94,9 +106,11 @@ class Repo(Script):
         Create a connector to the file system.
         """
 
-        connector = FileSystemRepo(
-            config = PfsFileSystemConfig
-        )
+        # TODO: create different connectors here if working with
+        #       data sets other than PFS
+
+        connector = PfsGen3FileSystemRepo()
+
         return connector
 
     def prepare(self):
@@ -106,21 +120,74 @@ class Repo(Script):
         self.__commands[self.__command].run()
 
     def __run_info(self):
-        workdir = self.__connector.get_resolved_variable('workdir')
         datadir = self.__connector.get_resolved_variable('datadir')
         rerundir = self.__connector.get_resolved_variable('rerundir')
         
-        print(f'Work directory: {workdir}')
         print(f'Data root directory: {datadir}')
         print(f'Rerun directory: {rerundir}')
 
-    def __run_search(self):
+    def __run_find_product(self):
         if self.__product is None:
             raise ValueError('Product type not provided')
         
         filenames, identities = self.__connector.find_product(self.__product)
-        for i, filename in enumerate(filenames):
-            print(filename)
+        identities.filename = filenames
+
+        # TODO: return values in different formats
+            
+        json.dump(identities.__dict__,
+                  sys.stdout,
+                  sort_keys=False,
+                  indent=2,
+                  cls=ConfigJSONEncoder)
+
+    def __run_find_object(self):
+        identities = self.__connector.find_object(groupby='none')
+        if identities is not None:
+            if self.__top is not None:
+                for k, v in identities.__dict__.items():
+                    setattr(identities, k, v[:self.__top])
+            self.__print_identities(identities)
+
+    def __print_identities(self, identities, format=None):
+        format = format if format is not None else self.__format
+
+        if format == 'table':
+            self.__print_identities_table(identities)
+        elif format == 'json':
+            self.__print_identities_json(identities)
+        else:
+            raise NotImplementedError()
+
+    def __print_identities_table(self, identities):
+        # Pretty-print all columns and rows of the data frame
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.max_rows', None)
+        pd.set_option('display.width', None)
+        pd.set_option('display.expand_frame_repr', False)
+        pd.set_option('display.float_format', '{:.2f}'.format)
+        pd.set_option('display.precision', 2)
+        pd.set_option('display.colheader_justify', 'right')
+        pd.set_option('display.show_dimensions', False)
+        pd.set_option('display.max_colwidth', None)
+
+        
+        df = pd.DataFrame(identities.__dict__)
+
+        if 'objId' in df.columns:
+            df['objId'] = df['objId'].apply(lambda x: f'0x{x:016x}')
+        if 'pfsDesignId' in df.columns:
+            df['pfsDesignId'] = df['pfsDesignId'].apply(lambda x: f'0x{x:016x}')
+
+        # Print the summary
+        print(df.to_string(index=False))
+
+    def __print_identities_json(self, identities):
+        json.dump(identities.__dict__,
+                  sys.stdout,
+                  sort_keys=False,
+                  indent=2,
+                  cls=ConfigJSONEncoder)
 
     def __run_show(self):
         """
@@ -155,16 +222,6 @@ class Repo(Script):
         for key in d:
             # Check if pfsDesignId is in the key
             if 'pfsdesignid' in key.lower():
-                print(f'  {key}: 0x{d[key]:016x}')
-            else:
-                print(f'  {key}: {d[key]}')
-
-    def __print_identity(self, identity):
-        print(f'Identity')
-        d = identity.__dict__
-        for key in d:
-            # Check if pfsDesignId is in the key
-            if 'pfsdesignid' in key.lower() or 'objid' in key.lower():
                 print(f'  {key}: 0x{d[key]:016x}')
             else:
                 print(f'  {key}: {d[key]}')

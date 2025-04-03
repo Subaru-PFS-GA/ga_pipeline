@@ -5,5 +5,6 @@ from .pipelinestep import PipelineStep, PipelineStepResults
 from .pipelinetrace import PipelineTrace
 
 from .config import Config
+from .configjsonencoder import ConfigJSONEncoder
 
 from .script import Script
