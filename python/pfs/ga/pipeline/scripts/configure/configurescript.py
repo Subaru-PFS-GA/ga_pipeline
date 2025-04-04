@@ -9,15 +9,15 @@ import numpy as np
 
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
-from pfs.ga.pfsspec.survey.repo import FileSystemRepo
+from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
 
-from ..common import Script, PipelineError
-from ..gapipe.config import *
-from ..repo import PfsFileSystemConfig
+from ...common import Script, PipelineError
+from ...gapipe.config import *
+from ...repo import PfsFileSystemConfig
 
-from ..setup_logger import logger
+from ...setup_logger import logger
 
-class Configure(Script):
+class ConfigureScript(Script):
     """
     Generate the job configuration file for a set of observations.
 
@@ -120,7 +120,7 @@ class Configure(Script):
         Create a repo connector to the file system.
         """
 
-        return FileSystemRepo(config=PfsFileSystemConfig)
+        return PfsGen3FileSystemRepo()
 
     def prepare(self):
         super().prepare()
@@ -419,7 +419,7 @@ class Configure(Script):
         return config, filename
 
 def main():
-    script = Configure()
+    script = ConfigureScript()
     script.execute()
 
 if __name__ == "__main__":
