@@ -85,20 +85,20 @@ EOF
 
 # Search and show information about PFS data products
 function gapipe-repo() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.repo" "$@"
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.repo.reposcript" "$@"
 }
 
 # Configure GA 1D pipeline tasks for a list of data products
 function gapipe-configure() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.configure" "$@"
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.configure.configurescript" "$@"
 }
 
 # Submit GA 1D pipeline tasks to the batch system
 function gapipe-submit() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.submit" "$@"
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.submit.submitscript" "$@"
 }
 
 # Run the GA 1D pipeline on a single task
 function gapipe-run() {
-    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.run" "$@"
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.run.runscript" "$@"
 }
