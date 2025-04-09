@@ -67,7 +67,7 @@ class RepoScript(PipelineScript):
         # If not, interpret it as a filename
         if self.is_arg('in'):
             try:
-                self.__product = self.connector.parse_product_type(self.get_arg('in'))
+                self.__product = self.repo.parse_product_type(self.get_arg('in'))
             except ValueError:
                 self.__filename = self.get_arg('in')
 
@@ -83,8 +83,8 @@ class RepoScript(PipelineScript):
         self.__commands[self.__command].run()
 
     def __run_info(self):
-        datadir = self.connector.get_resolved_variable('datadir')
-        rerundir = self.connector.get_resolved_variable('rerundir')
+        datadir = self.repo.get_resolved_variable('datadir')
+        rerundir = self.repo.get_resolved_variable('rerundir')
         
         print(f'Data root directory: {datadir}')
         print(f'Rerun directory: {rerundir}')
@@ -93,7 +93,7 @@ class RepoScript(PipelineScript):
         if self.__product is None:
             raise ValueError('Product type not provided')
         
-        filenames, identities = self.connector.find_product(self.__product)
+        filenames, identities = self.repo.find_product(self.__product)
         identities.filename = filenames
 
         # TODO: return values in different formats
@@ -105,7 +105,7 @@ class RepoScript(PipelineScript):
                   cls=ConfigJSONEncoder)
 
     def __run_find_object(self):
-        identities = self.connector.find_object(groupby='none')
+        identities = self.repo.find_object(groupby='none')
         if identities is not None:
             if self.__top is not None:
                 for k, v in identities.__dict__.items():
@@ -161,14 +161,14 @@ class RepoScript(PipelineScript):
             # Split filename into path, basename and extension
             path, basename = os.path.split(self.__filename)
             name, ext = os.path.splitext(basename)
-            product_type = self.connector.parse_product_type(name.split('-')[0])
+            product_type = self.repo.parse_product_type(name.split('-')[0])
 
             if product_type in self.products:
-                product, identity, filename = self.connector.load_product(product_type, filename=self.__filename)
+                product, identity, filename = self.repo.load_product(product_type, filename=self.__filename)
             else:
                 raise NotImplementedError(f'File type not recognized: {basename}')
         elif self.__product is not None:
-            product, identity, filename = self.connector.load_product(self.__product)
+            product, identity, filename = self.repo.load_product(self.__product)
         else:
             raise ValueError('No input file or product type provided')
 

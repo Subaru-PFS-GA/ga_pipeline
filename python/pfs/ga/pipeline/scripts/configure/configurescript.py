@@ -11,13 +11,12 @@ from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
 
-from ...common import Script, PipelineError
+from ..pipelinescript import PipelineScript
 from ...gapipe.config import *
-from ...repo import PfsFileSystemConfig
 
 from ...setup_logger import logger
 
-class ConfigureScript(Script):
+class ConfigureScript(PipelineScript):
     """
     Generate the job configuration file for a set of observations.
 
@@ -55,25 +54,16 @@ class ConfigureScript(Script):
         self.__dry_run = False          # Dry run mode
         self.__top = None               # Stop after this many objects
 
-        self.__repo = self.__create_data_repo()
-
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
 
         self.add_arg('--outdir', type=str, help='Output directory')
-
         self.add_arg('--dry-run', action='store_true', help='Dry run mode')
         self.add_arg('--top', type=int, help='Stop after this many objects')
-
-        # Register the identity param filters
-        self.__repo.add_args(self)
 
         super()._add_args()
 
     def _init_from_args(self, args):
-        # Parse the identity param filters
-        self.__repo.init_from_args(self)
-
         self.__config = GAPipelineConfig()
 
         # Load the configuration template file
@@ -93,6 +83,8 @@ class ConfigureScript(Script):
             self.__config.outdir = self.get_arg('outdir', args)
         if self.is_arg('datadir', args):
             self.__config.datadir = self.get_arg('datadir', args)
+        if self.is_arg('rerun', args):
+            self.__config.rerun = self.get_arg('rerun', args)
         if self.is_arg('rerundir', args):
             self.__config.rerundir = self.get_arg('rerundir', args)
 
@@ -100,27 +92,22 @@ class ConfigureScript(Script):
         # Also save workdir and outdir because these might be overwritten
         # in the configuration template
         if self.__config.workdir is not None:
-            self.__repo.set_variable('workdir', self.__config.workdir)
+            self.repo.set_variable('workdir', self.__config.workdir)
             self.__workdir = self.__config.workdir
         if self.__config.outdir is not None:
-            self.__repo.set_variable('outdir', self.__config.outdir)
+            self.repo.set_variable('outdir', self.__config.outdir)
             self.__outdir = self.__config.outdir
         if self.__config.datadir is not None:
-            self.__repo.set_variable('datadir', self.__config.datadir)
+            self.repo.set_variable('datadir', self.__config.datadir)
+        if self.__config.rerun is not None:
+            self.repo.set_variable('rerun', self.__config.rerun)
         if self.__config.rerundir is not None:
-            self.__repo.set_variable('rerundir', self.__config.rerundir)
+            self.repo.set_variable('rerundir', self.__config.rerundir)
 
         self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
         self.__top = self.get_arg('top', args, self.__top)
 
         super()._init_from_args(args)
-
-    def __create_data_repo(self):
-        """
-        Create a repo connector to the file system.
-        """
-
-        return PfsGen3FileSystemRepo()
 
     def prepare(self):
         super().prepare()
@@ -137,171 +124,48 @@ class ConfigureScript(Script):
         files = ' '.join(self.__config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
-        # Find all the pfsSingle or pfsConfig files that match the filters
-        # TODO: add option to use either pfsSingle or pfsConfig files
-        # targets, _ = self.__find_targets_pfsSingle()
-        targets = self.__find_targets_pfsConfig()
+        identities = self.repo.find_object(groupby='objid')
+        targets = self.__create_target_config(identities)
 
         if len(targets) == 0:
-            logger.warning('No pfsSingle or Config files, nor object within them found matching the filters.')
+            logger.warning('No objects found matching the filters.')
             return
         
         # Generate the configuration file for each target
         self.__generate_config_files(targets)
 
-    def __find_targets_pfsConfig(self):
+    def __create_target_config(self, identities):
         """
-        Find all the pfsConfig files that match the filters and convert the object
-        lists into a dictionary of targets.
+        Return the configuration section objects for each target
         """
 
-        # TODO: This function now finds observations by looking of PfsSIngle files.
-        #       Use some database instead.
-
-        logger.info(f'Finding pfsConfig files matching the following filters:')
-        logger.info(f'    visit: {repr(self.__repo.filters.visit)}')
-
-        filenames, identities = self.__repo.find_product(PfsConfig)
-
-        logger.info(f'Found {len(filenames)} pfsConfig files matching the filters.')
-
-        # Create a dict keyed by objId and load the pfsConfig files of each visit to get the fiberId etc.
         targets = {}
-        for i, filename in enumerate(filenames):
-            pfsConfig, config_identity, _ = self.__repo.load_product(PfsConfig, filename=filename)
-            obsTime = datetime.combine(config_identity.date, datetime.min.time())
-            expTime = np.nan
-
-            for j, objId in enumerate(pfsConfig.objId):
-                if objId != -1 \
-                    and self.__repo.filters.objId.match(objId) \
-                    and self.__repo.filters.catId.match(pfsConfig.catId[j]) \
-                    and self.__repo.filters.tract.match(pfsConfig.tract[j]) \
-                    and self.__repo.filters.patch.match(pfsConfig.patch[j]) \
-                    and self.__repo.filters.spectrograph.match(pfsConfig.spectrograph[j]) \
-                    and self.__repo.filters.arm.match(pfsConfig.arms):
-
-                    if objId not in targets:
-                        targets[objId] = GATargetConfig(
-                            identity = GAObjectIdentityConfig(
-                                catId = pfsConfig.catId[j],
-                                tract = pfsConfig.tract[j],
-                                patch = pfsConfig.patch[j],
-                                objId = objId),
-                            observations = GAObjectObservationsConfig(
-                                visit = [],
-                                arm = {},
-                                spectrograph = {},
-                                pfsDesignId = {},
-                                fiberId = {},
-                                fiberStatus = {},
-                                pfiNominal = {},
-                                pfiCenter = {},
-                                obsTime = {},
-                                expTime = {},
-                            ))
-                    
-                    target = targets[objId]
-                    target.observations.visit.append(identities.visit[i])
-
-                    self.__load_target_from_pfsConfig(target, objId, 
-                                                      pfsConfig.visit, pfsConfig, j,
-                                                      obsTime, expTime)
-
-        if len(targets) == 0:
-            return targets, filenames
-
-        # Report some statistics in the log
-        unique_visits = np.unique(np.concatenate([ target.observations.visit for _, target in targets.items() ]))
-        logger.info(f'Targets span {len(unique_visits)} unique visits.')
-
-        # Update targets: sort observations and calculate nVisit and pfsVisitHash
-        for _, target in targets.items():
-            self.__sort_target_observations_by_visit(target)
-            self.__update_target_identity(target)
+        for objid, id in identities.items():
+            targets[objid] = GATargetConfig(
+                proposalId = id.proposalId[0],
+                targetType = id.targetType[0],
+                identity = GAObjectIdentityConfig(
+                    catId = id.catId[0],
+                    tract = id.tract[0],
+                    patch = id.patch[0],
+                    objId = objid,
+                    nVisit = wraparoundNVisit(len(id.visit)),
+                    pfsVisitHash = calculatePfsVisitHash(id.visit),
+                ),
+                observations = GAObjectObservationsConfig(
+                    visit = id.visit,
+                    arms = id.arms,
+                    spectrograph = id.spectrograph,
+                    pfsDesignId = id.pfsDesignId,
+                    fiberId = id.fiberId,
+                    fiberStatus = id.fiberStatus,
+                    obstime = id.obstime,
+                    exptime = id.exptime,
+                )
+            )
 
         return targets
 
-    def __find_targets_pfsSingle(self):
-        """
-        Find all the pfsSingle files that match the filters and convert the object
-        lists into a dictionary of targets.
-        """
-
-        # TODO: This function now finds observations by looking of PfsSIngle files.
-        #       Use some database instead.
-
-        logger.info(f'Finding pfsSingle files matching the following filters:')
-        logger.info(f'    catId: {repr(self.__repo.filters.catId)}')
-        logger.info(f'    tract: {repr(self.__repo.filters.tract)}')
-        logger.info(f'    patch: {repr(self.__repo.filters.patch)}')
-        logger.info(f'    objId: {repr(self.__repo.filters.objId)}')
-        logger.info(f'    visit: {repr(self.__repo.filters.visit)}')
-
-        filenames, identities = self.__repo.find_product(PfsSingle)
-
-        logger.info(f'Found {len(filenames)} pfsSingle files matching the filters.')
-
-        # Create a dict keyed by objId
-        targets = {}
-        for i, filename in enumerate(filenames):
-            objId = identities.objId[i]
-
-            if objId not in targets:
-                targets[objId] = GATargetConfig(
-                    identity = GAObjectIdentityConfig(
-                        catId = identities.catId[i],
-                        tract = identities.tract[i],
-                        patch = identities.patch[i],
-                        objId = objId),
-                    observations = GAObjectObservationsConfig(
-                        visit = [],
-                        arm = {},
-                        spectrograph = {},
-                        pfsDesignId = {},
-                        fiberId = {},
-                        fiberStatus = {},
-                        pfiNominal = {},
-                        pfiCenter = {},
-                        obsTime = {},
-                        expTime = {},
-                    ))
-                
-            targets[objId].observations.visit.append(identities.visit[i])
-
-        if len(targets) == 0:
-            return targets, filenames
-                
-        # Report some statistics in the log
-        unique_visits = np.unique(np.concatenate([ target.observations.visit for _, target in targets.items() ]))
-        logger.info(f'Targets span {len(unique_visits)} unique visits.')
-
-        # Load the pfsConfig files of each visit to get the fiberId etc.
-        for visit in unique_visits:
-            logger.info(f'Finding pfsConfig file matching the following filters:')
-            logger.info(f'    visit: {visit}')
-
-            try:
-                filename, identity = self.__repo.locate_product(PfsConfig, visit=visit)
-            except FileNotFoundError:
-                raise PipelineError(f'No pfsConfig file found for visit {visit}.')
-
-            pfsConfig, config_identity, _ = self.__repo.load_product(PfsConfig, filename=filename)
-            obsTime = datetime.combine(config_identity.date, datetime.min.time())
-            expTime = np.nan
-
-            for i, objId in enumerate(pfsConfig.objId):
-                if objId in targets:
-                    target = targets[objId]
-                    self.__load_target_from_pfsConfig(target, objId, visit, pfsConfig, i, obsTime, expTime)
-
-        # Update targets: sort observations and calculate nVisit and pfsVisitHash
-        for _, target in targets.items():
-            self.__sort_target_observations_by_visit(target)
-            self.__update_target_identity(target)
-
-        return targets, filenames
-    
     def __load_target_from_pfsConfig(self, target, objId, visit, pfsConfig, i, obsTime, expTime):
         if target.proposalId is None:
             target.proposalId = pfsConfig.proposalId[i]
@@ -364,9 +228,9 @@ class ConfigureScript(Script):
         """
 
         q = 0
-        for objId in sorted(targets.keys()):
+        for objid in sorted(targets.keys()):
             # Generate the config
-            config, filename = self.__create_config(targets[objId])
+            config, filename = self.__create_config(targets[objid])
 
             # Save the config to a file
             if not self.__dry_run:
@@ -390,8 +254,8 @@ class ConfigureScript(Script):
 
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
-        dir = self.__repo.format_dir(GAPipelineConfig, target.identity)
-        config_file = self.__repo.format_filename(GAPipelineConfig, target.identity)
+        dir = self.repo.format_dir(GAPipelineConfig, target.identity)
+        config_file = self.repo.format_filename(GAPipelineConfig, target.identity)
 
         # Name of the output pipeline configuration
         filename = os.path.join(dir, config_file)
@@ -399,8 +263,8 @@ class ConfigureScript(Script):
         # Update config with directory names
 
         # Input data directories
-        config.datadir = self.__repo.get_resolved_variable('datadir')
-        config.rerundir = self.__repo.get_resolved_variable('rerundir')
+        config.datadir = self.repo.get_resolved_variable('datadir')
+        config.rerundir = self.repo.get_resolved_variable('rerundir')
 
         logger.debug(f'Configured data directory for object {target.identity}: {config.datadir}')
         logger.debug(f'Configured rerun directory for object {target.identity}: {config.rerundir}')

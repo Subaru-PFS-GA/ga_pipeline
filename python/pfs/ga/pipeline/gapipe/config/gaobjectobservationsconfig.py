@@ -7,25 +7,21 @@ class GAObjectObservationsConfig(Config):
 
     def __init__(self,
                 visit = None,
-                arm = None,
+                arms = None,
                 spectrograph = None,
                 pfsDesignId = None,
                 fiberId = None,
                 fiberStatus = None,
-                pfiNominal = None,
-                pfiCenter = None,
-                obsTime = None,
-                expTime = None):
+                obstime = None,
+                exptime = None):
 
         self.visit = visit
-        self.arm = arm
+        self.arms = arms
         self.spectrograph = spectrograph
         self.pfsDesignId = pfsDesignId
         self.fiberId = fiberId
         self.fiberStatus = fiberStatus
-        self.pfiNominal = pfiNominal
-        self.pfiCenter = pfiCenter
-        self.obsTime = obsTime
-        self.expTime = expTime
+        self.obstime = obstime
+        self.exptime = exptime
 
         super().__init__()

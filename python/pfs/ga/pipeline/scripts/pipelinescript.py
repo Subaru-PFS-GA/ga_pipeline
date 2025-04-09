@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
+from ..repo import PfsGen3FileSystemConfig
 from pfs.datamodel import *
 
 from ..common import Script, PipelineError, ConfigJSONEncoder
@@ -30,27 +31,27 @@ class PipelineScript(Script):
             ),
         }
 
-        self.__connector = self.__create_data_connector()
+        self.__repo = self.__create_data_repo()
 
     def __get_products(self):
         return self.__products
 
     products = property(__get_products)
 
-    def __get_connector(self):
-        return self.__connector
+    def __get_repo(self):
+        return self.__repo
 
-    connector = property(__get_connector)
+    repo = property(__get_repo)
 
     def _add_args(self):
-        self.__connector.add_args(self)
+        self.__repo.add_args(self)
         super()._add_args()
 
     def _init_from_args(self, args):
-        self.__connector.init_from_args(self)
+        self.__repo.init_from_args(self)
         super()._init_from_args(args)
 
-    def __create_data_connector(self):
+    def __create_data_repo(self):
         """
         Create a connector to the file system.
         """
@@ -58,7 +59,10 @@ class PipelineScript(Script):
         # TODO: create different connectors here if working with
         #       data sets other than PFS
 
-        connector = PfsGen3FileSystemRepo()
+        # Override repo config to include GAPipe config files
+        connector = PfsGen3FileSystemRepo(
+            config = PfsGen3FileSystemConfig
+        )
 
         return connector
 
@@ -131,12 +135,12 @@ class PipelineScript(Script):
         self.__print_target(product.target)
         self.__print_observations(product.observations, s=0)
 
-        f, id = self.connector.locate_product(
+        f, id = self.repo.locate_product(
             PfsConfig,
             pfsDesignId=product.observations.pfsDesignId[0],
             visit=product.observations.visit[0]
         )
-        p, id, f = self.connector.load_product(PfsConfig, identity=id)
+        p, id, f = self.repo.load_product(PfsConfig, identity=id)
         self.__print_pfsConfig(p, id, f)
 
     def __print_pfsObject(self, product, identity, filename):
@@ -160,7 +164,7 @@ class PipelineScript(Script):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            filename, identity = self.connector.locate_pfsConfig(
+            filename, identity = self.repo.locate_pfsConfig(
                 visit = merged.identity.visit,
                 pfsDesignId = merged.identity.pfsDesignId,
             )
