@@ -9,7 +9,6 @@ import numpy as np
 
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
-from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
 
 from ..pipelinescript import PipelineScript
 from ...gapipe.config import *
@@ -47,8 +46,6 @@ class ConfigureScript(PipelineScript):
     def __init__(self):
         super().__init__()
 
-        self.__config = None            # Pipeline configuration template
-
         self.__workdir = self.get_env('GAPIPE_WORKDIR')     # Working directory for the pipeline job
         self.__outdir = self.get_env('GAPIPE_OUTDIR')       # Output directory for the final data products
         self.__dry_run = False          # Dry run mode
@@ -64,46 +61,6 @@ class ConfigureScript(PipelineScript):
         super()._add_args()
 
     def _init_from_args(self, args):
-        self.__config = GAPipelineConfig()
-
-        # Load the configuration template file
-        config_files = self.get_arg('config', args)
-        self.__config.load(config_files, ignore_collisions=True)
-
-        # TODO: consider merging this part with the run script
-        # Ensure the precendence of the directories:
-        #   1. Command-line arguments
-        #   2. Configuration file
-        #   3. Default values
-
-        # Override configuration with command-line arguments
-        if self.is_arg('workdir', args):
-            self.__config.workdir = self.get_arg('workdir', args)
-        if self.is_arg('outdir', args):
-            self.__config.outdir = self.get_arg('outdir', args)
-        if self.is_arg('datadir', args):
-            self.__config.datadir = self.get_arg('datadir', args)
-        if self.is_arg('rerun', args):
-            self.__config.rerun = self.get_arg('rerun', args)
-        if self.is_arg('rerundir', args):
-            self.__config.rerundir = self.get_arg('rerundir', args)
-
-        # Override data store connector with configuration values
-        # Also save workdir and outdir because these might be overwritten
-        # in the configuration template
-        if self.__config.workdir is not None:
-            self.repo.set_variable('workdir', self.__config.workdir)
-            self.__workdir = self.__config.workdir
-        if self.__config.outdir is not None:
-            self.repo.set_variable('outdir', self.__config.outdir)
-            self.__outdir = self.__config.outdir
-        if self.__config.datadir is not None:
-            self.repo.set_variable('datadir', self.__config.datadir)
-        if self.__config.rerun is not None:
-            self.repo.set_variable('rerun', self.__config.rerun)
-        if self.__config.rerundir is not None:
-            self.repo.set_variable('rerundir', self.__config.rerundir)
-
         self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
         self.__top = self.get_arg('top', args, self.__top)
 
@@ -121,7 +78,7 @@ class ConfigureScript(PipelineScript):
         Find all the pfsSingle or pfsConfig files that match the filters and generate a config file for each.
         """
 
-        files = ' '.join(self.__config.config_files)
+        files = ' '.join(self.config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
         identities = self.repo.find_object(groupby='objid')
@@ -230,13 +187,13 @@ class ConfigureScript(PipelineScript):
         q = 0
         for objid in sorted(targets.keys()):
             # Generate the config
-            config, filename = self.__create_config(targets[objid])
+            config, filename = self._create_output_config(targets[objid])
 
             # Save the config to a file
             if not self.__dry_run:
                 logger.info(f'Saving configuration file `{filename}`.')
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
-                self.__config.save(filename)
+                config.save(filename)
             else:
                 logger.info(f'Skipped saving configuration file `{filename}`.')
 
@@ -245,12 +202,13 @@ class ConfigureScript(PipelineScript):
                 logger.info(f'Stopping after {q} objects.')
                 break
 
-    def __create_config(self, target, ext='.yaml'):
+    def _create_output_config(self, target, ext='.yaml'):
         """
         Initialze a pipeline configuration object based on the template and the target.
         """
 
-        config = self.__config      # TODO: should we make a deep copy here?
+        # TODO: should we make a deep copy here?
+        config = self.config
 
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
