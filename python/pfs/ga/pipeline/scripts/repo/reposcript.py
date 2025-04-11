@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import commentjson as json
 
-from pfs.datamodel import *
+from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from ..pipelinescript import PipelineScript
 from ...common import Script, PipelineError, ConfigJSONEncoder
 
@@ -32,6 +32,10 @@ class RepoScript(PipelineScript):
             'find-product': SimpleNamespace(
                 help = 'Search for files of a given product type',
                 run = self.__run_find_product
+            ),
+            'extract-product': SimpleNamespace(
+                help = 'Extract spectra from the specified type of product',
+                run = self.__run_extract_product
             ),
             'find-object': SimpleNamespace(
                 help = 'Search for object withing pfsConfig files',
@@ -103,6 +107,28 @@ class RepoScript(PipelineScript):
                   sort_keys=False,
                   indent=2,
                   cls=ConfigJSONEncoder)
+
+    def __run_extract_product(self):
+        if self.__product is None:
+            raise ValueError('Product type not provided')
+        
+        # Depending on the product type, extract different types of data
+        if not hasattr(self.__product, 'extract'):
+            raise ValueError(f'Product type does not support extracting sub-product: {self.__product}')
+
+        filenames, identities = self.repo.find_product(self.__product)
+
+        # Load the products one by one and extract all sub-products
+        for i, fn in enumerate(filenames):
+            prod, _, _ = self.repo.load_product(self.__product, filename=fn)
+            subprods, subids = prod.extract()
+
+            for subprod, subid in zip(subprods, subids):
+                # Match filters
+                if self.repo.filters_match_object(subid):
+                    _, filename = self.repo.save_product(
+                        subprod, identity=subid,
+                        variables={'datadir': self.config.workdir})
 
     def __run_find_object(self):
         identities = self.repo.find_object(groupby='none')

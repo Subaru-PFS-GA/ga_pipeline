@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
-from ..repo import PfsGen3FileSystemConfig
 from pfs.datamodel import *
-
+from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
+from ..gapipe.config import *
+from ..repo import PfsGen3FileSystemConfig
 from ..common import Script, PipelineError, ConfigJSONEncoder
 
 from ..setup_logger import logger
@@ -31,12 +31,18 @@ class PipelineScript(Script):
             ),
         }
 
-        self.__repo = self.__create_data_repo()
+        self.__config = self._create_config()
+        self.__repo = self._create_repo()
 
     def __get_products(self):
         return self.__products
 
     products = property(__get_products)
+
+    def __get_config(self):
+        return self.__config
+    
+    config = property(__get_config)
 
     def __get_repo(self):
         return self.__repo
@@ -48,23 +54,45 @@ class PipelineScript(Script):
         super()._add_args()
 
     def _init_from_args(self, args):
+        # Load the configuration
+        if self.is_arg('config', args):
+            config_files = self.get_arg('config', args)
+            self.__config.load(config_files, ignore_collisions=True)
+
+        # Override configuration with command-line arguments
+        if self.is_arg('workdir', args):
+            self.__config.workdir = self.get_arg('workdir', args)
+        if self.is_arg('outdir', args):
+            self.__config.outdir = self.get_arg('outdir', args)
+        if self.is_arg('datadir', args):
+            self.__config.datadir = self.get_arg('datadir', args)
+        if self.is_arg('rerun', args):
+            self.__config.rerun = self.get_arg('rerun', args)
+        if self.is_arg('rerundir', args):
+            self.__config.rerundir = self.get_arg('rerundir', args)
+
+        # Initialize the data repository
         self.__repo.init_from_args(self)
+
         super()._init_from_args(args)
 
-    def __create_data_repo(self):
+    def _create_config(self):
+        return GAPipelineConfig()
+
+    def _create_repo(self):
         """
-        Create a connector to the file system.
+        Create a data repository connector to the file system.
         """
 
         # TODO: create different connectors here if working with
         #       data sets other than PFS
 
         # Override repo config to include GAPipe config files
-        connector = PfsGen3FileSystemRepo(
+        repo = PfsGen3FileSystemRepo(
             config = PfsGen3FileSystemConfig
         )
 
-        return connector
+        return repo
 
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')
