@@ -510,15 +510,20 @@ class Script():
 
     def _dump_settings(self):
         """
-        Save environment, arguments and command-line to files next to the log file
+        Save environment, arguments and command-line to files next to the log file.
+        If logging to a file is disabled, save the configuration to the current
+        working directory.
         """
 
         if self.__log_to_file and self.__log_file is not None:
-            logdir = os.path.dirname(self.__log_file)
-            command = self.get_command_name()
-            self.__dump_env(os.path.join(logdir, f'{command}_{self.__timestamp}.env'))
-            self.__dump_args(os.path.join(logdir, f'{command}_{self.__timestamp}.args'), format='.json')
-            self.__dump_cmdline(os.path.join(logdir, f'{command}_{self.__timestamp}.cmd'))
+            dumpdir = os.path.dirname(self.__log_file)
+        else:
+            dumpdir = os.getcwd()
+
+        command = self.get_command_name()
+        self.__dump_env(os.path.join(dumpdir, f'{command}_{self.__timestamp}.env'))
+        self.__dump_args(os.path.join(dumpdir, f'{command}_{self.__timestamp}.args'), format='.json')
+        self.__dump_cmdline(os.path.join(dumpdir, f'{command}_{self.__timestamp}.cmd'))
 
     def execute(self):
         """
