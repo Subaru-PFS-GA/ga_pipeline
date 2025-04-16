@@ -99,8 +99,8 @@ class RunScript(PipelineScript):
             loglevel = self.log_level
         if self.debug and logging.DEBUG < loglevel:
             loglevel = logging.DEBUG
-        self.loglevel = loglevel
-        self.logfile = logfile
+        self.log_level = loglevel
+        self.log_file = logfile
         self.start_logging()
 
         logger.info(f'Using configuration file(s) `{self.config.config_files}`.')
