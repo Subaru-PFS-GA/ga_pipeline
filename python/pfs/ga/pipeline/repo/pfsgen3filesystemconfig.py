@@ -16,6 +16,7 @@ PfsGen3FileSystemConfig = SimpleNamespace(
         ** PfsGen3FileSystemConfigBase.variables,
 
         'workdir': '$GAPIPE_WORKDIR',
+        'outdir': '$GAPIPE_OUTDIR',
         'datadir': '$GAPIPE_DATADIR',
         'rerundir': '$GAPIPE_RERUNDIR',
         'rerun': '$GAPIPE_RERUN',

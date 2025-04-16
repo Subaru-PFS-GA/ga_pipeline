@@ -40,7 +40,6 @@ class ValidateStep(PipelineStep):
         context.pipeline.test_dir('rerun',
                                   os.path.join(
                                       context.repo.get_resolved_variable('datadir'),
-                                      'rerun',
                                       context.repo.get_resolved_variable('rerundir')))
         
         return True

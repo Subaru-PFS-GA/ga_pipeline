@@ -3,17 +3,13 @@
 import os
 import logging
 
-from pfs.ga.pfsspec.survey.repo import FileSystemRepo
+from ...gapipe import GAPipeline, GAPipelineTrace
+from ..pipelinescript import PipelineScript
+from ...gapipe.config import *
 
-from ..common.script import Script
-from ..constants import Constants
-from ..gapipe import GAPipeline, GAPipelineTrace
-from ..gapipe.config import GAPipelineConfig
-from ..repo import PfsFileSystemConfig
+from ...setup_logger import logger
 
-from ..setup_logger import logger
-
-class Run(Script):
+class RunScript(PipelineScript):
     """
     Runs the pipeline from a configuration file. The configuration file is either
     passed to it as a parameter, or the script can look it up by the indentity
@@ -23,64 +19,49 @@ class Run(Script):
     def __init__(self):
         super().__init__()
 
-        self.__config = None            # Configuration file or list of files
         self.__dry_run = False          # Dry run mode
 
-        self.__repo = self.__create_data_repo()
+        self.__config_files = None
         self.__pipeline = None          # Pipeline object
         self.__trace = None             # Pipeline trace object
 
-        # Pipeline configuration files defined on the command line
-        # The pipeline will be executed for each of these files
-        self.__config_files = None      
-
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='?', help='Configuration file')
-        self.add_arg('--outdir', type=str, help='Output directory')
         self.add_arg('--dry-run', action='store_true', help='Dry run mode')
-
-        # Register data store arguments, do not include search filters
-        self.__repo.add_args(self, include_variables=True, include_filters=True)
 
         super()._add_args()
 
     def _init_from_args(self, args):
-        # Parse the data store arguments
-        self.__repo.init_from_args(self)
 
-        self.__config = self.get_arg('config', args)
+        # If a config file is specified on the command-line it overrides
+        # the default behavior of looking up the configuration files in the repo
+        # TODO: maybe allow more than a single file here?
+        if self.is_arg('config', args):
+            self.__config_files = [ self.get_arg('config', args) ]
+
         self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
 
         super()._init_from_args(args)
-
-    def __create_data_repo(self):
-        """
-        Create a connector to the file system.
-        """
-
-        return FileSystemRepo(config=PfsFileSystemConfig)
 
     def prepare(self):
         super().prepare()
 
         # Create the pipeline and the trace object
         self.__trace = GAPipelineTrace()
-        self.__pipeline = GAPipeline(script=self, repo=self.__repo, trace=self.__trace)
+        self.__pipeline = GAPipeline(script=self, repo=self.repo, trace=self.__trace)
 
         # Override logging directory to use the same as the workdir
         # This is not the location where the pipeline itself will write the logs
         # because that's the workdir of the output product
         log_file = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.__repo.get_resolved_variable('workdir'), log_file)
+        self.log_file = os.path.join(self.repo.get_resolved_variable('workdir'), log_file)
 
     def run(self):
 
         # If a config file is provided on the command-line, we only process a single one.
         # If no config file is provided, we search for configs based on the command line
         # search filters using the data store connector.
-        if self.__config is not None:
-            self.__config_files = [ self.__config ]
-        else:
+        if self.__config_files is None:
             self.__config_files, _ = self.__repo.find_product(GAPipelineConfig)
 
         for i, config_file in enumerate(self.__config_files):
@@ -122,7 +103,7 @@ class Run(Script):
         self.logfile = logfile
         self.start_logging()
 
-        logger.info(f'Using configuration file(s) `{config.config_files}`.')
+        logger.info(f'Using configuration file(s) `{self.config.config_files}`.')
         
         # Execute the pipeline
         self.__pipeline.execute()
@@ -153,16 +134,18 @@ class Run(Script):
 
         # Override data store connector with configuration values
         if config.workdir is not None:
-            self.__repo.set_variable('workdir', config.workdir)
+            self.repo.set_variable('workdir', config.workdir)
         if config.outdir is not None:
-            self.__repo.set_variable('outdir', config.outdir)
+            self.repo.set_variable('outdir', config.outdir)
         if config.datadir is not None:
-            self.__repo.set_variable('datadir', config.datadir)
+            self.repo.set_variable('datadir', config.datadir)
         if config.rerundir is not None:
-            self.__repo.set_variable('rerundir', config.rerundir)
+            self.repo.set_variable('rerundir', config.rerundir)
+        if config.rerun is not None:
+            self.repo.set_variable('rerun', config.rerun)
 
 def main():
-    script = Run()
+    script = RunScript()
     script.execute()
 
 if __name__ == "__main__":

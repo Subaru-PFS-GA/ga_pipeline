@@ -61,9 +61,9 @@ class PipelineScript(Script):
 
         # Override configuration with command-line arguments
         if self.is_arg('workdir', args):
-            self.__config.workdir = self.get_arg('workdir', args)
+            self.__config.workdir = self.get_arg('workdir', args, self.get_env('GAPIPE_WORKDIR'))
         if self.is_arg('outdir', args):
-            self.__config.outdir = self.get_arg('outdir', args)
+            self.__config.outdir = self.get_arg('outdir', args, self.get_env('GAPIPE_OUTDIR'))
         if self.is_arg('datadir', args):
             self.__config.datadir = self.get_arg('datadir', args)
         if self.is_arg('rerun', args):

@@ -29,32 +29,16 @@ class ConfigureScript(PipelineScript):
     uses the catId, tract, patch, objId, and visit filters to find the pfsSingle files.
     The corresponding pfsConfig files are then found by matching the pfsSingle files
     to look up the fiberId etc.
-
-    Variables
-    ---------
-    config : GAPipelineConfig
-        Pipeline configuration template
-    workdir : str
-        Working directory for the pipeline job. The log file, as well as the config
-        files, are written to this directory. When running the pipeline, the working
-        directory will be used to store the individual log files and auxiliary files.
-        Subdirectories composed of the objects' identity parameters will be created.
-    outdir : str
-        Output directory for the final data products.
     """
 
     def __init__(self):
         super().__init__()
 
-        self.__workdir = self.get_env('GAPIPE_WORKDIR')     # Working directory for the pipeline job
-        self.__outdir = self.get_env('GAPIPE_OUTDIR')       # Output directory for the final data products
         self.__dry_run = False          # Dry run mode
         self.__top = None               # Stop after this many objects
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
-
-        self.add_arg('--outdir', type=str, help='Output directory')
         self.add_arg('--dry-run', action='store_true', help='Dry run mode')
         self.add_arg('--top', type=int, help='Stop after this many objects')
 
@@ -71,7 +55,7 @@ class ConfigureScript(PipelineScript):
 
         # Override logging directory to use the same as the pipeline workdir
         logfile = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.__workdir, logfile)
+        self.log_file = os.path.join(self.repo.get_resolved_variable('workdir'), logfile)
 
     def run(self):
         """
@@ -226,11 +210,6 @@ class ConfigureScript(PipelineScript):
 
         logger.debug(f'Configured data directory for object {target.identity}: {config.datadir}')
         logger.debug(f'Configured rerun directory for object {target.identity}: {config.rerundir}')
-
-        # Output
-        config.workdir = self.__workdir
-        config.outdir = self.__outdir
-
         logger.debug(f'Configured work directory for object {target.identity}: {config.workdir}')
         logger.debug(f'Configured output directory for object {target.identity}: {config.outdir}')
 

@@ -18,6 +18,9 @@ class LoadStep(PipelineStep):
         """
         Load the input data necessary for the pipeline. This does not include
         the spectrum grid, etc.
+
+        The function only loads the raw data products that are required for the pipeline.
+        The actual spectra will be extracted later.
         """
 
         # Load required data products that aren't already in the cache       

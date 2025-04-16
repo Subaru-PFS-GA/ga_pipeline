@@ -12,6 +12,7 @@ class GAPipelineConfig(PipelineConfig):
     """
 
     def __init__(self,
+                 rerun: str = None,
                  target: GATargetConfig = GATargetConfig(),
                  rvfit: RVFitConfig = RVFitConfig(),
                  coadd: CoaddConfig = CoaddConfig(),
@@ -21,6 +22,7 @@ class GAPipelineConfig(PipelineConfig):
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
         self.rerundir = self._get_env('GAPIPE_RERUNDIR')      # Path to rerun data, absolute or relative to `datadir`
         self.outdir = self._get_env('GAPIPE_OUTDIR')          # Pipeline output directory
+        self.rerun = self._get_env('GAPIPE_RERUN')            # Rerun name, used in file names
 
         # GA target object configuration
         self.target = target

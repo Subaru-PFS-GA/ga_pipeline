@@ -74,7 +74,8 @@ class RVFitStep(PipelineStep):
             context.pipeline.required_product_types,
             context.pipeline.rvfit_arms)
         
-        # Collect spectra in a format that can be passed to RVFit
+        # Collect spectra in a format that can be passed to RVFit, i.e
+        # handle missing spectra, fully masked spectra, etc.
         context.pipeline.rvfit_spectra = self.__rvfit_collect_spectra(
             context,
             spectra,
@@ -188,7 +189,8 @@ class RVFitStep(PipelineStep):
 
         # Convert dict of visits into lists for each arm
         for arm in use_arms:
-            spectra[arm] = [ spectra[arm][visit] for visit in sorted(spectra[arm].keys()) ]
+            if arm in spectra:
+                spectra[arm] = [ spectra[arm][visit] for visit in sorted(spectra[arm].keys()) ]
 
         return spectra
     
@@ -333,7 +335,7 @@ class RVFitStep(PipelineStep):
 
         # Append the correction model to the spectra. This will leaver the mask and flux
         # intact and only attach the `cont` or `flux_corr` attribute to the spectra.
-        context.pipeline.rvfit.correction_model.apply_correction(spectra, corrections, correction_masks,
+        context.pipeline.rvfit.correction_model.apply_correction(spectra, None, corrections, correction_masks,
                                                                  apply_flux=False, apply_mask=True,
                                                                  mask_bit=no_continuum_bit,
                                                                  normalization=norm)
@@ -355,8 +357,14 @@ class RVFitStep(PipelineStep):
         #       and correct weighting with the errors is done by the stacker
 
         # Generate the stacked spectrum
-        coadd_spectrum = context.pipeline.stacker.stack(
-            [ s for arm in context.config.coadd.coadd_arms for s in spectra[arm] if s is not None ])
+        # Contract spectra into a single list
+        ss = []
+        for arm in context.config.coadd.coadd_arms:
+            if arm in spectra and spectra[arm] is not None:
+                for s in spectra[arm]:
+                    if s is not None:
+                        ss.append(s)
+        coadd_spectrum = context.pipeline.stacker.stack(ss)
         
         # TODO: evaluate the best fit model, continuum, etc that might be interesting
 

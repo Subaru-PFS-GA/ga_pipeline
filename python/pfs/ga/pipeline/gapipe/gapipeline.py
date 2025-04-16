@@ -332,9 +332,10 @@ class GAPipeline(Pipeline):
                 
                 if identity.objId not in self.product_cache[product][visit]:
                     data, id, filename = self.__repo.load_product(product, identity=identity)
+                    data.filename = filename
                     self.product_cache[product][visit][identity.objId] = data
                     q += 1
-            elif issubclass(product, (PfsFiberArraySet, PfsDesign)):
+            elif issubclass(product, (PfsFiberArraySet, PfsConfig)):
                 # Data product contains multiple objects
                 if visit not in self.product_cache[product]:
                     data, id, filename = self.__repo.load_product(product, identity=identity)
@@ -386,29 +387,32 @@ class GAPipeline(Pipeline):
         return avail_arms
     
     def __read_spectrum(self, products, reader, visit, arm, identity, wave_limits):
+        
+        # To read everything about a spectrum we usually need the corresponding PfsConfig file
+        
         spec = PfsStellarSpectrum()
         found = False
 
-        # Make sure PfsDesign is read first if it's in the list of products because
+        # Make sure PfsConfig is read first if it's in the list of products because
         # other products might need information from it
-        # Cannot read a spectrum from a design file but can update its metadata
+        # Cannot read a spectrum from a config file but can update its metadata
         for t in products:
-            if issubclass(t, PfsDesign):
+            if issubclass(t, PfsConfig):
                 data = self.product_cache[t][visit]
                 if reader.is_available(data, arm=arm, objid=identity.objId):
-                    reader.read_from_pfsDesign(data, spec, arm=arm, objid=identity.objId)
+                    reader.read_from_pfsConfig(data, spec, arm=arm, objid=identity.objId)
                 else:
                     return False, None
         
         for t in products:
-            if issubclass(t, PfsFiberArray):
+            if issubclass(t, PfsFiberArray):            # PfsSingle etc
                 data = self.product_cache[t][visit][identity.objId]
                 if reader.is_available(data, arm=arm):
                     reader.read_from_pfsFiberArray(data, spec, arm=arm, wave_limits=wave_limits)
                     found = True
                 else:
                     return False, None
-            elif issubclass(t, PfsFiberArraySet):
+            elif issubclass(t, PfsFiberArraySet):       # PfsMerged, etc
                 data = self.product_cache[t][visit]
                 if reader.is_available(data, arm=arm):
                     reader.read_from_pfsFiberArraySet(data, spec, arm=arm,
@@ -417,7 +421,7 @@ class GAPipeline(Pipeline):
                     found = True
                 else:
                     return False, None
-            elif issubclass(t, PfsDesign):
+            elif issubclass(t, PfsConfig):
                 pass
             else:
                 raise NotImplementedError('Product type not recognized.')
