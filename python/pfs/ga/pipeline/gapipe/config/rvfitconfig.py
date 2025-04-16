@@ -117,10 +117,10 @@ class RVFitConfig(Config):
             'plot_input_spec': True,
             'plot_fit_spec': {
                 # Default plots of RVFit results
-                'pfsGA-RVFit-best-full-{id}': dict(
+                'pfsGA-tempfit-best-full-{id}': dict(
                     plot_flux=True, plot_template=True,
                     normalize_cont=True),
-                'pfsGA-RVFit-residuals-{id}': dict(
+                'pfsGA-tempfit-residuals-{id}': dict(
                     plot_residual=True,
                     normalize_cont=True),
             },
