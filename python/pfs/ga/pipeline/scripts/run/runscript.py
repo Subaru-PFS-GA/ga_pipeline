@@ -19,7 +19,7 @@ class RunScript(PipelineScript):
     def __init__(self):
         super().__init__()
 
-        self.__dry_run = False          # Dry run mode
+        self.__top = None               # Stop after this many objects
 
         self.__config_files = None
         self.__pipeline = None          # Pipeline object
@@ -27,7 +27,7 @@ class RunScript(PipelineScript):
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='?', help='Configuration file')
-        self.add_arg('--dry-run', action='store_true', help='Dry run mode')
+        self.add_arg('--top', type=int, help='Stop after this many objects')
 
         super()._add_args()
 
@@ -39,7 +39,7 @@ class RunScript(PipelineScript):
         if self.is_arg('config', args):
             self.__config_files = [ self.get_arg('config', args) ]
 
-        self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
+        self.__top = self.get_arg('top', args, self.__top)
 
         super()._init_from_args(args)
 
@@ -62,7 +62,15 @@ class RunScript(PipelineScript):
         # If no config file is provided, we search for configs based on the command line
         # search filters using the data store connector.
         if self.__config_files is None:
-            self.__config_files, _ = self.__repo.find_product(GAPipelineConfig)
+            self.__config_files, _ = self.repo.find_product(GAPipelineConfig)
+
+            if len(self.__config_files) == 0:
+                logger.warning('No config files found matching the filters.')
+                return
+
+            if self.__top is not None:
+                self.__config_files = self.__config_files[:self.__top]
+                logger.info(f'Stopping after {len(self.__config_files)} objects.')
 
         for i, config_file in enumerate(self.__config_files):
             self.__run_pipeline(config_file)

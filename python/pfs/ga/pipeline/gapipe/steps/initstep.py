@@ -81,7 +81,7 @@ class InitStep(PipelineStep):
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
-    def __validate_input_product(self, context, product):
+    def __validate_input_product(self, context, product, required=True):
 
         # Check the availability of the required data products. They're either
         # already in the product cache on the pipeline level, or they must be
@@ -108,4 +108,8 @@ class InitStep(PipelineStep):
             try:
                 context.repo.locate_product(product, **identity.__dict__)
             except FileNotFoundError:
-                raise PipelineError(f'{product.__name__} file for visit `{visit}` not available.')
+                msg = f'{product.__name__} file for identity `{identity}` not available.'
+                if required:
+                    raise PipelineError(msg)
+                else:
+                    logger.warning(msg)

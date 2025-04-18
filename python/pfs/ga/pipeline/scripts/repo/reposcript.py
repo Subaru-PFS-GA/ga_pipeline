@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os, sys
+import re
 from types import SimpleNamespace
 import logging
 import numpy as np
@@ -187,7 +188,7 @@ class RepoScript(PipelineScript):
             # Split filename into path, basename and extension
             path, basename = os.path.split(self.__filename)
             name, ext = os.path.splitext(basename)
-            product_type = self.repo.parse_product_type(name.split('-')[0])
+            product_type = self.repo.parse_product_type(re.split('[-_]', name)[0])
 
             if product_type in self.products:
                 product, identity, filename = self.repo.load_product(product_type, filename=self.__filename)

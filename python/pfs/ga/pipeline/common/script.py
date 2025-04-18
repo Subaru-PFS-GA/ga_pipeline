@@ -303,7 +303,7 @@ class Script():
 
         name = self.__class__.__name__.lower()
         name = name.replace('script', '')
-        return f'ga-{name}'
+        return f'gapipe-{name}'
 
     def start_logging(self):
         """

@@ -159,7 +159,7 @@ class Pipeline():
 
         # Execute the steps one by one
         self.__execute_steps(steps, context)
-        
+
         # Clean up the state
         self.destroy_state(state)
         
@@ -247,7 +247,8 @@ class Pipeline():
 
                 # TODO: Add trace hook for the exception
 
-                # Enable these lines to automatically break into debugger, if available
+                # Enable these lines to automatically break into debugger and get a valid
+                # stack trace, if the debugger is attached
                 if debugpy is not None and debugpy.is_client_connected():
                     raise ex
 
