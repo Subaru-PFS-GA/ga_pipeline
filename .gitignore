@@ -4,6 +4,9 @@ slurm-*.out
 ./*.json
 ./*.sh
 ./*.log
+ga*.cmd
+ga*.args
+ga*.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
