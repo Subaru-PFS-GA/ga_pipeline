@@ -54,23 +54,123 @@ class GAPipelineConfig(PipelineConfig):
         # }
         
         # These values ignore the overlap between arms when the R arm is used
+        # TODO: convert these into ArmConfig classes?
         self.arms = { 
             'b': dict(
                 wave = [ 3500, 6200 ],
-                pix_per_res = 3,
+                snr = dict(
+                    type = 'quantile',
+                    args = dict(
+                        q = 0.95,
+                        binning = 3,
+                    ),
+                    mask_flags = [
+                        'BAD',
+                        'BAD_FIBERTRACE',
+                        'BAD_FLAT',
+                        'BAD_FLUXCAL',
+                        'BAD_SKY',
+                        'CR',
+                        'DETECTED',
+                        'DETECTED_NEGATIVE',
+                        'EDGE',
+                        'FIBERTRACE',
+                        'INTRP',
+                        'IPC',
+                        'NO_DATA',
+                        'REFLINE',
+                        'SAT',
+                        'SUSPECT',
+                        'UNMASKEDNAN'
+                    ]
+                ),
             ),
             'r': dict(
                 wave = [ 6600, 9300 ],
-                pix_per_res = 3,
+                snr = dict(
+                    type = 'quantile',
+                    args = dict(
+                        q = 0.95,
+                        binning = 3,
+                    ),
+                    mask_flags = [
+                        'BAD',
+                        'BAD_FIBERTRACE',
+                        'BAD_FLAT',
+                        'BAD_FLUXCAL',
+                        'BAD_SKY',
+                        'CR',
+                        'DETECTED',
+                        'DETECTED_NEGATIVE',
+                        'EDGE',
+                        'FIBERTRACE',
+                        'INTRP',
+                        'IPC',
+                        'NO_DATA',
+                        'REFLINE',
+                        'SAT',
+                        'SUSPECT',
+                        'UNMASKEDNAN'
+                    ]
+                )
             ),
             'm': dict(
-                # wave = [ 6900, 9000 ],
                 wave = [ 7050, 8850 ],
-                pix_per_res = 4,
+                snr = dict(
+                    type = 'quantile',
+                    args = dict(
+                        q = 0.95,
+                        binning = 4,
+                    ),
+                    mask_flags = [
+                        'BAD',
+                        'BAD_FIBERTRACE',
+                        'BAD_FLAT',
+                        'BAD_FLUXCAL',
+                        'BAD_SKY',
+                        'CR',
+                        'DETECTED',
+                        'DETECTED_NEGATIVE',
+                        'EDGE',
+                        'FIBERTRACE',
+                        'INTRP',
+                        'IPC',
+                        'NO_DATA',
+                        'REFLINE',
+                        'SAT',
+                        'SUSPECT',
+                        'UNMASKEDNAN'
+                    ]
+                )
             ),
             'n': dict(
                 wave = [ 9900, 12600 ],
-                pix_per_res = 3,
+                snr = dict(
+                    type = 'quantile',
+                    args = dict(
+                        q = 0.95,
+                        binning = 3,
+                    ),
+                    mask_flags = [
+                        'BAD',
+                        'BAD_FIBERTRACE',
+                        'BAD_FLAT',
+                        'BAD_FLUXCAL',
+                        'BAD_SKY',
+                        'CR',
+                        'DETECTED',
+                        'DETECTED_NEGATIVE',
+                        'EDGE',
+                        'FIBERTRACE',
+                        'INTRP',
+                        'IPC',
+                        'NO_DATA',
+                        'REFLINE',
+                        'SAT',
+                        'SUSPECT',
+                        'UNMASKEDNAN'
+                    ]
+                )
             ),
         }
 

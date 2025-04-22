@@ -2,6 +2,7 @@ import os
 
 import pfs.datamodel
 from pfs.datamodel import *
+from pfs.ga.pfsspec.core.obsmod.snr import SNR_TYPES
 
 from ...common import Pipeline, PipelineError, PipelineStep, PipelineStepResults
 from ..config import GAPipelineConfig
@@ -28,6 +29,12 @@ class InitStep(PipelineStep):
         if not os.path.isfile(fn):
             context.config.save(fn)
             logger.info(f'Runtime configuration file saved to `{fn}`.')
+
+        # Initialize the SNR calculator objects
+        context.pipeline.snr = {}
+        for arm in context.config.arms:
+            snr = SNR_TYPES[context.config.arms[arm]['snr']['type']](**context.config.arms[arm]['snr']['args'])
+            context.pipeline.snr[arm] = snr
 
         # Verify stellar template grids and PSF files
         if context.config.run_rvfit:
@@ -63,9 +70,11 @@ class InitStep(PipelineStep):
         # Compile the list of required input data products. The data products
         # are identified by their type. The class definitions are located in pfs.datamodel
         context.pipeline.required_product_types = set()
+
         if context.config.run_rvfit:
             context.pipeline.required_product_types.update(
                 [ getattr(pfs.datamodel, t) for t in context.config.rvfit.required_products ])
+            
         if context.config.run_chemfit:
             context.pipeline.required_product_types.update(
                 [ getattr(pfs.datamodel, t) for t in context.config.chemfit.required_products ])

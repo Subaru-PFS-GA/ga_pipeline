@@ -81,7 +81,7 @@ class ConfigureScript(PipelineScript):
         identities = self.repo.find_object(groupby='objid')
 
         if len(identities) == 0:
-            logger.warning('No objects found matching the filters.')
+            logger.error('No objects found matching the filters.')
             return
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')

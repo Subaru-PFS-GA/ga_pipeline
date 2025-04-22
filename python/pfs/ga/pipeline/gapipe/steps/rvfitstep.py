@@ -73,6 +73,12 @@ class RVFitStep(PipelineStep):
         spectra = context.pipeline.read_spectra(
             context.pipeline.required_product_types,
             context.pipeline.rvfit_arms)
+
+        # Calculate the signal to noise for each exposure
+        for arm in spectra:
+            for visit, spec in spectra[arm].items():
+                mask_bits = spec.get_mask_bits(context.config.arms[arm]['snr']['mask_flags'])
+                spec.calculate_snr(context.pipeline.snr[arm], mask_bits=mask_bits)
         
         # Collect spectra in a format that can be passed to RVFit, i.e
         # handle missing spectra, fully masked spectra, etc.
@@ -491,6 +497,10 @@ class RVFitStep(PipelineStep):
             templates,
             context.pipeline.rvfit_results.rv_fit,
             a=context.pipeline.rvfit_results.a_fit)
+
+        # Attach the correction model to the spectra but do not multiply
+        context.pipeline.rvfit.correction_model.apply_correction(spectra, None, corrections, correction_masks,
+                                                                 apply_flux=False, apply_mask=True)
         
         if context.trace is not None:
             context.trace.on_coadd_eval_correction(spectra, templates, corrections, correction_masks,

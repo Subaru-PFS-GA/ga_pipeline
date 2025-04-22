@@ -84,6 +84,8 @@ class GAPipeline(Pipeline):
         self.output_product_type = PfsGAObject
         self.output_product = None
 
+        self.snr = None                       # SNR calculator class for each arm
+
         self.rvfit = None                     # RVFit object
         self.rvfit_arms = None                # Arms used for RV fitting
         self.rvfit_spectra = None             # Spectra used for RV fitting
@@ -425,6 +427,8 @@ class GAPipeline(Pipeline):
                 pass
             else:
                 raise NotImplementedError('Product type not recognized.')
+
+        # TODO: add other parameters from the config file such as megnitude etc.
             
         return found, spec
     

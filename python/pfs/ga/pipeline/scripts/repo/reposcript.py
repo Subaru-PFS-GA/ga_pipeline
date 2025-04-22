@@ -101,13 +101,13 @@ class RepoScript(PipelineScript):
         filenames, identities = self.repo.find_product(self.__product)
         identities.filename = filenames
 
-        # TODO: return values in different formats
-            
-        json.dump(identities.__dict__,
-                  sys.stdout,
-                  sort_keys=False,
-                  indent=2,
-                  cls=ConfigJSONEncoder)
+        # Print results in different formats
+        if self.__format == 'table':
+            self.__print_identities_table(identities)
+        elif self.__format == 'json':
+            self.__print_identities_json(identities)
+        elif self.__format == 'path':
+            self.__print_paths(filenames)
 
     def __run_extract_product(self):
         if self.__product is None:
@@ -178,6 +178,10 @@ class RepoScript(PipelineScript):
                   sort_keys=False,
                   indent=2,
                   cls=ConfigJSONEncoder)
+
+    def __print_paths(self, filenames):
+        for fn in filenames:
+            print(fn)
 
     def __run_show(self):
         """

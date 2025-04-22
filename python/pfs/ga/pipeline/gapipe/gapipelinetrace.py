@@ -62,6 +62,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
             self._plot_spectra('pfsGA-exposures-{id}',
                                spectra,
                                plot_flux=True, plot_flux_err=True, plot_mask=True,
+                               print_snr=True,
                                title='Input spectra - {id}',
                                nrows=2, ncols=1, diagram_size=(6.5, 3.5))
             
@@ -76,24 +77,20 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         """Fired when the flux correction is evaluated."""
 
         if self.plot_flux_correction or self.plot_level >= Trace.PLOT_LEVEL_DEBUG:
-            f = self.get_diagram_page('pfsGA-Coadd-fluxcorr-{id}', 1, 1, 1, diagram_size=(6.5, 3.5))
 
-            p = SpectrumPlot()
-            ax = f.add_diagram((0, 0, 0), p)
+            style = styles.thin_line()
+            style['alpha'] = 0.25
 
-            p.plot_mask = False
-            p.plot_flux_err = False
-            p.plot_cont = False
+            self._plot_spectra('pfsGA-coadd-corr-{id}',
+                               spectra,
+                               single_plot=True,
+                               plot_flux=True, plot_flux_err=False, plot_mask=False,
+                               normalize_cont=True, apply_flux_corr=True,
+                               title='Coadd corrected input spectra - {id}',
+                               nrows=2, ncols=1, diagram_size=(6.5, 3.5),
+                               **style)
 
             # TODO: update this to allow for continumm fitting and flux correction
-
-            for arm, specs in spectra.items():
-                for i, spec in enumerate(specs):
-                    if spec is not None:
-                        s = styles.lightgray_line(**styles.thin_line())
-                        p.plot_spectrum(spec, auto_limits=True)
-
-            f.match_limits()
 
             self.flush_figures()
 
@@ -113,7 +110,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         """
 
         if self.plot_coadd_input:
-            self._plot_spectra('pfsGA-Coadd-input-{id}',
+            self._plot_spectra('pfsGA-coadd-input-{id}',
                                spectra,
                                plot_flux=True, plot_flux_err=True, plot_mask=True,
                                mask_bits=no_continuum_bit | exclude_bits,
@@ -139,7 +136,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         """
 
         if self.plot_coadd_input:
-            self._plot_spectrum('pfsGA-Coadd-stack-{id}',
+            self._plot_spectrum('pfsGA-coadd-stack-{id}',
                                 arm=arms,
                                 spectrum=spectrum,
                                 plot_flux=True, plot_flux_err=True, plot_mask=True,
