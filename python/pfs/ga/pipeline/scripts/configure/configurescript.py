@@ -7,7 +7,6 @@ from glob import glob
 from types import SimpleNamespace
 from datetime import datetime
 import numpy as np
-import pandas as pd
 
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
@@ -36,8 +35,8 @@ class ConfigureScript(PipelineScript):
     def __init__(self):
         super().__init__()
 
-        self.__params = None                # Stellar parameters to derive the priors from
-        self.__params_id = '__target_idx'   # ID column of the stellar parameters to use
+        self.__params = None                # Params file with stellar parameters to derive the priors from
+        self.__params_id = '__target_idx'   # ID column of the params file
         self.__dry_run = False              # Dry run mode
         self.__top = None                   # Stop after this many objects
 
@@ -74,11 +73,11 @@ class ConfigureScript(PipelineScript):
         logger.info(f'Using configuration template file(s) {files}.')
 
         # Load the stellar parameters
-        params = self.__load_params_file()
+        params = self._load_params_file(self.__params, self.__params_id)
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
-        identities = self.repo.find_object(groupby='objid')
+        identities = self.repo.find_objects(groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
@@ -91,23 +90,6 @@ class ConfigureScript(PipelineScript):
         
         # Generate the configuration file for each target
         self.__save_config_files(configs, filenames)
-
-    def __load_params_file(self):
-        # TODO: update this if multiple files are needed or the file format changes
-        if self.__params is not None:
-            logger.info(f'Loading stellar parameters from {self.__params}.')
-            params = pd.read_feather(self.__params)
-
-            logger.info(f'Found {len(params)} entries in stellar parameter file.')
-
-            if self.__params_id not in params.columns:
-                raise ValueError(f'ID column {self.__params_id} not found in stellar parameter file.')
-
-            params = params.set_index(self.__params_id) 
-
-            return params
-        else:
-            return None
 
     def __create_output_configs(self, identities, params=None):
         configs = {}

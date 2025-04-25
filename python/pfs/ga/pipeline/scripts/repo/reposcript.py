@@ -132,7 +132,7 @@ class RepoScript(PipelineScript):
                         variables={'datadir': self.config.workdir})
 
     def __run_find_object(self):
-        identities = self.repo.find_object(groupby='none')
+        identities = self.repo.find_objects(groupby='none')
         if identities is not None:
             if self.__top is not None:
                 for k, v in identities.__dict__.items():

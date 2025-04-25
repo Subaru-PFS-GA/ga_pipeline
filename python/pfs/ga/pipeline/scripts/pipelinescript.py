@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pandas as pd
 
 from pfs.datamodel import *
 from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
@@ -93,6 +94,23 @@ class PipelineScript(Script):
         )
 
         return repo
+
+    def _load_params_file(self, params_file, params_id):
+        # TODO: update this if multiple files are needed or the file format changes
+        if params_file is not None:
+            logger.info(f'Loading stellar parameters from {params_file}.')
+            params = pd.read_feather(params_file)
+
+            logger.info(f'Found {len(params)} entries in stellar parameter file.')
+
+            if params_id not in params.columns:
+                raise ValueError(f'ID column {params_id} not found in stellar parameter file.')
+
+            params = params.set_index(params_id) 
+
+            return params
+        else:
+            return None
 
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')

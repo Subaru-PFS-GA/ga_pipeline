@@ -64,7 +64,7 @@ class SubmitScript(PipelineScript):
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
-        identities = self.repo.find_object(groupby='objid')
+        identities = self.repo.find_objects(groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
