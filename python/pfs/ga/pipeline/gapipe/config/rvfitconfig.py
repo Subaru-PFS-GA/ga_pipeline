@@ -32,6 +32,7 @@ class RVFitConfig(Config):
         
         self.fit_arms = [ 'b', 'm', 'n' ]
         self.require_all_arms = True              # Require all arms to run fit
+        self.map_log_L = False                    # Map log likelihood over the model grid
         self.model_grid_path = None               # Template grid path, str or dict, use {arm} for wildcard
         self.model_grid_args = None               # Extra arguments to model grid
         self.model_grid_mmap = True               # Memory map model grid files (only on supported file systems)

@@ -195,6 +195,11 @@ class GAPipeline(Pipeline):
                         'critical': True,
                     },
                     {
+                        'name': 'rvfit_map_log_L',
+                        'func': RVFitStep.map_log_L,
+                        'critical': False,
+                    },
+                    {
                         'name': 'rvfit_coadd',
                         'func': RVFitStep.coadd,
                         'critical': False

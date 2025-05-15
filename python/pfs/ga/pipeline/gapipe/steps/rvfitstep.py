@@ -293,10 +293,50 @@ class RVFitStep(PipelineStep):
         context.pipeline.rvfit.spec_norm, context.pipeline.rvfit.temp_norm = context.pipeline.rvfit.get_normalization(context.pipeline.rvfit_spectra)
 
         # Run the maximum likelihood fitting
-        context.pipeline.rvfit_results = context.pipeline.rvfit.fit_rv(context.pipeline.rvfit_spectra)
+        context.pipeline.rvfit_results = context.pipeline.rvfit.run_ml(context.pipeline.rvfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
+    #endregion
+    #region Log L map
+
+    def map_log_L(self, context):
+
+        # TODO: bring out parameters: params, ranges
+
+        # Generate a map of log L around the best fit values
+        if not context.config.rvfit.map_log_L:
+            logger.info('Log L map is disabled, skipping step.')
+            return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+        params = context.pipeline.rvfit_results.params_fit
+        params_free = context.pipeline.rvfit.determine_free_params(context.pipeline.rvfit.params_fixed)
+
+        params_map = []        
+        params_bounds = {}
+        for p, step in zip(['M_H', 'T_eff', 'log_g'], [0.5, 500, 1.0]):
+            if p in params_free:
+                params_map.append(p)
+                params_bounds[p] = [params[p] - step, params[p] + step]
+
+        if len(params_map) >= 2:
+            for i in range(len(params_map) - 1):
+                pb = {
+                    params_map[i]: params_bounds[params_map[i]],
+                    params_map[i + 1]: params_bounds[params_map[i + 1]]
+                }
+                pf = { p: v for p, v in params.items() if p not in pb }
+
+                context.pipeline.rvfit.map_log_L(
+                    context.pipeline.rvfit_spectra,
+                    size=10,
+                    rv=context.pipeline.rvfit_results.rv_fit,
+                    params_fixed=pf,
+                    params_bounds=pb,
+                    squeeze=True)
+
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
     #endregion
     #region Coadd
 
@@ -341,10 +381,11 @@ class RVFitStep(PipelineStep):
 
         # Append the correction model to the spectra. This will leaver the mask and flux
         # intact and only attach the `cont` or `flux_corr` attribute to the spectra.
-        context.pipeline.rvfit.correction_model.apply_correction(spectra, None, corrections, correction_masks,
+        context.pipeline.rvfit.correction_model.apply_correction(spectra,
+                                                                 corrections, correction_masks, None,
                                                                  apply_flux=False, apply_mask=True,
                                                                  mask_bit=no_continuum_bit,
-                                                                 normalization=norm)
+                                                                 template=False)
         
         # Plot the corrected spectra
         # if context.trace is not None:
@@ -370,6 +411,7 @@ class RVFitStep(PipelineStep):
                 for s in spectra[arm]:
                     if s is not None:
                         ss.append(s)
+
         coadd_spectrum = context.pipeline.stacker.stack(ss)
         
         # TODO: evaluate the best fit model, continuum, etc that might be interesting
@@ -499,8 +541,10 @@ class RVFitStep(PipelineStep):
             a=context.pipeline.rvfit_results.a_fit)
 
         # Attach the correction model to the spectra but do not multiply
-        context.pipeline.rvfit.correction_model.apply_correction(spectra, None, corrections, correction_masks,
-                                                                 apply_flux=False, apply_mask=True)
+        context.pipeline.rvfit.correction_model.apply_correction(spectra, 
+                                                                 corrections, correction_masks, None,
+                                                                 apply_flux=False, apply_mask=True,
+                                                                 template=False)
         
         if context.trace is not None:
             context.trace.on_coadd_eval_correction(spectra, templates, corrections, correction_masks,
