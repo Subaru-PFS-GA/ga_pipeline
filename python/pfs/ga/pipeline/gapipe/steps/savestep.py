@@ -25,6 +25,8 @@ class SaveStep(PipelineStep):
         abundances_covar = None
         notes = PfsGAObjectNotes()
 
+        # TODO: where to store the global flags like tempfit_flags?
+
         context.pipeline.pfsGAObject = PfsGAObject(
             context.pipeline.coadd_results.spectrum.target,
             context.pipeline.coadd_results.spectrum.observations,
@@ -60,25 +62,56 @@ class SaveStep(PipelineStep):
             'a_M': 'dex',
             'v_los': 'km s-1',
         }
+
+        # TODO: what if RV is not fitted?
+
         params_fit = context.pipeline.rvfit_results.params_free + [ 'v_los' ]
-        params_all = params_fit + [ p for p in context.pipeline.rvfit_results.params_fit if p not in params_fit ]
+        params_all = [ p for p in context.pipeline.rvfit_results.params_fit ] + [ 'v_los' ]
+        flags_all = {** { p: v for p, v in context.pipeline.rvfit_results.params_flags.items() }, **{ 'v_los': context.pipeline.rvfit_results.rv_flags }}
 
         # Construct columns
-        method = [ 'ga1dpipe' for p in params_all ]
-        frame = [ 'bary' for p in params_all ]
-        param = [ p for p in params_all ]
-        covarId = [ params_fit.index(p) if p in params_fit else 255 for p in params_all ]
-        unit = [ units[p] for p in params_all ]
-        value = [ context.pipeline.rvfit_results.params_fit[p] for p in context.pipeline.rvfit_results.params_free ] + \
-                [ context.pipeline.rvfit_results.rv_fit ] + \
-                [ context.pipeline.rvfit_results.params_fit[p] for p in context.pipeline.rvfit_results.params_fit if p not in params_fit ]
-        value_err = [ context.pipeline.rvfit_results.params_err[p] for p in context.pipeline.rvfit_results.params_free ] + \
-                [ context.pipeline.rvfit_results.rv_err ] + \
-                [ context.pipeline.rvfit_results.params_err[p] for p in context.pipeline.rvfit_results.params_fit if p not in params_fit ]
-        flag = [ False for p in params_all ]
+        method = []
+        frame = []
+        param = []
+        covarId = []
+        unit = []
+        value = []
+        value_err = []
+        flag = []
+        status = []
 
-        # TODO: we currently have no means of detecting bad fits
-        status = [ '' for p in params_all ]
+        for p in params_all:
+            method.append('ga1dpipe')
+            frame.append('bary')
+            param.append(p)
+            covarId.append(params_fit.index(p) if p in params_fit else 255)
+            unit.append(units[p] if p in units else '')
+
+            # Parameter values
+
+            if p in context.pipeline.rvfit_results.params_fit:
+                v = context.pipeline.rvfit_results.params_fit[p]
+                v_err = context.pipeline.rvfit_results.params_err[p]
+            elif p == 'v_los':
+                v = context.pipeline.rvfit_results.rv_fit
+                v_err = context.pipeline.rvfit_results.rv_err
+            else:
+                raise NotImplementedError()
+            
+            value.append(v)
+            value_err.append(v_err)
+
+            # Flags
+
+            if p in flags_all:
+                f = flags_all[p] != TempFitFlag.OK
+                s = ' '.join([ m.name for m in TempFitFlag if (m.value & flags_all[p]) != 0 ])
+            else:
+                f = False
+                s = ''
+            
+            flag.append(f)
+            status.append(s)
 
         return StellarParams(
             method=np.array(method),
