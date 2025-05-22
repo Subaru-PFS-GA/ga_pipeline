@@ -1,0 +1,29 @@
+# This file may be used to create an environment using:
+# $ conda create --name <env> --file <this file>
+# platform: linux-64
+# created-by: conda 25.3.0
+channels:
+- conda-forge
+- defaults
+dependencies:
+- python=3.12
+- tqdm
+- numpy
+- numexpr
+- numdifftools
+- scipy
+- matplotlib
+- pandas
+- scikit-learn
+- astropy
+- astroplan
+- astroquery
+- specutils
+- ipykernel
+- debugpy
+- git
+- gitpython
+- pip
+- nbparameterise
+- commentjson
+- deprecated
