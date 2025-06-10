@@ -48,7 +48,7 @@ if [[ -f "./configs/envs/$GAPIPE_ENV" ]]; then
     echo "Sourcing environment file $GAPIPE_ENV"
     source "./configs/envs/$GAPIPE_ENV"
 else
-    ech "Environment file for $GAPIPE_ENV not found. "
+    echo "Environment file for $GAPIPE_ENV not found. "
     exit 1
 fi
 
@@ -80,6 +80,9 @@ PFSSPEC_PFS_RERUNDIR="$PFSSPEC_PFS_RERUNDIR"
 PFSSPEC_PFS_RERUN="$PFSSPEC_PFS_RERUN"
 PFSSPEC_PFS_DESIGNDIR="$PFSSPEC_PFS_DESIGNDIR"
 PFSSPEC_PFS_CONFIGDIR="$PFSSPEC_PFS_CONFIGDIR"
+
+BUTLER_CONFIGDIR="$BUTLER_CONFIGDIR"
+BUTLER_COLLECTIONS="$BUTLER_COLLECTIONS"
 EOF
 
 # Register entrypoint functions
@@ -102,4 +105,9 @@ function gapipe-submit() {
 # Run the GA 1D pipeline on a single task
 function gapipe-run() {
     `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.run.runscript" "$@"
+}
+
+# Compile a GA catalog from a GA pipeline run
+function gapipe-catalog() {
+    `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.catalog.catalogscript" "$@"
 }

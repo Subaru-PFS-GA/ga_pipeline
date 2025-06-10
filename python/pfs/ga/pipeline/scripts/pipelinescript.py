@@ -2,9 +2,10 @@ from types import SimpleNamespace
 import pandas as pd
 
 from pfs.datamodel import *
-from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemRepo
+from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
+from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo
 from ..gapipe.config import *
-from ..repo import PfsGen3FileSystemConfig
+from ..repo import PfsGen3FileSystemConfig, PfsGen3ButlerConfig
 from ..common import Script, PipelineError, ConfigJSONEncoder
 
 from ..setup_logger import logger
@@ -88,9 +89,14 @@ class PipelineScript(Script):
         # TODO: create different connectors here if working with
         #       data sets other than PFS
 
-        # Override repo config to include GAPipe config files
-        repo = PfsGen3FileSystemRepo(
-            config = PfsGen3FileSystemConfig
+        # repo = PfsGen3Repo(
+        #     repo_type = FileSystemRepo,
+        #     config = PfsGen3FileSystemConfig
+        # )
+
+        repo = PfsGen3Repo(
+            repo_type = ButlerRepo,
+            config = PfsGen3ButlerConfig
         )
 
         return repo
