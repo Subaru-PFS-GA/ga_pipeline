@@ -52,11 +52,18 @@ else
     exit 1
 fi
 
+# Save PYTHONPATH from the environment config file, because this should
+# preceed the PYTHONPATH set by conda environment activation. Conda would
+# put it at the end of the PYTHONPATH, which is not what we want.
+GAPIPE_PYTHONPATH="$PYTHONPATH"
+unset PYTHONPATH
+
 # Set up environment
 echo "Activating conda environment $GAPIPE_CONDAENV"
 source "$GAPIPE_CONDAPATH/bin/activate" "$GAPIPE_CONDAENV"
 
-export PYTHONPATH="$GAPIPE_ROOT/python:$PFSSPEC_ROOT/test:$PFSSPEC_ROOT/python:$PYTHONPATH"
+# Create the new PYTHONPATH with gapipe and pfsspec paths at the front
+export PYTHONPATH="$GAPIPE_ROOT/python:$PFSSPEC_ROOT/test:$PFSSPEC_ROOT/python:$GAPIPE_PYTHONPATH:$PYTHONPATH"
 
 # Generate .env file for vscode python debugging
 cat > .env <<EOF
