@@ -156,7 +156,10 @@ class Script():
 
         self.__args = self.__parser.parse_args().__dict__
 
-    def add_arg(self, *args, **kwargs):
+    def add_arg(self,
+                *args,
+                ignore_duplicate=False,
+                **kwargs):
         """
         Adds an argument to the argument parser.
 
@@ -168,7 +171,11 @@ class Script():
             Argument options.
         """
 
-        self.__parser.add_argument(*args, **kwargs)
+        # Check if the parser already has the argument defined
+        if ignore_duplicate and args[0] in self.__parser._option_string_actions:
+            pass
+        else:
+            self.__parser.add_argument(*args, **kwargs)
 
     def is_arg(self, name, args=None):
         """
