@@ -1,3 +1,5 @@
+#!/bin/bash
+
 export GAPIPE_ROOT="~/project/ga_pipeline"
 export GAPIPE_CONDAPATH="~/miniconda3"
 export GAPIPE_CONDAENV="gapipe"
@@ -14,9 +16,17 @@ export PFSSPEC_PFS_RERUN="u_kiyoyabe_processing_run20_20250228a"
 export PFSSPEC_PFS_DESIGNDIR="/data/."
 export PFSSPEC_PFS_CONFIGDIR="/work/datastore/PFS/raw/./pfsConfig"
 
-export PFSSPEC_ROOT=/home/dobos/project/ga_pfsspec_all
+export PFSSPEC_ROOT="~/project/ga_pfsspec_all"
 export PFSSPEC_DATA="~/data/pfsspec"
 
-export PYTHONPATH=".:~/project/Subaru-PFS/datamodel/python"
+# Set GAPIPE_LSST="1" to use the LSST stack
+export GAPIPE_LSST="0"
+
+# Define dependencies that are not installed as modules (conda or eups)
+# and should be added to PYTHONPATH. Also define dependencies that are to be
+# loaded from 'source'.
+export GAPIPE_MODULES="ga_pfsspec:$PFSSPEC_ROOT:python"
+
+export PYTHONPATH=""
 
 export DISPLAY=localhost:22

@@ -42,6 +42,11 @@ while (( "$#" )); do
     esac
 done
 
+# By default, do not use the LSST stack but this can be overridden
+# from the environment config file
+
+GAPIPE_LSST="0"
+
 # Source environment configs
 
 if [[ -f "./configs/envs/$GAPIPE_ENV" ]]; then
@@ -52,18 +57,59 @@ else
     exit 1
 fi
 
+# Add default modules to GAPIPE_MODULES already set in the environment config
+
+export GAPIPE_MODULES="gapipe:${GAPIPE_ROOT}:python
+gapipe-test:${GAPIPE_ROOT}:tests
+${GAPIPE_MODULES}"
+
+# Construct the PYTHONPATH from the GAPIPE_MODULES variable
+# The modules are separated by spaces, and each module consists of
+# a name, a path and a relative path to the python directory separated by colons.
+echo "Setting up PYTHONPATH from development modules"
+GAPIPE_PYTHONPATH=""
+for module in $GAPIPE_MODULES; do
+  mod_name=$(echo "$module" | cut -d':' -f1)
+  mod_path=$(echo "$module" | cut -d':' -f2)
+  mod_dir=$(echo "$module" | cut -d':' -f3)
+  GAPIPE_PYTHONPATH="${GAPIPE_PYTHONPATH}:${mod_path}/${mod_dir}"
+  echo "  added ${mod_name} to PYTHONPATH"
+done
+
 # Save PYTHONPATH from the environment config file, because this should
 # preceed the PYTHONPATH set by conda environment activation. Conda would
 # put it at the end of the PYTHONPATH, which is not what we want.
-GAPIPE_PYTHONPATH="$PYTHONPATH"
+GAPIPE_PYTHONPATH="$GAPIPE_PYTHONPATH:$PYTHONPATH"
 unset PYTHONPATH
 
 # Set up environment
 echo "Activating conda environment $GAPIPE_CONDAENV"
 source "$GAPIPE_CONDAPATH/bin/activate" "$GAPIPE_CONDAENV"
 
+# When working with the LSST stack, create the eups package for each
+# development module.
+if [[ "$GAPIPE_LSST" -eq "1" ]]; then
+  if [[ -n "$GAPIPE_MODULES" ]]; then
+    echo "Creating up EUPS packages from development modules"
+    for module in $GAPIPE_MODULES; do
+      mod_name=$(echo "$module" | cut -d':' -f1)
+      mod_path=$(echo "$module" | cut -d':' -f2)
+      mod_python=$(echo "$module" | cut -d':' -f3)
+      
+      # If the module has the ups directory, create the eups package
+      if [[ -d "$mod_path/ups" ]]; then
+        echo "  creating eups package for $mod_name"
+        eups undeclare "$mod_name" dev --force >/dev/null
+        pushd "$mod_path" >/dev/null
+        eups declare "$mod_name" dev -r . --force 2>/dev/null
+        popd >/dev/null
+      fi
+    done
+  fi
+fi
+
 # Create the new PYTHONPATH with gapipe and pfsspec paths at the front
-export PYTHONPATH="$GAPIPE_ROOT/python:$PFSSPEC_ROOT/test:$PFSSPEC_ROOT/python:$GAPIPE_PYTHONPATH:$PYTHONPATH"
+export PYTHONPATH="$GAPIPE_PYTHONPATH:$PYTHONPATH"
 
 # Generate .env file for vscode python debugging
 cat > .env <<EOF
