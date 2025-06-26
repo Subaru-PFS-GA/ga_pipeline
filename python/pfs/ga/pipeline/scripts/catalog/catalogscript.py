@@ -52,8 +52,7 @@ class CatalogScript(PipelineScript):
         super().prepare()
 
         # Override logging directory to use the same as the pipeline workdir
-        logfile = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.repo.get_resolved_variable('workdir'), logfile)
+        self._set_log_file_to_workdir()
 
     def run(self):
         """
@@ -66,14 +65,14 @@ class CatalogScript(PipelineScript):
 
         # Find all config files matching the command-line arguments.
         configs = {}
-        filenames, ids = self.repo.find_product(PfsConfig)
+        filenames, ids = self.input_repo.find_product(PfsConfig)
         for visit, fn in zip(ids.visit, filenames):
-            config, id, fn = self.repo.load_product(PfsConfig, filename=fn)
+            config, id, fn = self.input_repo.load_product(PfsConfig, filename=fn)
             configs[id.visit] = config
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
-        identities = self.repo.find_objects(configs=configs, groupby='objid')
+        identities = self.input_repo.find_objects(configs=configs, groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
@@ -84,9 +83,9 @@ class CatalogScript(PipelineScript):
         catalog = self.__create_catalog(configs, identities)
         logger.info(f'Created catalog with {len(catalog.catalog)} objects.')
 
-        _, filename, _ = self.repo.get_data_path(catalog)
+        _, filename, _ = self.input_repo.get_data_path(catalog)
         logger.info(f'Saving catalog to `{filename}`...')
-        self.repo.save_product(catalog, filename=filename, create_dir=True)
+        self.input_repo.save_product(catalog, filename=filename, create_dir=True)
 
         pass
         
@@ -271,7 +270,7 @@ class CatalogScript(PipelineScript):
         )
 
         try:
-            data = self.repo.load_product(PfsGAObject, identity=id)
+            data = self.input_repo.load_product(PfsGAObject, identity=id)
         except FileNotFoundError:
             logger.error(f'PfsGAObject file for 0x{id.objId:016x} is missing, will be ignored.')
             data = None, None, None

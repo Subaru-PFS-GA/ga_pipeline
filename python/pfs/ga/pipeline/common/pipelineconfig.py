@@ -6,8 +6,8 @@ class PipelineConfig(Config):
     def __init__(self):
         self.trace_args = {}
 
-        self.logdir = None                                    # Log directory, relative to workdir
-        self.figdir = None                                    # Figure directory, relative to workdir
+        self.logdir = None                                    # Log directory
+        self.figdir = None                                    # Figure directory
 
         self.loglevel = logging.INFO
 

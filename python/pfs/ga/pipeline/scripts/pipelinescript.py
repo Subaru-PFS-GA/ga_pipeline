@@ -1,19 +1,21 @@
+import os
 from types import SimpleNamespace
 import pandas as pd
+from copy import deepcopy
 
-from pfs.datamodel import *
+from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
 from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo
 from ..gapipe.config import *
-from ..repo import PfsGen3FileSystemConfig, PfsGen3ButlerConfig
+from ..repo import GAPipeWorkdirConfig, PfsGen3ButlerConfig
 from ..common import Script, PipelineError, ConfigJSONEncoder
 
 from ..setup_logger import logger
 
 class PipelineScript(Script):
     
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.__products = {
             PfsSingle: SimpleNamespace(
@@ -34,7 +36,8 @@ class PipelineScript(Script):
         }
 
         self.__config = self._create_config()
-        self.__repo = self._create_repo()
+        self.__input_repo = self._create_input_repo()
+        self.__work_repo = self._create_work_repo()
 
     def __get_products(self):
         return self.__products
@@ -46,13 +49,19 @@ class PipelineScript(Script):
     
     config = property(__get_config)
 
-    def __get_repo(self):
-        return self.__repo
+    def __get_input_repo(self):
+        return self.__input_repo
 
-    repo = property(__get_repo)
+    input_repo = property(__get_input_repo)
+
+    def __get_work_repo(self):
+        return self.__work_repo
+    
+    work_repo = property(__get_work_repo)
 
     def _add_args(self):
-        self.__repo.add_args(self)
+        self.__input_repo.add_args(self, ignore_duplicates=True)
+        self.__work_repo.add_args(self, ignore_duplicates=True)
         super()._add_args()
 
     def _init_from_args(self, args):
@@ -73,21 +82,27 @@ class PipelineScript(Script):
         if self.is_arg('rerundir', args):
             self.__config.rerundir = self.get_arg('rerundir', args)
 
-        # Initialize the data repository
-        self.__repo.init_from_args(self)
+        # Initialize the data repository, first from the configuration,
+        # then from the command-line arguments
+        self._init_input_repo()
+        self._init_work_repo()
 
         super()._init_from_args(args)
 
     def _create_config(self):
         return GAPipelineConfig()
 
-    def _create_repo(self):
+    def _create_input_repo(self):
         """
         Create a data repository connector to the file system.
         """
 
         # TODO: create different connectors here if working with
         #       data sets other than PFS
+
+        # TODO: figure out how to define the repo type in the config
+        #       the issue is that we need the repo before loading the config
+        #       in order to register the command-line arguments
 
         # repo = PfsGen3Repo(
         #     repo_type = FileSystemRepo,
@@ -100,6 +115,36 @@ class PipelineScript(Script):
         )
 
         return repo
+
+    def _create_work_repo(self):
+        repo = PfsGen3Repo(
+            repo_type = FileSystemRepo,
+            config = GAPipeWorkdirConfig
+        )
+
+        return repo
+
+    def _init_input_repo(self):
+        # When configured, allow for certain input files to be missing
+        # This is useful when the pipeline is run on a subset of data
+        # This setting can be overridden in the command line
+        self.__input_repo.ignore_missing_files = self.__config.ignore_missing_files
+        self.__input_repo.init_from_args(self)
+
+    def _init_work_repo(self):
+        # When configured, allow for certain input files to be missing
+        # This is useful when the pipeline is run on a subset of data
+        # This setting can be overridden in the command line
+        self.__work_repo.ignore_missing_files = self.__config.ignore_missing_files
+        self.__work_repo.init_from_args(self)
+
+    def _set_log_file_to_workdir(self):
+        # Override logging directory to use the same as the pipeline workdir
+        logfile = os.path.basename(self.log_file)
+        self.log_file = os.path.join(
+            self.work_repo.get_resolved_variable('workdir'),
+            self.work_repo.get_resolved_variable('rerundir'),
+            logfile)
 
     def _load_params_file(self, params_file, params_id):
         # TODO: update this if multiple files are needed or the file format changes
@@ -187,12 +232,12 @@ class PipelineScript(Script):
         self.__print_target(product.target)
         self.__print_observations(product.observations, s=0)
 
-        f, id = self.repo.locate_product(
+        f, id = self.input_repo.locate_product(
             PfsConfig,
             pfsDesignId=product.observations.pfsDesignId[0],
             visit=product.observations.visit[0]
         )
-        p, id, f = self.repo.load_product(PfsConfig, identity=id)
+        p, id, f = self.input_repo.load_product(PfsConfig, identity=id)
         self.__print_pfsConfig(p, id, f)
 
     def __print_pfsObject(self, product, identity, filename):
@@ -216,7 +261,7 @@ class PipelineScript(Script):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            filename, identity = self.repo.locate_pfsConfig(
+            filename, identity = self.input_repo.locate_pfsConfig(
                 visit = merged.identity.visit,
                 pfsDesignId = merged.identity.pfsDesignId,
             )

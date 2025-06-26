@@ -48,13 +48,13 @@ class RunScript(PipelineScript):
 
         # Create the pipeline and the trace object
         self.__trace = GAPipelineTrace()
-        self.__pipeline = GAPipeline(script=self, repo=self.repo, trace=self.__trace)
+        self.__pipeline = GAPipeline(script=self, repo=self.input_repo, trace=self.__trace)
 
         # Override logging directory to use the same as the workdir
         # This is not the location where the pipeline itself will write the logs
         # because that's the workdir of the output product
         log_file = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.repo.get_resolved_variable('workdir'), log_file)
+        self.log_file = os.path.join(self.work_repo.get_resolved_variable('workdir'), log_file)
 
     def run(self):
 
@@ -62,7 +62,7 @@ class RunScript(PipelineScript):
         # If no config file is provided, we search for configs based on the command line
         # search filters using the data store connector.
         if self.__config_files is None:
-            self.__config_files, _ = self.repo.find_product(GAPipelineConfig)
+            self.__config_files, _ = self.input_repo.find_product(GAPipelineConfig)
 
             if len(self.__config_files) == 0:
                 logger.warning('No config files found matching the filters.')
@@ -142,15 +142,15 @@ class RunScript(PipelineScript):
 
         # Override data store connector with configuration values
         if config.workdir is not None:
-            self.repo.set_variable('workdir', config.workdir)
+            self.input_repo.set_variable('workdir', config.workdir)
         if config.outdir is not None:
-            self.repo.set_variable('outdir', config.outdir)
+            self.input_repo.set_variable('outdir', config.outdir)
         if config.datadir is not None:
-            self.repo.set_variable('datadir', config.datadir)
+            self.input_repo.set_variable('datadir', config.datadir)
         if config.rerundir is not None:
-            self.repo.set_variable('rerundir', config.rerundir)
+            self.input_repo.set_variable('rerundir', config.rerundir)
         if config.rerun is not None:
-            self.repo.set_variable('rerun', config.rerun)
+            self.input_repo.set_variable('rerun', config.rerun)
 
 def main():
     script = RunScript()

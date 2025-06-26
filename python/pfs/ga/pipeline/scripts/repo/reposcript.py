@@ -10,11 +10,12 @@ import commentjson as json
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from ..pipelinescript import PipelineScript
+from ..batchscript import BatchScript
 from ...common import Script, PipelineError, ConfigJSONEncoder
 
 from ...setup_logger import logger
 
-class RepoScript(PipelineScript):
+class RepoScript(PipelineScript, BatchScript):
     """
     Search PFS repo for data files and print useful information about them.
 
@@ -23,28 +24,34 @@ class RepoScript(PipelineScript):
     """
 
     def __init__(self):
-        super().__init__(log_level=logging.WARNING, log_to_file=False)
+        PipelineScript.__init__(self, log_level=logging.WARNING, log_to_file=False)
+        BatchScript.__init__(self)
 
         self.__commands = {
             'info': SimpleNamespace(
                 help = 'Print information about the data root and rerun directory',
-                run = self.__run_info
+                run = self.__run_info,
+                submit = None
             ),
             'find-product': SimpleNamespace(
                 help = 'Search for files of a given product type',
-                run = self.__run_find_product
+                run = self.__run_find_product,
+                submit = None
             ),
             'extract-product': SimpleNamespace(
                 help = 'Extract spectra from the specified type of product',
-                run = self.__run_extract_product
+                run = self.__run_extract_product,
+                submit = self.__submit_extract_product,
             ),
             'find-object': SimpleNamespace(
                 help = 'Search for object withing pfsConfig files',
-                run = self.__run_find_object
+                run = self.__run_find_object,
+                submit = None
             ),
             'show': SimpleNamespace(
                 help = 'Print information about a given file',
-                run = self.__run_show
+                run = self.__run_show,
+                submit = None
             )
         }
 
@@ -52,7 +59,6 @@ class RepoScript(PipelineScript):
         self.__filename = None          # Path of the input file
         self.__product = None           # Product to be processed
         self.__format = 'table'         # Output format
-        self.__top = None
 
     def _add_args(self):
         self.add_arg('command', type=str,
@@ -61,9 +67,9 @@ class RepoScript(PipelineScript):
         self.add_arg('in', type=str, nargs='?',
                      help='Product type or filename')
         self.add_arg('--format', type=str)
-        self.add_arg('--top', type=int)
 
-        super()._add_args()
+        PipelineScript._add_args(self)
+        BatchScript._add_args(self)
 
     def _init_from_args(self, args):
         self.__command = self.get_arg('command')
@@ -72,24 +78,30 @@ class RepoScript(PipelineScript):
         # If not, interpret it as a filename
         if self.is_arg('in'):
             try:
-                self.__product = self.repo.parse_product_type(self.get_arg('in'))
+                self.__product = self.input_repo.parse_product_type(self.get_arg('in'))
             except ValueError:
                 self.__filename = self.get_arg('in')
 
         self.__format = self.get_arg('format', args, self.__format)
-        self.__top = self.get_arg('top', args, self.__top)
 
-        super()._init_from_args(args)
+        PipelineScript._init_from_args(self, args)
+        BatchScript._init_from_args(self, args)
 
     def prepare(self):
-        return super().prepare()
+        return PipelineScript.prepare(self)
     
     def run(self):
-        self.__commands[self.__command].run()
+        if self.is_batch():
+            submit = self.__commands[self.__command].submit
+            if submit is None:
+                raise NotImplementedError(f'Command {self.__command} does not support batch submission')
+            submit()
+        else:
+            self.__commands[self.__command].run()
 
     def __run_info(self):
-        datadir = self.repo.get_resolved_variable('datadir')
-        rerundir = self.repo.get_resolved_variable('rerundir')
+        datadir = self.input_repo.get_resolved_variable('datadir')
+        rerundir = self.input_repo.get_resolved_variable('rerundir')
         
         print(f'Data root directory: {datadir}')
         print(f'Rerun directory: {rerundir}')
@@ -98,7 +110,7 @@ class RepoScript(PipelineScript):
         if self.__product is None:
             raise ValueError('Product type not provided')
         
-        filenames, identities = self.repo.find_product(self.__product)
+        filenames, identities = self.input_repo.find_product(self.__product)
         identities.filename = filenames
 
         # Print results in different formats
@@ -109,34 +121,63 @@ class RepoScript(PipelineScript):
         elif self.__format == 'path':
             self.__print_paths(filenames)
 
-    def __run_extract_product(self):
-        if self.__product is None:
-            raise ValueError('Product type not provided')
+    def __validate_extract_product(self, filename, product):
+        if self.__filename is None and self.__product is None:
+            raise ValueError('Neither the product type, nor a filename was provided')
         
         # Depending on the product type, extract different types of data
-        if not hasattr(self.__product, 'extract'):
+        if self.__product is not None and not hasattr(self.__product, 'extract'):
             raise ValueError(f'Product type does not support extracting sub-product: {self.__product}')
 
-        filenames, identities = self.repo.find_product(self.__product)
+    def __get_extract_product_filenames(self):
+        if isinstance(self.__filename, str):
+            filenames, identities = [self.__filename], None
+        elif self.__filename is not None:
+            filenames, identities = self.__filename, None
+        else:
+            filenames, identities = self.input_repo.find_product(self.__product)
+
+        return filenames, identities
+
+    def __run_extract_product(self):
+        self.__validate_extract_product(self.__filename, self.__product)
+        filenames, identities = self.__get_extract_product_filenames()
 
         # Load the products one by one and extract all sub-products
         for i, fn in enumerate(filenames):
-            prod, _, _ = self.repo.load_product(self.__product, filename=fn)
+            prod, _, _ = self.input_repo.load_product(self.__product, filename=fn)
             subprods, subids = prod.extract()
 
             for subprod, subid in zip(subprods, subids):
-                # Match filters
-                if self.repo.filters_match_object(subid):
-                    _, filename = self.repo.save_product(
+                # If the sub-product matches the object filters, save it
+                # to the work directory
+                if self.input_repo.match_object_filters(subid):
+                    _, filename = self.work_repo.save_product(
                         subprod, identity=subid,
                         variables={'datadir': self.config.workdir})
 
+    def __submit_extract_product(self):
+        self.__validate_extract_product(self.__filename, self.__product)
+        filenames, identities = self.__get_extract_product_filenames()
+
+        # Submit a job for each product matching the filters
+        for i, fn in enumerate(filenames):
+            command = f'python -m pfs.ga.pipeline.scripts.repo.reposcript extract-product {fn}'
+            
+            # Add the filters
+            for key, filter in self.input_repo.object_filters.__dict__.items():
+                args = filter.render()
+                if args is not None:
+                    command += f' {args}'
+            
+            self._submit_job(command, fn)
+
     def __run_find_object(self):
-        identities = self.repo.find_objects(groupby='none')
+        identities = self.input_repo.find_objects(groupby='none')
         if identities is not None:
-            if self.__top is not None:
+            if self.top is not None:
                 for k, v in identities.__dict__.items():
-                    setattr(identities, k, v[:self.__top])
+                    setattr(identities, k, v[:self.top])
             self.__print_identities(identities)
 
     def __print_identities(self, identities, format=None):
@@ -192,14 +233,14 @@ class RepoScript(PipelineScript):
             # Split filename into path, basename and extension
             path, basename = os.path.split(self.__filename)
             name, ext = os.path.splitext(basename)
-            product_type = self.repo.parse_product_type(re.split('[-_]', name)[0])
+            product_type = self.input_repo.parse_product_type(re.split('[-_]', name)[0])
 
             if product_type in self.products:
-                product, identity, filename = self.repo.load_product(product_type, filename=self.__filename)
+                product, identity, filename = self.input_repo.load_product(product_type, filename=self.__filename)
             else:
                 raise NotImplementedError(f'File type not recognized: {basename}')
         elif self.__product is not None:
-            product, identity, filename = self.repo.load_product(self.__product)
+            product, identity, filename = self.input_repo.load_product(self.__product)
         else:
             raise ValueError('No input file or product type provided')
 

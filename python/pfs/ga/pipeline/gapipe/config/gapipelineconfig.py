@@ -24,6 +24,8 @@ class GAPipelineConfig(PipelineConfig):
         self.outdir = self._get_env('GAPIPE_OUTDIR')          # Pipeline output directory
         self.rerun = self._get_env('GAPIPE_RERUN')            # Rerun name, used in file names
 
+        self.ignore_missing_files = False                     # Ignore missing data files
+
         # GA target object configuration
         self.target = target
 

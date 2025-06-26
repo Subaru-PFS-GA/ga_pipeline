@@ -8,16 +8,14 @@ from types import SimpleNamespace
 from pfs.datamodel import *
 from pfs.datamodel import PfsGAObject
 
-from pfs.ga.pfsspec.core import Physics, Astro
-from pfs.ga.pfsspec.core.obsmod.snr import QuantileSnr
-from pfs.ga.pfsspec.survey.repo import FileSystemRepo
+from pfs.ga.pfsspec.survey.repo import Repo, FileSystemRepo
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.io import PfsSpectrumReader
 
 from ..constants import Constants
 from ..util import Timer
 from ..common import Script, Pipeline, PipelineStepResults, PipelineError
-from ..repo import PfsFileSystemConfig
+from ..repo import GAPipeWorkdirConfig
 from .config import GAPipelineConfig
 from .gapipelinetrace import GAPipelineTrace
 from .steps import *
@@ -44,7 +42,8 @@ class GAPipeline(Pipeline):
     def __init__(self, /,
                  script: Script = None,
                  config: GAPipelineConfig = None,
-                 repo: FileSystemRepo = None,
+                 input_repo: Repo = None,
+                 work_repo: FileSystemRepo = None,
                  trace: GAPipelineTrace = None,
                  id: str = None):
         """
@@ -69,7 +68,8 @@ class GAPipeline(Pipeline):
         super().__init__(script=script, config=config, trace=trace)
 
         self.__id = id                          # Identity represented as string
-        self.__repo = repo
+        self.__input_repo = input_repo
+        self.__work_repo = work_repo
        
     def reset(self):
         super().reset()
@@ -102,7 +102,7 @@ class GAPipeline(Pipeline):
     def update(self, script=None, config=None, repo=None, trace=None, id=None):
         super().update(script=script, config=config, trace=trace)
 
-        self.__repo = repo if repo is not None else self.__repo
+        self.__input_repo = repo if repo is not None else self.__input_repo
         self.__id = id if id is not None else self.__id
 
         if self.trace is not None:
@@ -126,7 +126,8 @@ class GAPipeline(Pipeline):
         context = SimpleNamespace(
             id = self.__id,
             pipeline = self,
-            repo = self.__repo,
+            input_repo = self.__input_repo,
+            work_repo = self.__work_repo,
             config = self.config,
             trace = trace
         )
@@ -232,12 +233,12 @@ class GAPipeline(Pipeline):
         ]
     
     def get_product_workdir(self):
-        return self.__repo.format_dir(GAPipelineConfig,
+        return self.__work_repo.format_dir(GAPipelineConfig,
                                       self.config.target.identity,
                                       variables={ 'workdir': self.config.workdir })
 
     def get_product_outdir(self):
-        return self.__repo.format_dir(PfsGAObject,
+        return self.__input_repo.format_dir(PfsGAObject,
                                       self.config.target.identity,
                                       variables={ 'datadir': self.config.outdir })
 
@@ -262,7 +263,7 @@ class GAPipeline(Pipeline):
         """
 
         dir = self.get_product_workdir()
-        filename = self.__repo.format_filename(GAPipelineConfig, self.config.target.identity)
+        filename = self.__work_repo.format_filename(GAPipelineConfig, self.config.target.identity)
         filename, _ = os.path.splitext(filename)
         if self.config.logdir is not None:
             return os.path.join(dir, self.config.logdir, filename + '.log')
@@ -338,14 +339,14 @@ class GAPipeline(Pipeline):
                     self.product_cache[product][visit] = {}
                 
                 if identity.objId not in self.product_cache[product][visit]:
-                    data, id, filename = self.__repo.load_product(product, identity=identity)
+                    data, id, filename = self.__input_repo.load_product(product, identity=identity)
                     data.filename = filename
                     self.product_cache[product][visit][identity.objId] = data
                     q += 1
             elif issubclass(product, (PfsFiberArraySet, PfsConfig)):
                 # Data product contains multiple objects
                 if visit not in self.product_cache[product]:
-                    data, id, filename = self.__repo.load_product(product, identity=identity)
+                    data, id, filename = self.__input_repo.load_product(product, identity=identity)
                     self.product_cache[product][visit] = data
                     q += 1
             else:
@@ -362,7 +363,7 @@ class GAPipeline(Pipeline):
         Save the output product to the output directory.
         """
 
-        identity, filename = self.__repo.save_product(
+        identity, filename = self.__work_repo.save_product(
             product,
             variables={ 'datadir': self.config.outdir })
     

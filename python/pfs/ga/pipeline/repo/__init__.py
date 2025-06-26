@@ -1,3 +1,3 @@
-from .pfsfilesystemconfig import PfsFileSystemConfig
+from .gapipeworkdirconfig import GAPipeWorkdirConfig
 from .pfsgen3filesystemconfig import PfsGen3FileSystemConfig
 from .pfsgen3butlerconfig import PfsGen3ButlerConfig

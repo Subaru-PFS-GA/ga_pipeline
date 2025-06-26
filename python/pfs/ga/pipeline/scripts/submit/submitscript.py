@@ -53,8 +53,7 @@ class SubmitScript(PipelineScript):
         super().prepare()
 
         # Override logging directory to use the same as the pipeline workdir
-        logfile = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.repo.get_resolved_variable('workdir'), logfile)
+        self._set_log_file_to_workdir()
 
     def run(self):
         """
@@ -64,7 +63,7 @@ class SubmitScript(PipelineScript):
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
-        identities = self.repo.find_objects(groupby='objid')
+        identities = self.input_repo.find_objects(groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
@@ -104,8 +103,8 @@ class SubmitScript(PipelineScript):
     def __create_sbatch_job_file(self, objid, identity):
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
-        dir = self.repo.format_dir(GAPipelineConfig, identity)
-        config_file = self.repo.format_filename(GAPipelineConfig, identity)
+        dir = self.input_repo.format_dir(GAPipelineConfig, identity)
+        config_file = self.input_repo.format_filename(GAPipelineConfig, identity)
         config_file = os.path.join(dir, config_file)
 
         # Name of the output pipeline configuration

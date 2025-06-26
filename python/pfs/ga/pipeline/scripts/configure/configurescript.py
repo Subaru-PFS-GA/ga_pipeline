@@ -32,8 +32,8 @@ class ConfigureScript(PipelineScript):
     to look up the fiberId etc.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.__params = None                # Params file with stellar parameters to derive the priors from
         self.__params_id = '__target_idx'   # ID column of the params file
@@ -61,8 +61,7 @@ class ConfigureScript(PipelineScript):
         super().prepare()
 
         # Override logging directory to use the same as the pipeline workdir
-        logfile = os.path.basename(self.log_file)
-        self.log_file = os.path.join(self.repo.get_resolved_variable('workdir'), logfile)
+        self._set_log_file_to_workdir()
 
     def run(self):
         """
@@ -77,7 +76,7 @@ class ConfigureScript(PipelineScript):
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
-        identities = self.repo.find_objects(groupby='objid')
+        identities = self.input_repo.find_objects(groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
@@ -204,8 +203,9 @@ class ConfigureScript(PipelineScript):
 
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
-        dir = self.repo.format_dir(GAPipelineConfig, identity)
-        config_file = self.repo.format_filename(GAPipelineConfig, identity)
+
+        dir = self.work_repo.format_dir(GAPipelineConfig, identity)
+        config_file = self.work_repo.format_filename(GAPipelineConfig, identity)
 
         # Name of the output pipeline configuration
         filename = os.path.join(dir, config_file)
@@ -213,8 +213,8 @@ class ConfigureScript(PipelineScript):
         # Update config with directory names
 
         # Input data directories
-        config.datadir = self.repo.get_resolved_variable('datadir')
-        config.rerundir = self.repo.get_resolved_variable('rerundir')
+        config.datadir = self.input_repo.get_resolved_variable('datadir')
+        config.rerundir = self.input_repo.get_resolved_variable('rerundir')
 
         logger.debug(f'Configured data directory for object {identity}: {config.datadir}')
         logger.debug(f'Configured rerun directory for object {identity}: {config.rerundir}')
