@@ -121,13 +121,23 @@ class RepoScript(PipelineScript, BatchScript):
         elif self.__format == 'path':
             self.__print_paths(filenames)
 
-    def __validate_extract_product(self, filename, product):
-        if self.__filename is None and self.__product is None:
+    def __validate_extract_product(self):
+
+        filename = self.__filename
+        product = self.__product
+
+        if filename is None and product is None:
             raise ValueError('Neither the product type, nor a filename was provided')
         
         # Depending on the product type, extract different types of data
-        if self.__product is not None and not hasattr(self.__product, 'extract'):
-            raise ValueError(f'Product type does not support extracting sub-product: {self.__product}')
+        if isinstance(product, tuple):
+            if len(product) != 2:
+                raise ValueError(f'Product type must be a tuple of (container, sub-product): {product}')
+            
+            product, _ = product
+
+        if product is not None and not hasattr(product, 'extract'):       
+            raise ValueError(f'Product type does not support extracting sub-product: {product}')
 
     def __get_extract_product_filenames(self):
         if isinstance(self.__filename, str):
@@ -140,24 +150,28 @@ class RepoScript(PipelineScript, BatchScript):
         return filenames, identities
 
     def __run_extract_product(self):
-        self.__validate_extract_product(self.__filename, self.__product)
+        self.__validate_extract_product()
         filenames, identities = self.__get_extract_product_filenames()
 
         # Load the products one by one and extract all sub-products
         for i, fn in enumerate(filenames):
-            prod, _, _ = self.input_repo.load_product(self.__product, filename=fn)
-            subprods, subids = prod.extract()
+            product = self.input_repo.match_container_product_type(os.path.basename(fn))
+            subprods = self.input_repo.load_products_from_container(
+                *product,
+                filename=fn,
+                ignore_missing_files=True)
 
-            for subprod, subid in zip(subprods, subids):
-                # If the sub-product matches the object filters, save it
-                # to the work directory
-                if self.input_repo.match_object_filters(subid):
-                    _, filename = self.work_repo.save_product(
-                        subprod, identity=subid,
-                        variables={'datadir': self.config.workdir})
+            if subprods is not None:
+                for subprod, subid, _ in subprods:
+                    # If the sub-product matches the object filters, save it
+                    # to the work directory
+                    if self.input_repo.match_object_filters(subid):
+                        _, filename = self.work_repo.save_product(
+                            subprod, identity=subid,
+                            variables={'datadir': self.config.workdir})
 
     def __submit_extract_product(self):
-        self.__validate_extract_product(self.__filename, self.__product)
+        self.__validate_extract_product()
         filenames, identities = self.__get_extract_product_filenames()
 
         # Submit a job for each product matching the filters
@@ -166,7 +180,7 @@ class RepoScript(PipelineScript, BatchScript):
             
             # Add the filters
             for key, filter in self.input_repo.object_filters.__dict__.items():
-                args = filter.render()
+                args = filter.render(lower=True)
                 if args is not None:
                     command += f' {args}'
             

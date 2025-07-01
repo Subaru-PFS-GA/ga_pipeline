@@ -58,14 +58,9 @@ class BatchScript():
 #SBATCH --mem {self.__memory}
 #SBATCH --time {self.__time}
 
-echo $PYTHONPATH
-
 set -e
 
-out=slurm-\$SLURM_JOB_ID.out
 srun {command}
-outdir=\$(cat \$out | grep -Po 'Output directory is (\K.+)')
-mv \$out \$outdir/slurm.out
 """
 
         # Submit the job to slurm
