@@ -76,6 +76,10 @@ for module in $GAPIPE_MODULES; do
   echo "  added ${mod_name} to PYTHONPATH"
 done
 
+# Save PATH from the environment config file, because this should
+# preceed the PATH set by conda environment activation.
+GAPIPE_PATH="$PATH"
+
 # Save PYTHONPATH from the environment config file, because this should
 # preceed the PYTHONPATH set by conda environment activation. Conda would
 # put it at the end of the PYTHONPATH, which is not what we want.
@@ -108,16 +112,28 @@ if [[ "$GAPIPE_LSST" -eq "1" ]]; then
   fi
 fi
 
+function sanitize_path() {
+  # Remove duplicate entries from a colon-separated path string
+  # Remove leading and trailing colons, and replace multiple colons with a single colon
+  echo "$1" | awk -v RS=: -v ORS=: '!a[$0]++' | sed -e 's/::\+/:/g' -e 's/^://g' -e 's/:$//g'
+}
+
+# Create the new PATH and remove duplicates
+export PATH=$(sanitize_path "$GAPIPE_PATH:$PATH")
+
 # Create the new PYTHONPATH with gapipe and pfsspec paths at the front
-export PYTHONPATH="$GAPIPE_PYTHONPATH:$PYTHONPATH"
+# Also remove duplicates
+export PYTHONPATH=$(sanitize_path "$GAPIPE_PYTHONPATH:$PYTHONPATH")
 
 # Generate .env file for vscode python debugging
 cat > .env <<EOF
-DISPLAY="$DISPLAY"
+PATH="$PATH"
 PYTHONPATH="$PYTHONPATH"
-CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
-GAPIPE_DEBUGPORT="$GAPIPE_DEBUGPORT"
 
+DISPLAY="$DISPLAY"
+CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
+
+GAPIPE_DEBUGPORT="$GAPIPE_DEBUGPORT"
 GAPIPE_ROOT="$GAPIPE_ROOT"
 GAPIPE_WORKDIR="$GAPIPE_WORKDIR"
 GAPIPE_OUTDIR="$GAPIPE_OUTDIR"
