@@ -27,7 +27,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             identity = PfsGen3FileSystemConfig.products[PfsSingle].identity,
             load = PfsGen3FileSystemConfig.products[PfsSingle].load,
             save = PfsGen3FileSystemConfig.products[PfsSingle].save,
-            dir_format = '$workdir/$rerundir/{catId}/pfsObject-{objId}',
+            dir_format = '$workdir/$rerundir/pfsSingle/{catId}/{objId}',
             filename_format = 'pfsSingle-{catId}-{objId}-{visit}.fits',
         ),
 
@@ -44,7 +44,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsGAObject-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(yaml)$'),
             ],
-            dir_format = '$workdir/$rerundir/{catId}/pfsObject-{objId}',
+            dir_format = '$workdir/$rerundir/pfsGAObject/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsGAObject-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.yaml',
             load = lambda identity, filename, dir:
                 GAPipelineConfig.from_file(path=os.path.join(dir, filename)),
@@ -59,7 +59,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsGAObject-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits)$'),
             ],
-            dir_format = '$outdir/$rerundir/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
+            dir_format = '$outdir/$rerundir/pfsGAObject/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsGAObject-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
         ),
 
@@ -72,7 +72,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsGACatalog-(?P<catId>\d{5})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
-            dir_format = '$outdir/$rerundir/{catId}',
+            dir_format = '$outdir/$rerundir/pfsGACatalog/{catId}/{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsGACatalog-{catId}-{nVisit}-0x{pfsVisitHash}.fits',
         ),
     }
