@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import IntFilter, HexFilter, DateFilter, StringFilter
 from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemConfig
+from pfs.ga.pfsspec.survey.pfs.pfsgen3filesystemconfig import load_PfsSingle, save_PfsSingle
 
 from ..gapipe.config import GAPipelineConfig
 
@@ -22,13 +23,21 @@ GAPipeWorkdirConfig = SimpleNamespace(
     products = {
         # PfsSingle files are extracted from the pfsCalibrated files
         PfsSingle: SimpleNamespace(
-            name = PfsGen3FileSystemConfig.products[PfsSingle].name,
-            params = PfsGen3FileSystemConfig.products[PfsSingle].params,
-            identity = PfsGen3FileSystemConfig.products[PfsSingle].identity,
-            load = PfsGen3FileSystemConfig.products[PfsSingle].load,
-            save = PfsGen3FileSystemConfig.products[PfsSingle].save,
+            name = 'pfsSingle',
+            params = SimpleNamespace(
+                catId = IntFilter(name='catId', format='{:05d}'),
+                objId = HexFilter(name='objId', format='{:016x}'),
+                visit = IntFilter(name='visit', format='{:06d}'),
+            ),
+            params_regex = [
+                re.compile(r'pfsSingle-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<visit>\d{6})\.(fits)$'),
+            ],
             dir_format = '$workdir/$rerundir/pfsSingle/{catId}/{objId}',
             filename_format = 'pfsSingle-{catId}-{objId}-{visit}.fits',
+            identity = lambda data:
+                SimpleNamespace(catId=data.target.catId, tract=data.target.tract, patch=data.target.patch, objId=data.target.objId, visit=data.observations.visit[0]),
+            load = load_PfsSingle,
+            save = save_PfsSingle,
         ),
 
         # GAPipelineConfig files are stored in the workdir. These are yaml files
