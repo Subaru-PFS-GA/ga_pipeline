@@ -94,69 +94,19 @@ class ConfigureScript(PipelineScript):
         configs = {}
         filenames = {}
         for objid, id in identities.items():
+            # Get target identity and list of observations to be included
             target = self.__get_target_config(objid, id)
+
+            # Create general pipeline configuration
             config, filename = self.__get_pipeline_config(objid, target.identity)
             config.target = target
 
-            # Look up the stellar parameters in the params file
-            if params is not None:
-                if objid in params.index:
-                    pp = params.loc[objid]
+            # Look up the stellar parameters in the params file and configure
+            # template fitting
+            if params is not None and objid in params.index:
+                self.__configure_rvfit(config, params, objid)
 
-                    for k in ['M_H', 'T_eff', 'log_g', 'a_M', 'rv']:
-                        k_min = f'{k}_min'
-                        k_max = f'{k}_max'
-                        k_dist = f'{k}_dist'
-                        k_dist_mean = f'{k}_dist_mean'
-                        k_dist_sigma = f'{k}_dist_sigma'
-
-                        # Limits
-
-                        if k in config.rvfit.rvfit_args and config.rvfit.rvfit_args[k] is not None:
-                            values = config.rvfit.rvfit_args[k]
-                        else:
-                            values = None
-
-                        if k in pp and pp[k] is not None and not np.isnan(pp[k]):
-                            # Constant value, overrides limits
-                            values = float(pp[k])
-                        else:
-                            if k_min in pp and pp[k_min] is not None and not np.isnan(pp[k_min]):
-                                # Lower limit
-                                if not isinstance(values, list):
-                                    values = [-np.inf, np.inf]
-                                values[0] = pp[k_min]
-
-                            if k_max in pp and pp[k_max] is not None and not np.isnan(pp[k_max]):
-                                # Upper limit
-                                if not isinstance(values, list):
-                                    values = [-np.inf, np.inf]
-                                values[1] = pp[k_max]
-
-                        if values is not None:
-                            config.rvfit.rvfit_args[k] = values
-
-                        # Distribution
-
-                        if k_dist in config.rvfit.rvfit_args and config.rvfit.rvfit_args[k_dist] is not None:
-                            dist = config.rvfit.rvfit_args[k_dist][0]
-                            dist_args = config.rvfit.rvfit_args[k_dist][1:]
-                        else:
-                            dist = None
-                            dist_args = None
-                        
-                        if k_dist in pp and pp[k_dist] is not None:
-                            if pp[k_dist] == 'uniform':
-                                dist = 'uniform'
-                                dist_args = []
-                            elif pp[k_dist] == 'normal':
-                                dist = 'normal'
-                                dist_args = [pp[k_dist_mean], pp[k_dist_sigma]]
-                            else:
-                                raise NotImplementedError()
-
-                        if dist is not None and dist_args is not None:
-                            config.rvfit.rvfit_args[k_dist] = [dist] + dist_args
+            # TODO: add further steps
 
             configs[objid] = config
             filenames[objid] = filename
@@ -168,6 +118,14 @@ class ConfigureScript(PipelineScript):
         Return the configuration section objects for each target
         """
 
+        # Look up the necessary input files from the list of observations and
+        # make sure they exists. If the don't, exclude them from the list.
+        visit_mask = self.__locate_required_products(objid, id)
+
+        if visit_mask.sum() == 0:
+            logger.warning(f'No required products found for object {objid}, skipping.')
+            return None
+
         target = GATargetConfig(
             proposalId = id.proposalId[0],
             targetType = id.targetType[0],
@@ -176,22 +134,65 @@ class ConfigureScript(PipelineScript):
                 tract = id.tract[0],
                 patch = id.patch[0],
                 objId = objid,
-                nVisit = wraparoundNVisit(len(id.visit)),
-                pfsVisitHash = calculatePfsVisitHash(id.visit),
+                nVisit = wraparoundNVisit(len(id.visit[visit_mask])),
+                pfsVisitHash = calculatePfsVisitHash(id.visit[visit_mask]),
             ),
             observations = GAObjectObservationsConfig(
-                visit = id.visit,
-                arms = id.arms,
-                spectrograph = id.spectrograph,
-                pfsDesignId = id.pfsDesignId,
-                fiberId = id.fiberId,
-                fiberStatus = id.fiberStatus,
-                obstime = id.obstime,
-                exptime = id.exptime,
+                visit = id.visit[visit_mask],
+                arms = id.arms[visit_mask],
+                spectrograph = id.spectrograph[visit_mask],
+                pfsDesignId = id.pfsDesignId[visit_mask],
+                fiberId = id.fiberId[visit_mask],
+                fiberStatus = id.fiberStatus[visit_mask],
+                obstime = id.obstime[visit_mask],
+                exptime = id.exptime[visit_mask],
             )
         )
 
         return target
+
+    def __locate_required_products(self, objid, identity):
+        # self.config is the prototype configuration object that we can use
+        # to get a list of required input files.
+
+        mask = np.full_like(identity.visit, True, dtype=bool)
+
+        # Check if the required products are available in any of the data
+        # repositories. If not, set the mask to False for those visits.
+        for product_name in self.config.rvfit.required_products:
+            m = np.full_like(mask, False, dtype=bool)
+
+            # Try each repository in order
+            for repo in [self.input_repo, self.work_repo]:
+                # Look up the product type based on its name as a string. If the
+                # product is not available in a certain repo, skip to the next one.
+                try:
+                    prod = repo.parse_product_type(product_name)
+                except ValueError:
+                    logger.debug(f'Product type `{product_name}` not available in repo of type {type(repo.repo).__name__}.')
+                    continue
+
+                for i in range(len(identity.visit)):
+                    try:
+                        fn, _ = repo.locate_product(
+                            prod,
+                            visit = identity.visit[i],
+                            pfsDesignId = identity.pfsDesignId[i],
+                            catId = identity.catId[i],
+                            objid = identity.objId[i])
+                    except FileNotFoundError:
+                        fn = None
+
+                    if fn is None or not os.path.isfile(fn):
+                        logger.warning(f'Required product `{product_name}` for object {objid} not found: {fn}, ignoring.')
+                    else:
+                        m[i] = True
+
+                break   # If we found the product in one of the repositories, we can stop looking further.
+
+            mask &= m
+                
+        return mask
 
     def __get_pipeline_config(self, objid, identity, ext='.yaml'):
         """
@@ -222,6 +223,64 @@ class ConfigureScript(PipelineScript):
         logger.debug(f'Configured output directory for object {identity}: {config.outdir}')
 
         return config, filename
+
+    def __configure_rvfit(self, config, params, objid):
+        pp = params.loc[objid]
+
+        for k in ['M_H', 'T_eff', 'log_g', 'a_M', 'rv']:
+            k_min = f'{k}_min'
+            k_max = f'{k}_max'
+            k_dist = f'{k}_dist'
+            k_dist_mean = f'{k}_dist_mean'
+            k_dist_sigma = f'{k}_dist_sigma'
+
+            # Limits
+
+            if k in config.rvfit.rvfit_args and config.rvfit.rvfit_args[k] is not None:
+                values = config.rvfit.rvfit_args[k]
+            else:
+                values = None
+
+            if k in pp and pp[k] is not None and not np.isnan(pp[k]):
+                # Constant value, overrides limits
+                values = float(pp[k])
+            else:
+                if k_min in pp and pp[k_min] is not None and not np.isnan(pp[k_min]):
+                    # Lower limit
+                    if not isinstance(values, list):
+                        values = [-np.inf, np.inf]
+                    values[0] = pp[k_min]
+
+                if k_max in pp and pp[k_max] is not None and not np.isnan(pp[k_max]):
+                    # Upper limit
+                    if not isinstance(values, list):
+                        values = [-np.inf, np.inf]
+                    values[1] = pp[k_max]
+
+            if values is not None:
+                config.rvfit.rvfit_args[k] = values
+
+            # Distribution
+
+            if k_dist in config.rvfit.rvfit_args and config.rvfit.rvfit_args[k_dist] is not None:
+                dist = config.rvfit.rvfit_args[k_dist][0]
+                dist_args = config.rvfit.rvfit_args[k_dist][1:]
+            else:
+                dist = None
+                dist_args = None
+            
+            if k_dist in pp and pp[k_dist] is not None:
+                if pp[k_dist] == 'uniform':
+                    dist = 'uniform'
+                    dist_args = []
+                elif pp[k_dist] == 'normal':
+                    dist = 'normal'
+                    dist_args = [pp[k_dist_mean], pp[k_dist_sigma]]
+                else:
+                    raise NotImplementedError()
+
+            if dist is not None and dist_args is not None:
+                config.rvfit.rvfit_args[k_dist] = [dist] + dist_args
     
     def __save_config_files(self, configs, filenames):
         """
