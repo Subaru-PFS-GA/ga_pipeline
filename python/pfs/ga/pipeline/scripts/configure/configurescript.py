@@ -83,16 +83,18 @@ class ConfigureScript(PipelineScript):
             return
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
-
-        # Create the target configuration objects
-        configs, filenames = self.__create_output_configs(identities, params)
         
         # Generate the configuration file for each target
-        self.__save_config_files(configs, filenames)
+        q = 0
+        for objid, config, filename in self.__create_output_configs(identities, params):
+            self.__save_config_file(objid, config, filename)
+
+            q += 1
+            if self.__top is not None and q >= self.__top:
+                logger.info(f'Stopping after {q} objects.')
+                break
 
     def __create_output_configs(self, identities, params=None):
-        configs = {}
-        filenames = {}
         for objid, id in identities.items():
             # Get target identity and list of observations to be included
             target = self.__get_target_config(objid, id)
@@ -108,10 +110,7 @@ class ConfigureScript(PipelineScript):
 
             # TODO: add further steps
 
-            configs[objid] = config
-            filenames[objid] = filename
-
-        return configs, filenames
+            yield objid, config, filename
 
     def __get_target_config(self, objid, id):
         """
@@ -282,28 +281,17 @@ class ConfigureScript(PipelineScript):
             if dist is not None and dist_args is not None:
                 config.rvfit.rvfit_args[k_dist] = [dist] + dist_args
     
-    def __save_config_files(self, configs, filenames):
+    def __save_config_file(self, objid, config, filename):
         """
         Generate a config file for each of the inputs.
-
-        While the result of the final processing is a single FITS file, we need
-        a separate work directory for each object to store the auxiliary files.
         """
 
-        q = 0
-        for objid in sorted(configs.keys()):
-            config, filename = configs[objid], filenames[objid]
-            if not self.__dry_run:
-                logger.info(f'Saving configuration file `{filename}`.')
-                os.makedirs(os.path.dirname(filename), exist_ok=True)
-                config.save(filename)
-            else:
-                logger.info(f'Skipped saving configuration file `{filename}`.')
-
-            q += 1
-            if self.__top is not None and q >= self.__top:
-                logger.info(f'Stopping after {q} objects.')
-                break
+        if not self.__dry_run:
+            logger.info(f'Saving configuration file `{filename}`.')
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            config.save(filename)
+        else:
+            logger.info(f'Skipped saving configuration file `{filename}`.')
 
 def main():
     script = ConfigureScript()
