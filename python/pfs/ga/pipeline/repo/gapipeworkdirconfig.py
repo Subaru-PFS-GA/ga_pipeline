@@ -44,6 +44,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
         # names the same as the PfsGAObject files, but with a .yaml extension. We have
         # no corresponding class in the datamodel, but we can load them using the GAPipelineConfig class.
         GAPipelineConfig: SimpleNamespace(
+            name = 'GAPipelineConfig',
             params = SimpleNamespace(
                 catId = IntFilter(name='catId', format='{:05d}'),
                 objId = HexFilter(name='objId', format='{:016x}'),
@@ -57,6 +58,8 @@ GAPipeWorkdirConfig = SimpleNamespace(
             filename_format = 'pfsGAObject-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.yaml',
             load = lambda identity, filename, dir:
                 GAPipelineConfig.from_file(path=os.path.join(dir, filename)),
+            save = lambda config, identity, filename, dir:
+                config.save(filename),
         ),
 
         PfsGAObject: SimpleNamespace(

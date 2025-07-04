@@ -1,7 +1,7 @@
 import os
 
-import pfs.datamodel
-from pfs.datamodel import *
+import pfs.ga.pfsspec.survey.pfs.datamodel as datamodel
+from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
 from ...common import Pipeline, PipelineError, PipelineStep, PipelineStepResults
 
@@ -30,19 +30,90 @@ class ValidateStep(PipelineStep):
 
         # TODO: this should go to the init step
 
-        # Verify output and log directories
+        # Verify input, output, log and figure directories
+        self.__validate_output_directories(context)
+        self.__validate_input_directories(context)
+
+        # Verify that stellar template grids and PSF files exist
+        self.__validate_rvfit_input_files(context)
+
+        # TODO: Verify that the input files for chemfit exist
+        self.__validate_chemfit_input_files(context)
+
+        # Verify that all necessary data products are available
+        self.__validate_input_data_products(context)
+
+    def __validate_output_directories(self, context):
         context.pipeline.test_dir('output', context.config.outdir, must_exist=False)
         context.pipeline.test_dir('work', context.config.workdir, must_exist=False)
         context.pipeline.test_dir('log', context.pipeline.get_product_logdir(), must_exist=False)
         context.pipeline.test_dir('figure', context.pipeline.get_product_figdir(), must_exist=False)
-        context.pipeline.test_dir('data',
-                                  context.repo.get_resolved_variable('datadir'))
-        context.pipeline.test_dir('rerun',
-                                  os.path.join(
-                                      context.repo.get_resolved_variable('datadir'),
-                                      context.repo.get_resolved_variable('rerundir')))
-        
-        return True
+
+    def __validate_input_directories(self, context):
+        # If we're not using Butler, verify that the input repo is set up correctly
+        # and the input directories exist.
+        if context.input_repo.is_filesystem_repo:
+            context.pipeline.test_dir('data', context.input_repo.get_resolved_variable('datadir'))
+            context.pipeline.test_dir('rerun', os.path.join(
+                context.repo.get_resolved_variable('datadir'),
+                context.repo.get_resolved_variable('rerundir')))
+
+    def __validate_rvfit_input_files(self, context):
+        if context.config.run_rvfit:
+            for arm in context.config.rvfit.fit_arms:
+                # Verify that the synthetic spectrum grids are available
+                if isinstance(context.config.rvfit.model_grid_path, dict):
+                    fn = context.config.rvfit.model_grid_path[arm].format(arm=arm)
+                else:
+                    fn = context.config.rvfit.model_grid_path.format(arm=arm)
+                
+                if not os.path.isfile(fn):
+                    raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
+                else:
+                    logger.info(f'Using synthetic spectrum grid `{fn}` for arm `{arm}`.')
+                
+                # Verify that the PSF files are available
+
+                if isinstance(context.config.rvfit.psf_path, dict):
+                    fn = context.config.rvfit.psf_path[arm].format(arm=arm)
+                elif context.config.rvfit.psf_path is not None:
+                    fn = context.config.rvfit.psf_path.format(arm=arm)
+
+                if context.config.rvfit.psf_path is not None:
+                    if not os.path.isfile(fn):
+                        raise FileNotFoundError(f'PSF file `{fn}` not found.')
+                    else:
+                        logger.info(f'Using PSF file `{fn}` for arm `{arm}`.')
+
+    def __validate_chemfit_input_files(self, context):
+        if context.config.run_chemfit:
+            raise NotImplementedError()
+
+    def __validate_input_data_products(self, context):
+        # Compile the list of required input data products. The data products
+        # are identified by their type. The class definitions are located in pfs.datamodel
+        context.pipeline.required_product_types = set()
+
+        if context.config.run_rvfit:
+            context.pipeline.required_product_types.update(
+                [ getattr(datamodel, t) for t in context.config.rvfit.required_products ])
+            
+        if context.config.run_chemfit:
+            context.pipeline.required_product_types.update(
+                [ getattr(datamodel, t) for t in context.config.chemfit.required_products ])
+
+        # Verify that input data files are available or the input products
+        # are already in the cache
+        for t in context.pipeline.required_product_types:
+            self.__validate_input_data_product(context, t)
+
+    def __validate_input_data_product(self, context, product, required=True):
+        # Check the availability of the required data products. They're either
+        # already in the product cache on the pipeline level, or they must be
+        # available in the data repository. We only identify the products here,
+        # do no load them.
+
+        context.pipeline.locate_data_products(product, required=required)
     
     def __validate_libs(self, context):
         # TODO: write code to validate library versions and log git hash for each when available

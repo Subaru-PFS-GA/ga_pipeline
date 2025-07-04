@@ -14,6 +14,9 @@ class RunScript(PipelineScript):
     Runs the pipeline from a configuration file. The configuration file is either
     passed to it as a parameter, or the script can look it up by the indentity
     of the object being processed.
+
+    If a config file is specified on the command-line it overrides
+    the default behavior of looking up the configuration files in the repo
     """
 
     def __init__(self):
@@ -26,18 +29,13 @@ class RunScript(PipelineScript):
         self.__trace = None             # Pipeline trace object
 
     def _add_args(self):
-        self.add_arg('--config', type=str, nargs='?', help='Configuration file')
+        self.add_arg('--config', type=str, nargs='+', help='Configuration files')
         self.add_arg('--top', type=int, help='Stop after this many objects')
 
         super()._add_args()
 
     def _init_from_args(self, args):
-
-        # If a config file is specified on the command-line it overrides
-        # the default behavior of looking up the configuration files in the repo
-        # TODO: maybe allow more than a single file here?
-        if self.is_arg('config', args):
-            self.__config_files = [ self.get_arg('config', args) ]
+        self.__config_files = self.get_arg('config', args, self.__config_files)
 
         self.__top = self.get_arg('top', args, self.__top)
 
@@ -48,7 +46,11 @@ class RunScript(PipelineScript):
 
         # Create the pipeline and the trace object
         self.__trace = GAPipelineTrace()
-        self.__pipeline = GAPipeline(script=self, repo=self.input_repo, trace=self.__trace)
+        self.__pipeline = GAPipeline(
+            script = self,
+            input_repo = self.input_repo,
+            work_repo = self.work_repo,
+            trace = self.__trace)
 
         # Override logging directory to use the same as the workdir
         # This is not the location where the pipeline itself will write the logs
@@ -62,21 +64,25 @@ class RunScript(PipelineScript):
         # If no config file is provided, we search for configs based on the command line
         # search filters using the data store connector.
         if self.__config_files is None:
-            self.__config_files, _ = self.input_repo.find_product(GAPipelineConfig)
+            logger.info('No config files provided on the command-line. Searching for config files in the work repository.')
+            self.__config_files, _ = self.work_repo.find_product(GAPipelineConfig)
 
             if len(self.__config_files) == 0:
                 logger.warning('No config files found matching the filters.')
                 return
 
-            if self.__top is not None:
-                self.__config_files = self.__config_files[:self.__top]
-                logger.info(f'Stopping after {len(self.__config_files)} objects.')
+        if self.__top is not None:
+            self.__config_files = self.__config_files[:self.__top]
+            logger.info(f'Stopping after {len(self.__config_files)} objects.')
 
         for i, config_file in enumerate(self.__config_files):
             self.__run_pipeline(config_file)
 
     def __run_pipeline(self, config_file):
-        
+
+        # TODO: this function now takes a single config file and runs the pipeline on it.
+        #       We should probably refactor this to allow for multiple config files
+
         # Load the configuration
         config = GAPipelineConfig()
         config.load(config_file, ignore_collisions=True)

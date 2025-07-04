@@ -1,7 +1,6 @@
 import os
 
-import pfs.datamodel
-from pfs.datamodel import *
+from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
 from ...common import Pipeline, PipelineError, PipelineStep, PipelineStepResults
 from ..config import GAPipelineConfig
@@ -44,19 +43,17 @@ class LoadStep(PipelineStep):
 
         for i, visit, identity in context.config.enumerate_visits():
             for product in context.pipeline.required_product_types:
+                data = context.pipeline.get_product_from_cache(product, visit, identity)
                 if issubclass(product, PfsFiberArray):
-                    data = context.pipeline.product_cache[product][visit][identity.objId]
-
                     # Make sure that targets are the same
                     if target is None:
                         target = data.target
                     elif not target == data.target:
                         raise PipelineError(f'Target information in PfsSingle files do not match.')
-
                 elif issubclass(product, PfsFiberArraySet):
-                    data = context.pipeline.product_cache[product][visit]
+                    pass
                 elif issubclass(product, PfsDesign):
-                    data = context.pipeline.product_cache[product][visit]
+                    pass
                 else:
                     raise NotImplementedError('Product type not recognized.')
 
@@ -67,37 +64,36 @@ class LoadStep(PipelineStep):
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     def __validate_product(self, context, product, visit, data):       
-        identity = context.repo.get_identity(data)
-        filename = context.repo.format_filename(type(data), identity=identity)
+        identity = context.pipeline.get_product_identity(data)
 
         if issubclass(product, PfsFiberArray):
             # Verify that it is a single visit and not a co-add
             if data.nVisit != 1:
-                raise PipelineError('More than one visit found in `{pfsSingle.filename}`')
+                raise PipelineError(f'More than one visit found in `{product.__name__}` for `{identity}`.')
             
             # Verify that visit numbers match
             if visit not in data.observations.visit:
-                raise PipelineError(f'Visit does not match visit ID found in `{filename}`.')
+                raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
             
             if data.target.catId != context.config.target.identity.catId:
-                raise PipelineError(f'catId in config `{context.config.target.catId}` does not match catID in `{filename}`.')
+                raise PipelineError(f'catId in config `{context.config.target.catId}` does not match catID in `{product.__name__}` for `{identity}`.')
 
             if data.target.objId != context.config.target.identity.objId:
-                raise PipelineError(f'objId in config `{context.config.target.objId}` does not match objID in `{filename}`.')
+                raise PipelineError(f'objId in config `{context.config.target.objId}` does not match objID in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsFiberArraySet):
             if visit != data.identity.visit:
-                raise PipelineError(f'Visit does not match visit ID found in `{filename}`.')
+                raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsDesign):
             if issubclass(product, PfsConfig):
                 # Verify that visit numbers match
                 if visit != data.visit:
-                    raise PipelineError(f'Visit does not match visit ID found in `{filename}`.')
+                    raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
                 
             if context.config.target.identity.catId not in data.catId:
-                raise PipelineError(f'catId in config `{context.config.target.identity.catId}` does not match catID in `{filename}`.')
+                raise PipelineError(f'catId in config `{context.config.target.identity.catId}` does not match catID in `{product.__name__}` for `{identity}`.')
             
             if context.config.target.identity.objId not in data.objId:
-                raise PipelineError(f'objId in config `{context.config.target.identity.objId}` does not match objID in `{filename}`.')
+                raise PipelineError(f'objId in config `{context.config.target.identity.objId}` does not match objID in `{product.__name__}` for `{identity}`.')
         else:
             raise NotImplementedError('Product type not recognized.')
         

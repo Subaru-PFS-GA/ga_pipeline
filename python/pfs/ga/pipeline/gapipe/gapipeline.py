@@ -5,8 +5,7 @@ import pytz
 import numpy as np
 from types import SimpleNamespace
 
-from pfs.datamodel import *
-from pfs.datamodel import PfsGAObject
+from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
 from pfs.ga.pfsspec.survey.repo import Repo, FileSystemRepo
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
@@ -212,6 +211,10 @@ class GAPipeline(Pipeline):
                     },
                 ]
             },
+            # {
+            #     # TODO: factor out co-add from rvfit
+            #     'type': CoaddStep,
+            # },
             {
                 'type': ChemFitStep,
                 'name': 'chemfit',
@@ -234,13 +237,13 @@ class GAPipeline(Pipeline):
     
     def get_product_workdir(self):
         return self.__work_repo.format_dir(GAPipelineConfig,
-                                      self.config.target.identity,
-                                      variables={ 'workdir': self.config.workdir })
+                                           self.config.target.identity,
+                                           variables={ 'workdir': self.config.workdir })
 
     def get_product_outdir(self):
-        return self.__input_repo.format_dir(PfsGAObject,
-                                      self.config.target.identity,
-                                      variables={ 'datadir': self.config.outdir })
+        return self.__work_repo.format_dir(PfsGAObject,
+                                           self.config.target.identity,
+                                           variables={ 'datadir': self.config.outdir })
 
     def get_loglevel(self):
         return self.config.loglevel
@@ -311,6 +314,55 @@ class GAPipeline(Pipeline):
                         f.writelines(tracebacks[i])
                         f.write('\n')
 
+    def locate_data_products(self, product, required=True):
+        """
+        Try to look up each data product, first in the product cache, then
+        in the data repositories. If `required` is `True`, raise an error if the
+        product is not found in any of the repositories.
+        """
+
+        for i, visit, identity in self.config.enumerate_visits():
+            # Try to look up the product in the cache first
+            if self.product_cache is not None and product in self.product_cache:
+                if issubclass(product, PfsFiberArray):
+                    # Data product contains a single object
+                    if visit in self.product_cache[product]:
+                        if identity.objId in self.product_cache[product][visit]:
+                            # Product is already in the cache, skip
+                            return
+                elif issubclass(product, PfsFiberArraySet):
+                    # Data product contains multiple objects
+                    if visit in self.product_cache[product]:
+                        # Product is already in the cache, skip
+                        return
+                else:
+                    raise NotImplementedError('Product type not recognized.')
+                    
+            # Product not found in cache of cache is empty, look up the file location using
+            # the input repository with fall-back to the work repository, in case some of the
+            # data products are already copied to the output directory.
+            found = False
+            for repo in [self.__input_repo, self.__work_repo]:
+                try:
+                    repo.locate_product(product, **identity.__dict__)
+                    found = True
+                    break
+                except KeyError:
+                    # The product type is not available in the repository, skip
+                    logger.debug(f'Product type `{product.__name__}` not available in repository of type {type(repo).__name__}.')
+                    continue
+                except FileNotFoundError:
+                    # The product file is not available in the repository, skip
+                    logger.warning(f'{product.__name__} file for identity `{identity}` not available in repository of type {type(repo).__name__}.')
+                    continue
+
+            if not found:
+                msg = f'{product.__name__} file for identity `{identity}` not available.'
+                if required:
+                    raise PipelineError(msg)
+                else:
+                    logger.warning(msg)
+
     def load_input_products(self, product):
         """
         Load the source data product for each visit, if it's not already available.
@@ -339,33 +391,79 @@ class GAPipeline(Pipeline):
                     self.product_cache[product][visit] = {}
                 
                 if identity.objId not in self.product_cache[product][visit]:
-                    data, id, filename = self.__input_repo.load_product(product, identity=identity)
-                    data.filename = filename
-                    self.product_cache[product][visit][identity.objId] = data
-                    q += 1
+                    found = False
+                    for repo in [self.__input_repo, self.__work_repo]:
+                        try:
+                            data, id, filename = repo.load_product(product, identity=identity)
+                            data.filename = filename
+                            self.product_cache[product][visit][identity.objId] = data
+                            found = True
+                            q += 1
+                        except KeyError:
+                            # The product type is not available in the repository, skip
+                            continue
+
+                    if not found:
+                        msg = f'{product.__name__} file for identity `{identity}` not available.'
+                        raise FileNotFoundError(msg)
             elif issubclass(product, (PfsFiberArraySet, PfsConfig)):
                 # Data product contains multiple objects
                 if visit not in self.product_cache[product]:
-                    data, id, filename = self.__input_repo.load_product(product, identity=identity)
-                    self.product_cache[product][visit] = data
-                    q += 1
+                    found = False
+                    for repo in [self.__input_repo, self.__work_repo]:
+                        try:
+                            data, id, filename = repo.load_product(product, identity=identity)
+                            self.product_cache[product][visit] = data
+                            found = True
+                            q += 1
+                        except KeyError:
+                            # The product type is not available in the repository, skip
+                            continue
+
+                    if not found:
+                        msg = f'{product.__name__} file for identity `{identity}` not available.'
+                        raise FileNotFoundError(msg)
             else:
                 raise NotImplementedError('Product type not recognized.')
                
         logger.info(f'A total of {q} {product.__name__} data files loaded successfully for {self.__id}.')
 
+    def get_product_from_cache(self, product, visit, identity):
+        if issubclass(product, PfsFiberArray):
+            return self.product_cache[product][visit][identity.objId]
+        elif issubclass(product, PfsFiberArraySet):
+            return self.product_cache[product][visit]
+        elif issubclass(product, PfsDesign):
+            return self.product_cache[product][visit]
+        else:
+            raise NotImplementedError('Product type not recognized.')
+
+    def get_product_identity(self, data):
+        found = False
+        for repo in [self.__input_repo, self.__work_repo]:
+            try:
+                return repo.get_identity(data)
+            except KeyError:
+                # The product type is not available in the repository, skip
+                continue
+
+        raise NotImplementedError()
+
     def unload_data_products(self):
         # TODO: implement clean-up logic for batch processing mode
         raise NotImplementedError()
     
-    def save_output_product(self, product):
+    def save_output_product(self, product, identity=None, create_dir=True, exist_ok=True):
         """
         Save the output product to the output directory.
         """
 
         identity, filename = self.__work_repo.save_product(
             product,
-            variables={ 'datadir': self.config.outdir })
+            identity = identity,
+            variables = { 'datadir': self.config.outdir },
+            create_dir = create_dir,
+            exist_ok = exist_ok)
     
         logger.info(f'Output file saved to `{filename}`.')
 

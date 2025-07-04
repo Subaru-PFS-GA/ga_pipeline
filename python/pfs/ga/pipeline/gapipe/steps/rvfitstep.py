@@ -1,6 +1,6 @@
 import os
 
-from pfs.datamodel import *
+from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
