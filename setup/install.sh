@@ -1,18 +1,41 @@
 #!/bin/bash
 
 # This script is used to install the PFS GA Pipeline software stack.
+# Example usage:
+#   ./setup/install.sh --debug -d /path/to/install/dir --conda
+
+# TODO: allow installing gapipe as package (conda and/or eups)
+# TODO: write generated files into the log
+# TODO: update git repos when re-running installer
 
 # Defaults
 GAPIPE_DEBUG=0                                  # 1 for debugging
 GAPIPE_LOGLEVEL=1                               # log level
 GAPIPE_FORCE=0                                  # Force installation
 GAPIPE_DIR="$(realpath "${HOME}")/gapipe"       # Installation directory
-GAPIPE_CONDA_DIR="./conda"                      # Conda installation directory
+GAPIPE_PACKAGE="SOURCE"                         # Install from source instead of package
+GAPIPE_CONDA_DIR="./conda"                      # Conda installation directory, relative to GAPIPE_DIR
 GAPIPE_CONDA_ENV="gapipe"                       # Conda environment name
-GAPIPE_CONDA_ENV_FILE="./setup/gapipe.yaml"     # Conda environment file
-GAPIPE_MODE="SOURCE"                            # Install from source instead of package
+GAPIPE_CONDA_ENV_FILE="gapipe.yaml"             # Conda environment file
+GAPIPE_LSST=1                                   # 1 for installing on the LSST stack
+LSST_VERSION="v29_0_1"                          # LSST version to install, if GAPIPE_LSST is set to 1
+LSST_DIR="./stack"                              # LSST installation directory, relative to GAPIPE_DIR
+LSST_CONDA_ENV=""                               # LSST conda environment name, if GAPIPE_LSST is set to 1
+PFS_PIPE2D_VERSION="w.2025.23"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
+PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
 
-# Constants
+# Observation data locations
+PFS_DATADIR="/datascope/subaru/data/edr3/run21"
+PFS_RERUNDIR="u/kiyoyabe/processing/run21"
+PFS_RERUN="u_kiyoyabe_processing_run21_20250415a"
+PFS_DESIGNDIR="PFS/raw/pfsDesign"
+PFS_CONFIGDIR="PFS/raw/pfsConfig"
+LSST_BUTLER_CONFIGDIR="${PFS_DATADIR}"
+LSST_BUTLER_COLLECTIONS="${PFS_CONFIGDIR}:${PFS_RERUNDIR}"
+
+# Library github URLs and tags. For PFSSPEC, install all submodules with the same tag.
+# datamodel is installed as source because the eups package does not contain the most
+# up-to-date version of GA extensions yet.
 DATAMODEL_GITHUB="Subaru-PFS/datamodel"
 DATAMODEL_GIT_TAG="tickets/DAMD-162"
 PFSSPEC_GITHUB="Subaru-PFS-GA/ga_pfsspec_all"
@@ -23,9 +46,10 @@ CHEMFIT_GITHUB="Subaru-PFS-GA/ga_chemfit"
 CHEMFIT_GIT_TAG="main"
 
 function print_header() {
-    echo "=============================="
-    echo "  PFS GA Pipeline Installer   "
-    echo "=============================="
+    echo "==================================="
+    echo "   PFS GA Pipeline Installer       "
+    echo "   (c) 2019-2025 the PFS GA team   "
+    echo "==================================="
 }
 
 # Parse command-line arguments
@@ -36,7 +60,7 @@ function parse_args() {
         case "$1" in
         --debug)
             GAPIPE_DEBUG=1
-            GAPIPE_LOGLEVEL=2
+            GAPIPE_LOGLEVEL=4
             shift
             ;;
         -f|--force)
@@ -55,8 +79,24 @@ function parse_args() {
             GAPIPE_CONDA_ENV="$2"
             shift 2
             ;;
+        --lsst)
+            GAPIPE_LSST=1
+            shift
+            ;;
+        --no-lsst)
+            GAPIPE_LSST=0
+            shift
+            ;;
         --source)
-            GAPIPE_MODE="SOURCE"
+            GAPIPE_PACKAGE="SOURCE"
+            shift
+            ;;
+        --conda)
+            GAPIPE_PACKAGE="CONDA"
+            shift
+            ;;
+        --eups)
+            GAPIPE_PACKAGE="EUPS"
             shift
             ;;
         --) # end argument parsing
@@ -79,13 +119,17 @@ function print_usage() {
     echo "  --conda-dir <dir>     Conda installation directory (default: $GAPIPE_CONDA_DIR)"
     echo "  -e, --env <env>       Conda environment name (default: $GAPIPE_CONDA_ENV)"
     echo "  --source              Install from source instead of package"
+    echo "  --conda               Install as a conda package (not implemented yet)"
+    echo "  --eups                Install as an EUPS package (not implemented yet)"
+    echo "  --lsst                Install on the LSST stack (default: enabled)"
+    echo "  --no-lsst             Install on its own conda stack (default: disabled)"
 }
 
 function print_summary() {
     conda_dir=$(get_conda_dir)
     echo "Installation completed successfully."
-    echo "Please run the following command to activate the conda environment:"
-    echo "source ${conda_dir}/bin/activate ${GAPIPE_CONDA_ENV}"
+    echo "Please run the following command to activate the GAPIPE environment:"
+    echo "cd ${GAPIPE_DIR}/src/ga_pipeline && source ./bin/init"
 }
 
 function log_message() {
@@ -98,14 +142,17 @@ function log_message() {
     fi
 
     case "$level" in
-        INFO)
+        4)
+            echo -e "\033[1;34m[DEBG]\033[0m $message"
+            ;;
+        3)
             echo -e "\033[1;34m[INFO]\033[0m $message"
             ;;
-        WARNING)
-            echo -e "\033[1;33m[WARNING]\033[0m $message"
+        2)
+            echo -e "\033[1;33m[WARN]\033[0m $message"
             ;;
-        ERROR)
-            echo -e "\033[1;31m[ERROR]\033[0m $message"
+        1)
+            echo -e "\033[1;31m[ERRR]\033[0m $message"
             ;;
         *)
             echo "$message"
@@ -113,14 +160,18 @@ function log_message() {
     esac
 }
 
+function log_debug() {
+    log_message "4" "$1"
+}
+
 function log_info() {
-    log_message "INFO" "$1"
+    log_message "3" "$1"
 }
 function log_warning() {
-    log_message "WARNING" "$1"
+    log_message "2" "$1"
 }
 function log_error() {
-    log_message "ERROR" "$1"
+    log_message "1" "$1"
 }
 
 function print_args() {
@@ -131,7 +182,8 @@ function print_args() {
     log_info "GAPIPE_CONDA_DIR: $GAPIPE_CONDA_DIR"
     log_info "GAPIPE_CONDA_ENV: $GAPIPE_CONDA_ENV"
     log_info "GAPIPE_CONDA_ENV_FILE: $GAPIPE_CONDA_ENV_FILE"
-    log_info "GAPIPE_SOURCE: $GAPIPE_SOURCE"
+    log_info "GAPIPE_PACKAGE: $GAPIPE_PACKAGE"
+    log_info "GAPIPE_LSST: $GAPIPE_LSST"
 }
 
 function join_path() {
@@ -143,14 +195,74 @@ function join_path() {
     fi
 }
 
-function is_gapipe_dir() {
-    # Check if the installation directory exists
+function run_cmd() {
+    # Run a command and log its output
 
-    if [[ -d "${GAPIPE_DIR}" ]]; then
+    cmd=$1
+
+    # Log the command into the installation command file
+    log_debug "Running command: ${cmd}"
+    echo "${cmd}" >> "${GAPIPE_DIR}/install.cmd"
+    
+    # Run the command
+    eval "${cmd}"
+}
+
+function download_file() {
+    # Download a file from a URL
+    # $1: URL
+    # $2: target file name
+
+    url="$1"
+    target_file="$2"
+
+    log_info "Downloading file from ${url} to $(realpath ${target_file})."
+    run_cmd "curl -sOL \"${url}\" -o \"${target_file}\""
+}
+
+function ensure_github_ssh() {
+    # Try to ssh to github.com with the default settings and check if the connection is successful
+    ssh git@github.com 2>&1 | grep -q "successfully authenticated" && {
+        log_info "SSH key is available for GitHub access."
         return 0
+    } || {
+        log_error "SSH key is not available for GitHub access. Please set up your SSH key."
+        exit 1
+    }
+}
+
+function clone_github_repo() {
+    # Clone the GitHub repository
+
+    # $1: repository name
+    # $2: target directory
+    # $3: use SSH (1 for yes, 0 for https)
+
+    repo_name="$1"
+    target_dir="$2"
+    use_ssh="$3"
+
+    if [[ "$use_ssh" -eq 1 ]]; then
+        url="git@github.com:${repo_name}.git"
     else
-        return 1
+        url="https://github.com/${repo_name}.git"
     fi
+
+    log_info "Cloning repository ${repo_name} from ${url} into ${target_dir}."
+    run_cmd "git clone --quiet --recursive \"${url}\" \"${target_dir}\""
+}
+
+function checkout_git_tag() {
+    # Check out the specified git tag
+    # Assume the git repo is the current working directory
+
+    # $1: git tag
+
+    git_tag="$1"
+    repo_name=$(basename "$(pwd)")
+
+    log_info "Checking out tag ${git_tag} for ${repo_name}"
+    run_cmd "git checkout --quiet \"${git_tag}\""
 }
 
 function get_conda_dir() {
@@ -161,33 +273,21 @@ function get_conda_dir() {
     echo "${conda_dir}"
 }
 
-function is_conda_dir() {
-    # Check if the conda directory exists
-    
-    conda_dir=$(get_conda_dir)
-    
-    if [[ -d "${conda_dir}" ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 function install_conda() {
     # Install Miniconda silently
 
-    conda_dir=$(get_conda_dir)
+    conda_dir="$1"
 
     log_info "Conda installation not found. Installing Miniconda into ${conda_dir}."
 
     log_info "Downloading Miniconda3 installer."
-    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "${GAPIPE_DIR}/miniconda.sh"
+    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "./miniconda.sh"
     
     log_info "Executing Miniconda3 installer."
-    bash "${GAPIPE_DIR}/miniconda.sh" -b -p "${conda_dir}"
+    bash "./miniconda.sh" -b -p "${conda_dir}"
 
     log_info "Removing Miniconda3 installer."
-    rm "${GAPIPE_DIR}/miniconda.sh"
+    rm "./miniconda.sh"
 }
 
 function is_conda_env() {
@@ -213,160 +313,373 @@ function is_conda_env() {
 }
 
 function install_conda_env() {
-    # Install the conda environment from a file
+    # Install the conda environment from a yaml file
     # Assume that conda is already activated
 
-    env_file=$(realpath "${GAPIPE_CONDA_ENV_FILE}")
+    env_name="$1"
+    env_file="$2"
 
-    conda env create \
-        --name "${GAPIPE_CONDA_ENV}" \
-        --file "${env_file}" \
-        --verbose --yes
+    run_cmd "conda env create --yes --quiet --name \""${env_name}"\" --file \""${env_file}"\""
 }
 
-function ensure_github_ssh() {
-    # Try to ssh to github.com with the default settings and check if the connection is successful
-    ssh git@github.com 2>&1 | grep -q "successfully authenticated" && {
-        log_info "SSH key is available for GitHub access."
-        return 0
-    } || {
-        log_error "SSH key is not available for GitHub access. Please set up your SSH key."
+function update_conda_env() {
+    # Update a conda environment based on a yaml file
+    # Assume that conda is already activated
+    #
+
+    env_name="$1"
+    env_file="$2"
+
+    run_cmd "conda env update --quiet --name \""${env_name}"\" --file \""${env_file}"\""
+}
+
+function get_lsst_dir() {
+    # Return the directory of the LSST stack
+
+    lsst_dir=$(join_path "${GAPIPE_DIR}" "${LSST_DIR}")
+    lsst_dir=$(realpath "${lsst_dir}")
+    echo "${lsst_dir}"
+}
+
+function get_lsst_conda_env() {
+    # If the LSST env name is not set, figure out the LSST stack version from the
+    # git tag and return the default name of the conda environment. This is adopted
+    # from the official LSST stack installation script.
+
+    if [[ -z "${LSST_CONDA_ENV}" ]]; then
+        lsst_version=$(curl -ksS \
+            "https://eups.lsst.codes/stack/src/tags/${LSST_VERSION}.list" \
+            | grep '^#CONDA_ENV=' | cut -d= -f2)
+        LSST_CONDA_ENV="lsst-scipipe-${lsst_version}"
+    fi
+
+    echo "${LSST_CONDA_ENV}"
+}
+
+function reset_eups() {
+    run_cmd "unset EUPS_DIR EUPS_PATH EUPS_PKGROOT EUPS_SHELL SETUP_EUPS"
+    run_cmd "unset CONDA_DEFAULT_ENV CONDA_EXE CONDA_PREFIX CONDA_PROMPT_MODIFIER CONDA_PYTHON_EXE CONDA_SHLVL"
+}
+
+function install_lsst_eups_packages() {
+    # Install the LSST packages using EUPS
+    
+    tag="$(echo "$1" | sed 's/\./_/g')"
+    pkgs="$2"
+    from_source=false
+
+    # Installing the LSST packages
+    if [[ "${from_source}" == true ]]; then
+        log_error "Installing EUPS packages from source is not implemented yet."
+        exit 2
+    fi
+      
+    # Install the packages using EUPS
+    install_args="-t ${tag} --no-server-tags"
+    for package in ${pkgs}; do
+        eups list | grep "${package}" | grep -q "$tag" && {
+            log_info "EUPS package ${package} is already installed. Skipping."
+        } || {
+            log_info "Installing EUPS package $package $tag"
+            run_cmd "eups distrib install $package $install_args"
+        }
+    done
+}
+
+function install_lsst() {
+    # Install the LSST stack
+
+    # This function closely replicates the PFS drp install script, which in turn calls
+    # the LSST install script.
+    
+    lsst_dir="$1"
+    lsst_env=$(get_lsst_conda_env)
+    
+    log_info "LSST stack directory is set to ${lsst_dir}."
+    log_info "LSST conda environment is set to ${lsst_env}."
+
+    # Create installation directories
+    run_cmd "mkdir -p \"${lsst_dir}\""
+    run_cmd "mkdir -p \"${lsst_dir}/bin\""
+    run_cmd "pushd \"${lsst_dir}\" > /dev/null"
+
+    # Download the installer script
+    log_info "Downloading LSST installation script."
+    download_file "https://ls.st/lsstinstall" ./lsstinstall
+    run_cmd "chmod u+x lsstinstall"
+
+    # Patch the installer script to ignore server certificate errors and set
+    # quiet mode for conda
+    log_info "Patching LSST installation script."
+    run_cmd "patch -p1 lsstinstall < \"${SCRIPT_DIR}/lsstinstall.patch\" > /dev/null"
+    
+    # Run the install script
+    log_info "Running LSST installation script. This will take a while."
+
+    # Set the SCONSFLAGS to use more threads when compiling from source
+    export SCONSFLAGS="-j $NUMTHREADS"
+
+    reset_eups
+    run_cmd "./lsstinstall -T \"${LSST_VERSION}\" -e \"${lsst_env}\""
+
+    run_cmd "popd > /dev/null"
+
+    if [[ $? -ne 0 ]]; then
+        log_error "LSST installation failed."
         exit 1
-    }
-}
-
-function clone_github_repo() {
-    # Clone the GitHub repository
-    # $1: repository name
-    # $2: target directory
-    # $3: use SSH (1 for yes, 0 for https)
-
-    repo_name="$1"
-    target_dir="$2"
-    use_ssh="$3"
-
-    if [[ "$use_ssh" -eq 1 ]]; then
-        log_info "Cloning ${repo_name}"
-        git clone "git@github.com:${repo_name}.git" \
-            "${target_dir}" \
-            --recursive
     else
-        log_info "Cloning ${repo_name}"
-        git clone "https://github.com/${repo_name}.git" \
-            "${target_dir}" \
-            --recursive
+        log_info "LSST installation completed successfully."
     fi
 }
 
-function checkout_git_tag() {
-    # Check out the specified git tag
-    # $1: git tag
+function activate_lsst_conda_env() {
+    # Activate the LSST conda environment and set up the EUPS environment
 
-    git_tag="$1"
-    repo_name=$(basename "$(pwd)")
+    lsst_dir="$1"
+    lsst_env=$(get_lsst_conda_env)
 
-    log_info "Checking out tag ${git_tag} for ${repo_name}"
-    git checkout "${git_tag}"
+    log_info "Activating LSST conda environment ${lsst_env}."
+    reset_eups
+    run_cmd "source \"${lsst_dir}/conda/bin/activate\" \"${lsst_env}\""
+    run_cmd "export EUPS_PKGROOT=\"$PFS_EUPS_PKGROOT|$(cat "$EUPS_PATH/pkgroot")\""
+}
+
+function deactivate_lsst_conda_env() {
+    # Deactivate the LSST conda environment and reset the EUPS environment
+
+    log_info "Deactivating LSST conda environment."
+    run_cmd "conda deactivate"
+    reset_eups
+}
+
+function install_pfs_eups_packages() {
+    # Install the LSST packages using EUPS
+    
+    version="$1"
+    pkgs="$2"
+    from_source=false
+
+    # Installing the LSST packages
+    if [[ "${from_source}" == true ]]; then
+        log_error "Installing EUPS packages from source is not implemented yet."
+        exit 2
+    fi      
+    # Install the packages using EUPS
+    for package in ${pkgs}; do
+        eups list | grep "${package}" | grep -q "$version" && {
+            log_info "EUPS package ${package} is already installed. Skipping."
+        } || {
+            log_info "Installing EUPS package $package $version"
+            run_cmd "eups distrib install $package $version"
+        }
+    done
 }
 
 function install_datamodel_source() {
-    log_info "Installing and configuring datamodel."
+    # Clone and check out the datamodel repository
+    # Assume already in the src directory
 
-    clone_github_repo "${DATAMODEL_GITHUB}" datamodel 1
-    pushd "datamodel" > /dev/null
+    log_info "Installing and configuring datamodel from source."
+
+    # If the datamodel directory doesn't exist, clone the repository
+    if [[ ! -d "datamodel" ]]; then
+        clone_github_repo "${DATAMODEL_GITHUB}" datamodel 1
+    else
+        log_info "Datamodel repository already exists. Skipping cloning."
+    fi
+    
+    run_cmd "pushd datamodel > /dev/null"
     checkout_git_tag "${DATAMODEL_GIT_TAG}"
 
-    popd > /dev/null
     log_info "Finished installing datamodel."
+
+    run_cmd "popd > /dev/null"
 }
 
-function install_pfsspec_source() {
-    log_info "Installing and configuring pfsspec."
+function install_pfsspec_conda() {
+    echo "Installing pfsspec as a conda package is not implemented yet." >/dev/stderr
+    exit -2
+}
 
-    clone_github_repo "${PFSSPEC_GITHUB}" ga_pfsspec_all 1
-    pushd "ga_pfsspec_all" > /dev/null    
-    checkout_git_tag "${PFSSPEC_GIT_TAG}"
+function install_pfsspec_eups() {
+    echo "Installing pfsspec as an EUPS package is not implemented yet." >/dev/stderr
+    exit -2
+}
+
+
+function generate_pfsspec_env_file() {
+    # Generate the gapipe environment config file
 
     conda_dir=$(get_conda_dir)
 
-    # Generate the default pfsspec environment
     cat > ./configs/envs/default.sh <<EOF
+export PYTHONPATH=""
+
+export PFSSPEC_LSST="${GAPIPE_LSST}"
 export PFSSPEC_CONDAPATH="${conda_dir}"
 export PFSSPEC_CONDAENV="${GAPIPE_CONDA_ENV}"
 export PFSSPEC_ROOT="${GAPIPE_DIR}/src/ga_pfsspec_all"
 export PFSSPEC_DATA="${GAPIPE_DIR}/data"
 
-# export PFSSPEC_PFS_DATADIR="/datascope/subaru/data/commissioning/gen3"
-# export PFSSPEC_PFS_RERUNDIR="run20/20250228a"
-# export PFSSPEC_PFS_RERUN="u_kiyoyabe_processing_run20_20250228a"
-# export PFSSPEC_PFS_DESIGNDIR="/datascope/subaru/data/commissioning/gen3"
-# export PFSSPEC_PFS_CONFIGDIR="/datascope/subaru/data/commissioning/gen3"
-
-# export PYTHONPATH="${GAPIPE_DIR}/src/ga_pfsspec_all:/home/dobos/project/ga_datamodel/python:/home/dobos/project/Subaru-PFS/datamodel/python:/home/dobos/project/Subaru-PFS/pfs_utils/python:../numdifftools/src:../pysynphot:../SciScript-Python/py3:../rvspecfit/py"
+# Register the dependencies that are installed from source
+export PFSSPEC_MODULES=\\
+"datamodel:${GAPIPE_DIR}/src/datamodel:python"
 EOF
+}
+
+function install_pfsspec_source() {
+    # Clone and check out the ga_pfsspec_all repository and generate
+    # the environment configuration file to initilize PFSSPEC
+    # Assume we are already in the src directory
+
+    log_info "Installing and configuring pfsspec from source."
+
+    if [[ ! -d "ga_pfsspec_all" ]]; then
+        clone_github_repo "${PFSSPEC_GITHUB}" ga_pfsspec_all 1
+    else
+        log_info "pfsspec repository already exists. Skipping cloning."
+    fi
+
+    run_cmd "pushd ga_pfsspec_all > /dev/null"
+    checkout_git_tag "${PFSSPEC_GIT_TAG}"
+
+    # Generate the default pfsspec environment
+    generate_pfsspec_env_file
 
     # Check out each submodule to the HEAD of the current branch
-    bash ./bin/checkout
+    log_info "Checking out submodules for pfsspec."
+    run_cmd "bash ./bin/checkout"
 
     # Initialize the pfsspec environment in a new shell in order to generate the symlinks
-    bash -c "source ./bin/init"
+    log_info "Initializing the pfsspec environment."
 
-    popd > /dev/null
+    # Source the init script into a new shell in order to set up the
+    # source code symlinks etc.
+    run_cmd "bash -c \"source ./bin/init\""
+    
     log_info "Finished installing pfsspec."
+
+    run_cmd "popd > /dev/null"
+}
+
+function install_chemfit_conda() {
+    echo "Installing chemfit as a conda package is not implemented yet." >/dev/stderr
+    exit -2
+}
+
+function install_chemfit_eups() {
+    echo "Installing chemfit as an EUPS package is not implemented yet." >/dev/stderr
+    exit -2
 }
 
 function install_chemfit_source() {
+    # Clone and check out the chemfit repository
+    # Assume already in the src directory
+
     log_info "Installing and configuring chemfit."
 
-    clone_github_repo "${CHEMFIT_GITHUB}" ga_chemfit 1
-    pushd "ga_chemfit" > /dev/null
-    checkout_git_tag "${CHEMFIT_GIT_TAG}"  
+    if [[ ! -d "ga_chemfit" ]]; then
+        clone_github_repo "${CHEMFIT_GITHUB}" ga_chemfit 1
+    else
+        log_info "chemfit repository already exists. Skipping cloning."
+    fi
 
-    popd > /dev/null
+    run_cmd "pushd ga_chemfit > /dev/null"
+    checkout_git_tag "${CHEMFIT_GIT_TAG}"  
     log_info "Finished installing chemfit."
+    
+    run_cmd "popd > /dev/null"
 }
 
-function install_gapipe_source() {
-    log_info "Installing and configuring gapipe."
+function install_gapipe_conda() {
+    echo "Installing gapipe as a conda package is not implemented yet." >/dev/stderr
+    exit -2
+}
 
-    clone_github_repo "${GAPIPE_GITHUB}" ga_pipeline 1
-    pushd "ga_pipeline" > /dev/null
-    checkout_git_tag "${GAPIPE_GIT_TAG}"
+function install_gapipe_eups() {
+    echo "Installing gapipe as an EUPS package is not implemented yet." >/dev/stderr
+    exit -2
+}
+
+function generate_gapipe_env_file() {
+    # Generate the gapipe environment config file
 
     conda_dir=$(get_conda_dir)
 
-    # Generate the default gapipe environment
     cat > ./configs/envs/default <<EOF
+export PYTHONPATH=""
+
+export GAPIPE_LSST="${GAPIPE_LSST}"
 export GAPIPE_CONDAPATH="${conda_dir}"
 export GAPIPE_CONDAENV="${GAPIPE_CONDA_ENV}"
+
 export GAPIPE_ROOT="${GAPIPE_DIR}/src/ga_pipeline"
+export GAPIPE_DATADIR="${GAPIPE_DIR}/data"
+export GAPIPE_WORKDIR="${GAPIPE_DIR}/work"
+export GAPIPE_OUTDIR="${GAPIPE_DIR}/out"
 
 export PFSSPEC_ROOT="${GAPIPE_DIR}/src/ga_pfsspec_all"
-# export PFSSPEC_DATA="/datascope/subaru/data/pfsspec"
+export PFSSPEC_DATA="${GAPIPE_DIR}/data/pfsspec"
 
-# export GAPIPE_DATADIR="/datascope/subaru/data/commissioning/gen3"
-# export GAPIPE_WORKDIR="/datascope/subaru/user/dobos/gapipe/work"
-# export GAPIPE_OUTDIR="/datascope/subaru/user/dobos/gapipe/out"
-# export GAPIPE_RERUNDIR="run20/20250228a"
-# export GAPIPE_RERUN="u_kiyoyabe_processing_run20_20250228a"
+# Observation file locations when running on the LSST stack
+export BUTLER_CONFIGDIR="${LSST_BUTLER_CONFIGDIR}"
+export BUTLER_COLLECTIONS="${LSST_BUTLER_COLLECTIONS}"
+export GAPIPE_RERUNDIR="${PFS_RERUNDIR}"
+export GAPIPE_RERUN="${PFS_RERUN}"
 
-# export PFSSPEC_PFS_DATADIR="/datascope/subaru/data/commissioning/gen3"
-# export PFSSPEC_PFS_RERUNDIR="run20/20250228a"
-# export PFSSPEC_PFS_RERUN="u_kiyoyabe_processing_run20_20250228a"
-# export PFSSPEC_PFS_DESIGNDIR="/datascope/subaru/data/commissioning/gen3"
-# export PFSSPEC_PFS_CONFIGDIR="/datascope/subaru/data/commissioning/gen3"
+# Observation file locations when running on a standard conda stack
+export PFSSPEC_PFS_DATADIR="${PFS_DATADIR}"
+export PFSSPEC_PFS_RERUNDIR="${PFS_RERUNDIR}"
+export PFSSPEC_PFS_RERUN="${PFS_RERUN}"
+export PFSSPEC_PFS_DESIGNDIR="${PFS_DATADIR}/${PFS_DESIGNDIR}"
+export PFSSPEC_PFS_CONFIGDIR="${PFS_DATADIR}/${PFS_CONFIGDIR}"
 
-# export PYTHONPATH="/home/dobos/project/Subaru-PFS/datamodel/python:/home/dobos/project/Subaru-PFS/pfs_utils/python:/home/dobos/project/numdifftools/src:/home/dobos/project/pysynphot:"
+# Register the dependencies that are installed from source
+# Format: <module_name>:<path_to_source>:<rel_path_to_module>
+export GAPIPE_MODULES=\\
+"datamodel:${GAPIPE_DIR}/src/datamodel:python
+ga_pfsspec:${GAPIPE_DIR}/src/ga_pfsspec_all:python"
 EOF
+}
+
+function install_gapipe_source() {
+    # Install the GAPIPE source code and generate the default environment file
+    # Assume already in the src directory
+
+    log_info "Installing and configuring gapipe."
+
+    if [[ ! -d "ga_pipeline" ]]; then
+        clone_github_repo "${GAPIPE_GITHUB}" ga_pipeline 1
+    else
+        log_info "ga_pipeline repository already exists. Skipping cloning."
+    fi
+
+    
+    run_cmd "pushd ga_pipeline > /dev/null"
+    checkout_git_tag "${GAPIPE_GIT_TAG}"
+
+    # Generate the default gapipe environment
+    generate_gapipe_env_file
 
     # Initialize the gapipe environment in a new shell in order to generate the symlinks
-    bash -c "source ./bin/init"
+    run_cmd "bash -c \"source ./bin/init\""
 
-    popd > /dev/null
+    run_cmd "popd > /dev/null"
     log_info "Finished installing gapipe."
 }
 
-####
+function init_gapipe_source() {
+    # Generate the initialization script for the GAPIPE source installation
+
+    run_cmd "cp \"${SCRIPT_DIR}/etc/conda/activate.d/activate-gapipe.sh\" \\
+       \"${CONDA_PREFIX}/etc/conda/activate.d/\""
+
+    run_cmd "cp \"${SCRIPT_DIR}/etc/conda/deactivate.d/deactivate-gapipe.sh\" \\
+       \"${CONDA_PREFIX}/etc/conda/deactivate.d/\""
+
+}
+
+################################################################################
 
 set -e
 
@@ -374,8 +687,32 @@ print_header
 parse_args "$@"
 print_args
 
+# Get the path of the currently executing script
+if [[ -n $_Dbg_script_file ]]; then
+    # If running under a debugger, use the script file from the debug context
+    SCRIPT_DIR="$(dirname "$(realpath "$_Dbg_script_file")")"
+else
+    # Otherwise, use the script file from the current context
+    SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+fi
+log_info "Install script directory is ${SCRIPT_DIR}"
+
+# Some other setting
+NUMTHREADS=$(($(nproc) / 2))
+if [[ $NUMTHREADS -lt 1 ]]; then
+    NUMTHREADS=1
+fi
+export OMP_NUM_THREADS=1
+export PYTHONHTTPSVERIFY=0                      # Disable SSL verification for Python HTTPS requests
+
+# Check if github access is configured, if required
+if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
+    # Make sure ssh to github is available
+    ensure_github_ssh
+fi
+
 # Check if the installation directory exists and create if not
-if is_gapipe_dir; then
+if [[ -d "${GAPIPE_DIR}" ]]; then
     if [[ $GAPIPE_FORCE -eq 1 ]]; then
         log_warning "Installation directory ${GAPIPE_DIR} already exists, but --force option is set. Proceeding with installation."
     else
@@ -383,45 +720,88 @@ if is_gapipe_dir; then
         exit 1
     fi
 else
-    log_info "Creating installation directory ${GAPIPE_DIR}."
+    log_info "Creating gapipe directory ${GAPIPE_DIR}."
     mkdir -p "${GAPIPE_DIR}"
+    mkdir -p "${GAPIPE_DIR}/bin"
 fi
 
-# Check if conda is installed and if not, donwload and execute installer silently
-if is_conda_dir; then
-    log_info "Conda already installed, skipping task."
-else
-    log_info "Conda not found, installing conda."
-    install_conda
-fi
+run_cmd "pushd \"$(realpath "${GAPIPE_DIR}")\" > /dev/null"
+echo "# Logging started at $(date)" >> "./install.log"
 
-# Activate the base conda environment
-log_info "Activating conda environment base."
-conda_dir=$(get_conda_dir)
-source "${conda_dir}/bin/activate" base
+# If installing on the LSST stack, run the LSST installation, otherwise
+# run the Anaconda installation
+if [[ $GAPIPE_LSST -eq 1 ]]; then
+    # Install the LSST stack
 
-# Check if the target environment exists
-if is_conda_env; then
-    log_info "Conda environment ${GAPIPE_CONDA_ENV} already exists, skipping task."
-    # TODO: only install packages
+    # Check if the LSST stack is already installed
+    lsst_dir=$(get_lsst_dir)
+    log_info "LSST installation directory is set to ${lsst_dir}."
+    
+    if [[ -d "${lsst_dir}" ]]; then
+        log_info "LSST stack already installed, skipping task."
+    else
+        log_info "LSST stack not found, installing LSST stack."
+        install_lsst "${lsst_dir}"
+    fi
+
+    # Override the conda directory and environment name
+    GAPIPE_CONDA_DIR="$(get_lsst_dir)/conda"
+    GAPIPE_CONDA_ENV="$(get_lsst_conda_env)"
+
+    # Activate the newly installed conda environment
+    activate_lsst_conda_env "${lsst_dir}"
+
+    # Install additional conda packages required by gapipe
+    log_info "Installing additional conda packages for gapipe."
+    update_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
+
+    # Install the LSST packages using EUPS
+    install_lsst_eups_packages "${LSST_VERSION}" \
+        "cp_pipe ctrl_bps ctrl_bps_parsl display_ds9 display_matplotlib display_astrowidgets"
+
+    # Install PFS PIPE2D using EUPS
+    install_pfs_eups_packages "${PFS_PIPE2D_VERSION}" \
+        "pfs_pipe2d"
+
+    deactivate_lsst_conda_env
 else
-    log_info "Conda environment ${GAPIPE_CONDA_ENV} does not exist, creating it."
-    install_conda_env
+    # Install a standard conda environment
+
+    # Check if conda is installed and if not, donwload and execute installer silently
+    conda_dir=$(get_conda_dir)
+    if [[ -d "$conda_dir" ]]; then
+        log_info "Conda already installed, skipping task."
+    else
+        log_info "Conda not found, installing conda."
+        install_conda "${conda_dir}"
+    fi
+
+    # Temporarily activate the base conda environment
+    log_info "Activating conda environment base."
+    run_cmd "source \"${conda_dir}/bin/activate\" base"
+
+    # Check if the target environment exists
+    if is_conda_env; then
+        log_info "Conda environment ${GAPIPE_CONDA_ENV} already exists, skipping task."
+        # TODO: only install packages
+    else
+        log_info "Conda environment ${GAPIPE_CONDA_ENV} does not exist, creating it."
+        install_conda_env ${GAPIPE_CONDA_ENV} $(realpath "${GAPIPE_CONDA_ENV_FILE}")
+    fi
+
+    run_cmd "conda deactivate"
 fi
 
 # Activate the target environment
 log_info "Activating conda environment ${GAPIPE_CONDA_ENV}."
-conda activate "${GAPIPE_CONDA_ENV}"
+run_cmd "source \"${GAPIPE_CONDA_DIR}/bin/activate\" \"${GAPIPE_CONDA_ENV}\""
 
-# Depending on the mode, install the software stack
-if [[ "$GAPIPE_MODE" == "SOURCE" ]]; then
-    log_info "Installing from source."
+# Depending on the package mode, install the GAPIPE software stack
+if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
+    log_info "Installing GAPIPE from source."
 
-    # Make sure ssh to github is available
-    ensure_github_ssh
-
-    mkdir -p "${GAPIPE_DIR}/src"
-    pushd "${GAPIPE_DIR}/src" > /dev/null
+    run_cmd "mkdir -p \"${GAPIPE_DIR}/src\""
+    run_cmd "pushd \"${GAPIPE_DIR}/src\" > /dev/null"
 
     # Clone and configure the repositories
     install_datamodel_source
@@ -429,22 +809,11 @@ if [[ "$GAPIPE_MODE" == "SOURCE" ]]; then
     install_chemfit_source
     install_gapipe_source
 
-    popd > /dev/null
+    run_cmd "popd > /dev/null"
 
     # Configure the conda environment
-    log_info "Configuring conda environment ${GAPIPE_CONDA_ENV}."
-
-    cat > "${CONDA_PREFIX}/etc/conda/activate.d/gapipe.sh" <<EOF
-export PFSSPEC_ROOT="${GAPIPE_DIR}/src/ga_pfsspec_all"
-export GAPIPE_ROOT="${GAPIPE_DIR}/src/ga_pipeline"
-
-export PYTHONPATH="${GAPIPE_DIR}/src/datamodel/python:${GAPIPE_DIR}/src/ga_pfsspec_all/python:${GAPIPE_DIR}/src/ga_pipeline/python:$PYTHONPATH"
-
-echo PFS GA Pipeline environment activated.
-EOF
-
-    log_info "Finished configuring conda environment ${GAPIPE_CONDA_ENV}."
-
+    log_info "Generating activation scripts for conda environment ${GAPIPE_CONDA_ENV}."
+    init_gapipe_source
 else
     log_info "Installing from package."
     log_error "Package installation not implemented yet."
@@ -452,9 +821,14 @@ else
 fi
 
 # Create the remainder of the directory structure
-mkdir -p "${GAPIPE_DIR}/data"
+run_cmd "mkdir -p \"${GAPIPE_DIR}/data\""
+run_cmd "mkdir -p \"${GAPIPE_DIR}/data/pfsspec\""
+run_cmd "mkdir -p \"${GAPIPE_DIR}/work\""
+run_cmd "mkdir -p \"${GAPIPE_DIR}/out\""
 
 # TODO: Check if the installation was successful
+
+run_cmd "popd > /dev/null"
 
 # Print the installation summary
 print_summary

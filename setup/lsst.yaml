@@ -1,0 +1,16 @@
+# This file may be used to update an existing conda environment
+# containing the LSST stack
+# $ conda env update --name <env> --file <this file>
+# platform: linux-64
+# created-by: conda 25.3.0
+channels:
+- conda-forge
+- defaults
+dependencies:
+- nbparameterise
+- specutils
+- git
+- gitpython
+- commentjson
+- deprecated
+- numdifftools

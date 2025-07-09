@@ -1,0 +1,23 @@
+diff --git a/scripts/lsstinstall b/scripts/lsstinstall
+index 68796f7..0f5e75c 100755
+--- a/scripts/lsstinstall
++++ b/scripts/lsstinstall
+@@ -166,7 +166,7 @@ run_curl () {
+     # If running interactively, output progress
+     [ -t 1 ] && _opt="-#"
+     # Fail on error, follow redirects, and retry on transient errors
+-    $_c -fL --retry 3 $_opt "$@"
++    $_c -fL --insecure --retry 3 $_opt "$@"
+ }
+ 
+ # Activate conda, installing if necessary
+@@ -223,7 +223,7 @@ run_conda () {
+     for c in $channels; do
+         set -- -c "$c" "$@"
+     done
+-    $dryrun conda "$subcmd" "$@"
++    $dryrun conda "$subcmd" --quiet "$@"
+ }
+ 
+ # Determine rubin-env version
+get_rubin_env_version
