@@ -24,4 +24,4 @@ class GAObjectIdentityConfig(Config):
 
     def __str__(self):
         if self.nVisit is not None and self.pfsVisitHash is not None:
-            return f'{self.catId:05d}-{self.tract:05d}-{self.patch}-{self.objId:016x}-{self.nVisit:03d}-0x{self.pfsVisitHash:016x}'
+            return f'{self.catId:05d}-{self.objId:016x}-{self.nVisit:03d}-0x{self.pfsVisitHash:016x}'
