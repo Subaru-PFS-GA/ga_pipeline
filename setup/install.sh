@@ -7,6 +7,7 @@
 # TODO: allow installing gapipe as package (conda and/or eups)
 # TODO: write generated files into the log
 # TODO: update git repos when re-running installer
+# TODO: add --quiet switch to suppress conda progress
 
 # Defaults
 GAPIPE_DEBUG=0                                  # 1 for debugging
@@ -14,13 +15,15 @@ GAPIPE_LOGLEVEL=1                               # log level
 GAPIPE_FORCE=0                                  # Force installation
 GAPIPE_DIR="$(realpath "${HOME}")/gapipe"       # Installation directory
 GAPIPE_PACKAGE="SOURCE"                         # Install from source instead of package
-GAPIPE_CONDA_DIR="./conda"                      # Conda installation directory, relative to GAPIPE_DIR
+GAPIPE_CONDA_DIR="./stack/conda"                # Conda installation directory, relative to GAPIPE_DIR
 GAPIPE_CONDA_ENV="gapipe"                       # Conda environment name
 GAPIPE_CONDA_ENV_FILE="gapipe.yaml"             # Conda environment file
 GAPIPE_LSST=1                                   # 1 for installing on the LSST stack
-LSST_VERSION="v29_0_1"                          # LSST version to install, if GAPIPE_LSST is set to 1
+LSST_VERSION="w.2025.23"                        # LSST version to install, if GAPIPE_LSST is set to 1
 LSST_DIR="./stack"                              # LSST installation directory, relative to GAPIPE_DIR
+LSST_CONDA_DIR="./conda"                        # LSST conda installation directory, relative to LSST_DIR
 LSST_CONDA_ENV=""                               # LSST conda environment name, if GAPIPE_LSST is set to 1
+LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file
 PFS_PIPE2D_VERSION="w.2025.23"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
 PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
 
@@ -73,10 +76,12 @@ function parse_args() {
             ;;
         --conda-dir)
             GAPIPE_CONDA_DIR="$2"
+            LSST_CONDA_DIR="$2"
             shift 2
             ;;
         -e|--env|--conda-env)
             GAPIPE_CONDA_ENV="$2"
+            LSST_CONDA_ENV="$2"
             shift 2
             ;;
         --lsst)
@@ -202,7 +207,7 @@ function run_cmd() {
 
     # Log the command into the installation command file
     log_debug "Running command: ${cmd}"
-    echo "${cmd}" >> "${GAPIPE_DIR}/install.cmd"
+    echo "${cmd}" >> "${INSTALL_LOG_FILE}"
     
     # Run the command
     eval "${cmd}"
@@ -269,7 +274,9 @@ function get_conda_dir() {
     # Return the conda directory
 
     conda_dir=$(join_path "${GAPIPE_DIR}" "${GAPIPE_CONDA_DIR}")
-    conda_dir=$(realpath "${conda_dir}")
+    if [[ -d "${conda_dir}" ]]; then
+        conda_dir=$(realpath "${conda_dir}")
+    fi
     echo "${conda_dir}"
 }
 
@@ -341,14 +348,30 @@ function get_lsst_dir() {
     echo "${lsst_dir}"
 }
 
+function get_lsst_conda_dir {
+    # Return the directory of the LSST conda environment
+
+    lsst_conda_dir=$(join_path "$(get_lsst_dir)" "${LSST_CONDA_DIR}")
+    if [[ -d "${lsst_conda_dir}" ]]; then
+        lsst_conda_dir=$(realpath "${lsst_conda_dir}")
+    fi
+    echo "${lsst_conda_dir}"
+}
+
+function get_lsst_version() {
+    echo "${LSST_VERSION}" | sed 's/\./_/g'
+}
+
 function get_lsst_conda_env() {
     # If the LSST env name is not set, figure out the LSST stack version from the
     # git tag and return the default name of the conda environment. This is adopted
     # from the official LSST stack installation script.
 
+    lsst_version="$(get_lsst_version)"
+
     if [[ -z "${LSST_CONDA_ENV}" ]]; then
         lsst_version=$(curl -ksS \
-            "https://eups.lsst.codes/stack/src/tags/${LSST_VERSION}.list" \
+            "https://eups.lsst.codes/stack/src/tags/${lsst_version}.list" \
             | grep '^#CONDA_ENV=' | cut -d= -f2)
         LSST_CONDA_ENV="lsst-scipipe-${lsst_version}"
     fi
@@ -359,6 +382,11 @@ function get_lsst_conda_env() {
 function reset_eups() {
     run_cmd "unset EUPS_DIR EUPS_PATH EUPS_PKGROOT EUPS_SHELL SETUP_EUPS"
     run_cmd "unset CONDA_DEFAULT_ENV CONDA_EXE CONDA_PREFIX CONDA_PROMPT_MODIFIER CONDA_PYTHON_EXE CONDA_SHLVL"
+}
+
+function run_shebangtron() {
+    # Fix shebang lines in the installed scripts
+    run_cmd "curl -sSL \"https://raw.githubusercontent.com/lsst/shebangtron/main/shebangtron\" | python"
 }
 
 function install_lsst_eups_packages() {
@@ -374,16 +402,17 @@ function install_lsst_eups_packages() {
         exit 2
     fi
       
-    # Install the packages using EUPS
-    install_args="-t ${tag} --no-server-tags"
+    # Install the packages using EUPS by tag
     for package in ${pkgs}; do
         eups list | grep "${package}" | grep -q "$tag" && {
             log_info "EUPS package ${package} is already installed. Skipping."
         } || {
             log_info "Installing EUPS package $package $tag"
-            run_cmd "eups distrib install $package $install_args"
+            run_cmd "eups distrib install "$package" -t "${tag}" --no-server-tags"
         }
     done
+
+    run_shebangtron
 }
 
 function install_lsst() {
@@ -393,7 +422,9 @@ function install_lsst() {
     # the LSST install script.
     
     lsst_dir="$1"
-    lsst_env=$(get_lsst_conda_env)
+    lsst_conda_dir="$2"
+    lsst_env="$3"
+    lsst_version="$4"
     
     log_info "LSST stack directory is set to ${lsst_dir}."
     log_info "LSST conda environment is set to ${lsst_env}."
@@ -420,7 +451,7 @@ function install_lsst() {
     export SCONSFLAGS="-j $NUMTHREADS"
 
     reset_eups
-    run_cmd "./lsstinstall -T \"${LSST_VERSION}\" -e \"${lsst_env}\""
+    run_cmd "./lsstinstall -T \"${lsst_version}\" -p \"${lsst_conda_dir}\" -e \"${lsst_env}\""
 
     run_cmd "popd > /dev/null"
 
@@ -435,12 +466,12 @@ function install_lsst() {
 function activate_lsst_conda_env() {
     # Activate the LSST conda environment and set up the EUPS environment
 
-    lsst_dir="$1"
-    lsst_env=$(get_lsst_conda_env)
+    conda_dir="$1"
+    conda_env="$2"
 
-    log_info "Activating LSST conda environment ${lsst_env}."
+    log_info "Activating LSST conda environment ${conda_env} with EUPS."
     reset_eups
-    run_cmd "source \"${lsst_dir}/conda/bin/activate\" \"${lsst_env}\""
+    run_cmd "source \"${conda_dir}/bin/activate\" \"${conda_env}\""
     run_cmd "export EUPS_PKGROOT=\"$PFS_EUPS_PKGROOT|$(cat "$EUPS_PATH/pkgroot")\""
 }
 
@@ -464,7 +495,9 @@ function install_pfs_eups_packages() {
         log_error "Installing EUPS packages from source is not implemented yet."
         exit 2
     fi      
-    # Install the packages using EUPS
+
+    # Install the packages using EUPS by version number
+    # Here version is the LSST version, e.g. w.2025.23, including dots and not underscores
     for package in ${pkgs}; do
         eups list | grep "${package}" | grep -q "$version" && {
             log_info "EUPS package ${package} is already installed. Skipping."
@@ -473,6 +506,8 @@ function install_pfs_eups_packages() {
             run_cmd "eups distrib install $package $version"
         }
     done
+
+    run_shebangtron
 }
 
 function install_datamodel_source() {
@@ -722,11 +757,21 @@ if [[ -d "${GAPIPE_DIR}" ]]; then
 else
     log_info "Creating gapipe directory ${GAPIPE_DIR}."
     mkdir -p "${GAPIPE_DIR}"
-    mkdir -p "${GAPIPE_DIR}/bin"
 fi
 
+# Initialize Log file for the installation commands
+INSTALL_LOG_FILE="$(join_path "${GAPIPE_DIR}" "install.log")"
+echo "# Logging started at $(date)" >> "${INSTALL_LOG_FILE}"
+
 run_cmd "pushd \"$(realpath "${GAPIPE_DIR}")\" > /dev/null"
-echo "# Logging started at $(date)" >> "./install.log"
+
+# Create subdirectories for the installation
+run_cmd "mkdir -p ./bin"
+run_cmd "mkdir -p ./data"
+
+# Make sure no other python installations interfere with the installation
+run_cmd "unset PYTHONPATH"
+run_cmd "unset CONDA_DEFAULT_ENV CONDA_EXE CONDA_PREFIX CONDA_PROMPT_MODIFIER CONDA_PYTHON_EXE CONDA_SHLVL"
 
 # If installing on the LSST stack, run the LSST installation, otherwise
 # run the Anaconda installation
@@ -735,25 +780,30 @@ if [[ $GAPIPE_LSST -eq 1 ]]; then
 
     # Check if the LSST stack is already installed
     lsst_dir=$(get_lsst_dir)
-    log_info "LSST installation directory is set to ${lsst_dir}."
+    lsst_conda_dir=$(get_lsst_conda_dir)
+    lsst_conda_env=$(get_lsst_conda_env)
+    lsst_version=$(get_lsst_version)
+
+    log_info "LSST installation directory is set to ${lsst_dir}, conda directory is set to ${lsst_conda_dir}, and conda environment is set to ${lsst_conda_env}."
     
     if [[ -d "${lsst_dir}" ]]; then
         log_info "LSST stack already installed, skipping task."
     else
-        log_info "LSST stack not found, installing LSST stack."
-        install_lsst "${lsst_dir}"
+        log_info "LSST stack not found, installing LSST stack version ${lsst_version}."
+        install_lsst "${lsst_dir}" "${lsst_conda_dir}" "${lsst_conda_env}" "${lsst_version}"
     fi
 
     # Override the conda directory and environment name
-    GAPIPE_CONDA_DIR="$(get_lsst_dir)/conda"
+    GAPIPE_CONDA_DIR="$(get_lsst_conda_dir)"
     GAPIPE_CONDA_ENV="$(get_lsst_conda_env)"
 
     # Activate the newly installed conda environment
-    activate_lsst_conda_env "${lsst_dir}"
+    activate_lsst_conda_env "${GAPIPE_CONDA_DIR}" "${GAPIPE_CONDA_ENV}"
 
     # Install additional conda packages required by gapipe
     log_info "Installing additional conda packages for gapipe."
-    update_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
+    conda_env_file="$(realpath $(join_path "$SCRIPT_DIR" "${LSST_CONDA_ENV_FILE}"))"
+    update_conda_env "${GAPIPE_CONDA_ENV}" "${conda_env_file}"
 
     # Install the LSST packages using EUPS
     install_lsst_eups_packages "${LSST_VERSION}" \
@@ -786,7 +836,7 @@ else
         # TODO: only install packages
     else
         log_info "Conda environment ${GAPIPE_CONDA_ENV} does not exist, creating it."
-        install_conda_env ${GAPIPE_CONDA_ENV} $(realpath "${GAPIPE_CONDA_ENV_FILE}")
+        update_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
     fi
 
     run_cmd "conda deactivate"
