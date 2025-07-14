@@ -10,7 +10,7 @@ Executing the pipeline consists of multiple steps:
 
 ## 4.1 Initialize the environment
 
-A prerequisite to initializing the environment is a proper configuration. Please refer to Section 3 on how to configure the PFS GA Pipeline environment.
+In development mode, a prerequisite to initializing the environment is a proper configuration. Please refer to Section 3 on how to configure the PFS GA Pipeline development environment.
 
 From the repository root, source the init script:
 
@@ -46,6 +46,8 @@ The command-line arguments are as follows.
 
 * **--outdir** *outdir*: directory to write the output data files to. Directory naming follows the DRP standard of `{outdir}/pfsGAObject/{catId}/{tract}/{patch}/`
 
+Note that all directory names can contain Python-style format strings that are replaced by the catId, tract, patch, objId, nVisit or pfsVisitHash. For example, `--outdir /datascope/subaru/user/dobos/gapipe/rerun/run16/20240709/pfsGAObject/{catid:05d}/{tract:05d}/{patch}/` will create a directory structure that contains the catId, tract, and patch values.
+
 The object ID filters, with the exception of `--patch` can be specified as a list of single values and ranges, the latter being two numerical values separated by a hyphen. Any of the object ID filters can be omitted.
 
 * **--catid** *catid1 [catid2 ...]*: List of PFS Catalog ID filters
@@ -56,7 +58,11 @@ The object ID filters, with the exception of `--patch` can be specified as a lis
 
 * **--objid** *objid1 [objid2 ...]*: List of PFS Object ID filters. Hex notation of IDs must start with `0x`.
 
-## 4.3 Run processing object by object
+## 4.3 Configure a batch based on the database
+
+**TODO**
+
+## 4.4 Run processing object by object
 
 The pipeline can be executed on individual object or submitted as a batch job. To see how batch jobs are submitted, please refer to Section 4.4.
 
@@ -78,11 +84,13 @@ It is possible to override the input and output directories defined in the confi
 
 See Section 4.2 for a description of these arguments.
 
-# 4.4 Submitting a batch job
+# 4.5 Submitting a batch job
 
-# 4.5 Collecting the results
 
-# 4.6 Additional command-line arguments
+
+# 4.6 Collecting the results
+
+# 4.7 Additional command-line arguments
 
 * **--debug**: Enable debug mode. The scripts are executed within a `debugpy` context.
 
