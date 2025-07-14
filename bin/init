@@ -103,7 +103,14 @@ if [[ "$GAPIPE_LSST" -eq "1" ]]; then
       # If the module has the ups directory, create the eups package
       if [[ -d "$mod_path/ups" ]]; then
         echo "  creating eups package for $mod_name"
-        eups undeclare "$mod_name" dev --force >/dev/null
+
+        # If the EUPS module is already declared, undeclare it first to avoid
+        # conflicts.
+        eups list "${mod_name} dev" 2>/dev/null | grep . >/dev/null && {
+          eups undeclare "$mod_name" dev --force >/dev/null
+        }
+        
+        # Declare the module in EUPS
         pushd "$mod_path" >/dev/null
         eups declare "$mod_name" dev -r . --force 2>/dev/null
         popd >/dev/null
