@@ -94,7 +94,7 @@ source "$GAPIPE_CONDAPATH/bin/activate" "$GAPIPE_CONDAENV"
 # development module.
 if [[ "$GAPIPE_LSST" -eq "1" ]]; then
   if [[ -n "$GAPIPE_MODULES" ]]; then
-    echo "Creating up EUPS packages from development modules"
+    echo "Creating EUPS packages from development modules"
     for module in $GAPIPE_MODULES; do
       mod_name=$(echo "$module" | cut -d':' -f1)
       mod_path=$(echo "$module" | cut -d':' -f2)
@@ -102,7 +102,7 @@ if [[ "$GAPIPE_LSST" -eq "1" ]]; then
       
       # If the module has the ups directory, create the eups package
       if [[ -d "$mod_path/ups" ]]; then
-        echo "  creating eups package for $mod_name"
+        echo "  declaring EUPS package for $mod_name, version dev"
 
         # If the EUPS module is already declared, undeclare it first to avoid
         # conflicts.
