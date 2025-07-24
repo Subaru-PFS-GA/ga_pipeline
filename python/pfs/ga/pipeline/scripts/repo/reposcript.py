@@ -66,7 +66,7 @@ class RepoScript(PipelineScript, BatchScript):
                      help='Command')
         self.add_arg('in', type=str, nargs='?',
                      help='Product type or filename')
-        self.add_arg('--format', type=str)
+        self.add_arg('--format', type=str, choices=['table', 'json', 'path'])
 
         PipelineScript._add_args(self)
         BatchScript._add_args(self)

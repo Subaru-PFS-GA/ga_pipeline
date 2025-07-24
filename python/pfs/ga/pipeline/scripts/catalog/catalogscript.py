@@ -61,7 +61,7 @@ class CatalogScript(PipelineScript):
         """
 
         # Load the stellar parameters
-        params = self._load_params_file(self.__params, self.__params_id)
+        params = self._load_stellar_params_file(self.__params, self.__params_id)
 
         # Find all config files matching the command-line arguments.
         configs = {}

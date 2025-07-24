@@ -12,11 +12,12 @@ from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
 from ..pipelinescript import PipelineScript
+from ..progress import Progress
 from ...gapipe.config import *
 
 from ...setup_logger import logger
 
-class ConfigureScript(PipelineScript):
+class ConfigureScript(PipelineScript, Progress):
     """
     Generate the job configuration file for a set of observations.
 
@@ -35,27 +36,32 @@ class ConfigureScript(PipelineScript):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.__params = None                # Params file with stellar parameters to derive the priors from
-        self.__params_id = '__target_idx'   # ID column of the params file
-        self.__dry_run = False              # Dry run mode
-        self.__top = None                   # Stop after this many objects
+        self.__obs_params = None                    # Observation parameters file
+        self.__obs_params_id = 'objid'              # ID column of the observation parameters
+        self.__obs_params_visit = 'visit'           # Visit ID column of the observation parameters
+        self.__stellar_params = None                # Params file with stellar parameters to derive the priors from
+        self.__stellar_params_id = '__target_idx'   # ID column of the params file
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
-        self.add_arg('--params', type=str, help='Path to stellar parameters file')
-        self.add_arg('--params-id', type=str, help='ID column of the stellar parameters to use')
-        self.add_arg('--dry-run', action='store_true', help='Dry run mode')
-        self.add_arg('--top', type=int, help='Stop after this many objects')
+        self.add_arg('--obs-params', type=str, help='Observation parameters file')
+        self.add_arg('--obs-params-id', type=str, help='ObjID column of the observation parameters to use')
+        self.add_arg('--obs-params-visit', type=str, help='Visit ID column of the observation parameters to use')
+        self.add_arg('--stellar-params', type=str, help='Path to stellar parameters file')
+        self.add_arg('--stellar-params-id', type=str, help='ID column of the stellar parameters to use')
 
-        super()._add_args()
+        PipelineScript._add_args(self)
+        Progress._add_args(self)
 
     def _init_from_args(self, args):
-        self.__params = self.get_arg('params', args, self.__params)
-        self.__params_id = self.get_arg('params_id', args, self.__params_id)
-        self.__dry_run = self.get_arg('dry_run', args, self.__dry_run)
-        self.__top = self.get_arg('top', args, self.__top)
+        self.__obs_params = self.get_arg('obs_params', args, self.__obs_params)
+        self.__obs_params_id = self.get_arg('obs_params_id', args, self.__obs_params_id)
+        self.__obs_params_visit = self.get_arg('obs_params_visit', args, self.__obs_params_visit)
+        self.__stellar_params = self.get_arg('stellar_params', args, self.__stellar_params)
+        self.__stellar_params_id = self.get_arg('stellar_params_id', args, self.__stellar_params_id)
 
-        super()._init_from_args(args)
+        PipelineScript._init_from_args(self, args)
+        Progress._init_from_args(self, args)
 
     def prepare(self):
         super().prepare()
@@ -71,8 +77,11 @@ class ConfigureScript(PipelineScript):
         files = ' '.join(self.config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
+        # Load the observational parameters such as broadband magnitudes, velocity corrections etc.
+        obs_params = self._load_obs_params_file(self.__obs_params, self.__obs_params_id, self.__obs_params_visit)
+
         # Load the stellar parameters
-        params = self._load_params_file(self.__params, self.__params_id)
+        stellar_params = self._load_stellar_params_file(self.__stellar_params, self.__stellar_params_id)
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
@@ -83,21 +92,35 @@ class ConfigureScript(PipelineScript):
             return
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
+
+        # Create the iterator that we will loop over to generate the configuration files.
+        configs = self.__create_output_configs(identities, obs_params, stellar_params)
+
+        # Wrap the iterator in a progress bar if requested
+        if self.progress is not None and self.progress:
+            # Decrease log-level to WARNING to avoid cluttering the output with debug messages
+            logger.setLevel('WARNING')
+            configs = self._wrap_in_progressbar(configs, total=len(identities))
         
         # Generate the configuration file for each target
         q = 0
-        for objid, config, filename in self.__create_output_configs(identities, params):
+        for objid, config, filename in configs:
             self.__save_config_file(objid, config, filename)
 
             q += 1
-            if self.__top is not None and q >= self.__top:
-                logger.info(f'Stopping after {q} objects.')
+            if self.top is not None and q >= self.top:
+                logger.warning(f'Stopping after {q} objects.')
                 break
 
-    def __create_output_configs(self, identities, params=None):
-        for objid, id in identities.items():
+    def __create_output_configs(self, identities, obs_params=None, stellar_params=None):
+        for objid, identity in identities.items():
             # Get target identity and list of observations to be included
-            target = self.__get_target_config(objid, id)
+            target = self.__get_target_config(objid, identity)
+
+            # Skip objects where the target configuration could not be created
+            # (e.g. no required products found)
+            if target is None:
+                continue
 
             # Create general pipeline configuration
             config, filename = self.__get_pipeline_config(objid, target.identity)
@@ -105,8 +128,8 @@ class ConfigureScript(PipelineScript):
 
             # Look up the stellar parameters in the params file and configure
             # template fitting
-            if params is not None and objid in params.index:
-                self.__configure_rvfit(config, params, objid)
+            if stellar_params is not None and objid in stellar_params.index:
+                self.__configure_rvfit(config, obs_params, stellar_params, objid)
 
             # TODO: add further steps
 
@@ -223,9 +246,15 @@ class ConfigureScript(PipelineScript):
 
         return config, filename
 
-    def __configure_rvfit(self, config, params, objid):
-        pp = params.loc[objid]
+    def __configure_rvfit(self, config, obs_params, stellar_params, objid):
+        if obs_params is not None:
+            self.__configure_rvfit_obs_param_priors(config, obs_params.loc[objid])
+            
+        if stellar_params is not None:
+            self.__configure_rvfit_stellar_param_priors(config, stellar_params, objid)
 
+    def __configure_rvfit_stellar_param_priors(self, config, stellar_params, objid):
+        pp = stellar_params.loc[objid]
         for k in ['M_H', 'T_eff', 'log_g', 'a_M', 'rv']:
             k_min = f'{k}_min'
             k_max = f'{k}_max'
@@ -286,7 +315,7 @@ class ConfigureScript(PipelineScript):
         Generate a config file for each of the inputs.
         """
 
-        if not self.__dry_run:
+        if not self.dry_run:
             logger.info(f'Saving configuration file `{filename}`.')
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             config.save(filename)
