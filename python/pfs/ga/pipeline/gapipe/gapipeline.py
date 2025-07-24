@@ -321,10 +321,18 @@ class GAPipeline(Pipeline):
         product is not found in any of the repositories.
         """
 
+        product_name = ','.join([p.__name__ for p in product]) if isinstance(product, tuple) else product.__name__
+
         for i, visit, identity in self.config.enumerate_visits():
             # Try to look up the product in the cache first
             if self.product_cache is not None and product in self.product_cache:
-                if issubclass(product, PfsFiberArray):
+                if product is tuple and issubclass(product[-1], PfsFiberArray):
+                    # e.g. PfsSingle within PfsCalibrated
+                    if visit in self.product_cache[product[-1]]:
+                        if identity.objId in self.product_cache[product[-1]][visit]:
+                            # Product is already in the cache, skip
+                            return
+                elif issubclass(product, PfsFiberArray):
                     # Data product contains a single object
                     if visit in self.product_cache[product]:
                         if identity.objId in self.product_cache[product][visit]:
@@ -349,15 +357,15 @@ class GAPipeline(Pipeline):
                     break
                 except KeyError:
                     # The product type is not available in the repository, skip
-                    logger.debug(f'Product type `{product.__name__}` not available in repository of type {type(repo).__name__}.')
+                    logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
                     continue
                 except FileNotFoundError:
                     # The product file is not available in the repository, skip
-                    logger.warning(f'{product.__name__} file for identity `{identity}` not available in repository of type {type(repo).__name__}.')
+                    logger.warning(f'{product_name} file for identity `{identity}` not available in repository of type {type(repo).__name__}.')
                     continue
 
             if not found:
-                msg = f'{product.__name__} file for identity `{identity}` not available.'
+                msg = f'{product_name} file for identity `{identity}` not available.'
                 if required:
                     raise PipelineError(msg)
                 else:
@@ -380,12 +388,41 @@ class GAPipeline(Pipeline):
         if self.product_cache is None:
             self.product_cache = {}
 
-        if product not in self.product_cache:
+        if isinstance(product, tuple) and product[-1] not in self.product_cache:
+            self.product_cache[product[-1]] = {}
+        elif product not in self.product_cache:
             self.product_cache[product] = {}
+
+        product_name = ','.join([p.__name__ for p in product]) if isinstance(product, tuple) else product.__name__
 
         q = 0
         for i, visit, identity in self.config.enumerate_visits():
-            if issubclass(product, PfsFiberArray):
+            if isinstance(product, tuple) and issubclass(product[-1], PfsFiberArray):
+                # e.g. PfsSingle within PfsCalibrated
+                if visit not in self.product_cache[product[-1]]:
+                    self.product_cache[product[-1]][visit] = {}
+
+                if identity.objId not in self.product_cache[product[-1]][visit]:
+                    found = False
+                    for repo in [self.__input_repo, self.__work_repo]:
+                        try:
+                            # Contents are returned as a generator, so we need to iterate over it
+                            # but we expect only one item to be returned
+                            results = repo.load_products_from_container(*product, identity=identity)
+                            for data, id, filename in results:
+                                break
+                            data.filename = filename
+                            self.product_cache[product[-1]][visit][identity.objId] = data
+                            found = True
+                            q += 1
+                        except KeyError:
+                            # The product type is not available in the repository, skip
+                            continue
+
+                    if not found:
+                        msg = f'{product} file for identity `{identity}` not available.'
+                        raise FileNotFoundError(msg)
+            elif issubclass(product, PfsFiberArray):
                 # Data product contains a single object
                 if visit not in self.product_cache[product]:
                     self.product_cache[product][visit] = {}
@@ -404,7 +441,7 @@ class GAPipeline(Pipeline):
                             continue
 
                     if not found:
-                        msg = f'{product.__name__} file for identity `{identity}` not available.'
+                        msg = f'{product_name} file for identity `{identity}` not available.'
                         raise FileNotFoundError(msg)
             elif issubclass(product, (PfsFiberArraySet, PfsTargetSpectra, PfsConfig)):
                 # Data product contains multiple objects
@@ -421,15 +458,17 @@ class GAPipeline(Pipeline):
                             continue
 
                     if not found:
-                        msg = f'{product.__name__} file for identity `{identity}` not available.'
+                        msg = f'{product_name} file for identity `{identity}` not available.'
                         raise FileNotFoundError(msg)
             else:
                 raise NotImplementedError('Product type not recognized.')
                
-        logger.info(f'A total of {q} {product.__name__} data files loaded successfully for {self.__id}.')
+        logger.info(f'A total of {q} {product_name} data files loaded successfully for {self.__id}.')
 
     def get_product_from_cache(self, product, visit, identity):
-        if issubclass(product, PfsFiberArray):
+        if isinstance(product, tuple):
+            return self.product_cache[product[-1]][visit][identity.objId]
+        elif issubclass(product, PfsFiberArray):
             return self.product_cache[product][visit][identity.objId]
         elif issubclass(product, PfsFiberArraySet):
             return self.product_cache[product][visit]
@@ -508,6 +547,10 @@ class GAPipeline(Pipeline):
         # other products might need information from it
         # Cannot read a spectrum from a config file but can update its metadata
         for t in products:
+            # If it is a container type, use the last element
+            if isinstance(t, tuple):
+                t = t[-1]
+
             if issubclass(t, PfsConfig):
                 data = self.product_cache[t][visit]
                 if reader.is_available(data, arm=arm, objid=identity.objId):
@@ -516,6 +559,10 @@ class GAPipeline(Pipeline):
                     return False, None
         
         for t in products:
+            # If it is a container type, use the last element
+            if isinstance(t, tuple):
+                t = t[-1]
+                
             if issubclass(t, PfsFiberArray):            # PfsSingle etc
                 data = self.product_cache[t][visit][identity.objId]
                 if reader.is_available(data, arm=arm):

@@ -44,6 +44,11 @@ class LoadStep(PipelineStep):
         for i, visit, identity in context.config.enumerate_visits():
             for product in context.pipeline.required_product_types:
                 data = context.pipeline.get_product_from_cache(product, visit, identity)
+                
+                # Expand if it is a container type
+                if isinstance(product, tuple):
+                    product = product[-1]
+                
                 if issubclass(product, PfsFiberArray):
                     # Make sure that targets are the same
                     if target is not None and (target != data.target):
@@ -65,6 +70,10 @@ class LoadStep(PipelineStep):
     
     def __validate_product(self, context, product, visit, data):       
         identity = context.pipeline.get_product_identity(data)
+
+        # Expand if it is a container type
+        if isinstance(product, tuple):
+            product = product[-1]
 
         if issubclass(product, PfsFiberArray):
             # Verify that it is a single visit and not a co-add

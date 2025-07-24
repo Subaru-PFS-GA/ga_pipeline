@@ -28,6 +28,10 @@ class RVFitStep(PipelineStep):
         # Find the set of available arms in the available files
         avail_arms = set()
         for t in context.pipeline.required_product_types:
+            # If it is a container type, use the last element
+            if isinstance(t, tuple):
+                t = t[-1]
+
             if issubclass(t, (PfsFiberArray, PfsFiberArraySet, PfsTargetSpectra)):
                 avail_arms = avail_arms.union(context.pipeline.get_avail_arms(t))
 

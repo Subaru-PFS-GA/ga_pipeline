@@ -90,17 +90,32 @@ class ValidateStep(PipelineStep):
             raise NotImplementedError()
 
     def __validate_input_data_products(self, context):
+
+        required_products = set()
+        
+        if context.config.run_rvfit:
+            required_products.update(context.config.rvfit.required_products)
+
+        if context.config.run_chemfit:
+            required_products.update(context.config.chemfit.required_products)
+
         # Compile the list of required input data products. The data products
         # are identified by their type. The class definitions are located in pfs.datamodel
         context.pipeline.required_product_types = set()
 
-        if context.config.run_rvfit:
-            context.pipeline.required_product_types.update(
-                [ getattr(datamodel, t) for t in context.config.rvfit.required_products ])
-            
-        if context.config.run_chemfit:
-            context.pipeline.required_product_types.update(
-                [ getattr(datamodel, t) for t in context.config.chemfit.required_products ])
+        for t in required_products:
+            found = False
+            for repo in [ context.input_repo, context.work_repo ]:
+                try:
+                    t = repo.parse_product_type(t)
+                    context.pipeline.required_product_types.add(t)
+                    found = True
+                    break
+                except ValueError as e:
+                    pass
+
+            if not found:
+                raise PipelineError(f'Unknown product type `{t}` in configuration.')
 
         # Verify that input data files are available or the input products
         # are already in the cache
