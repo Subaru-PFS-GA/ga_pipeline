@@ -59,6 +59,8 @@ class Script():
         self.__profiler = None
         self.__timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
 
+        super().__init__()
+
     #region Properties
 
     def __get_debug(self):

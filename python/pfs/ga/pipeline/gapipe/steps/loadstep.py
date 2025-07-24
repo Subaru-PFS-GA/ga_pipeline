@@ -46,11 +46,11 @@ class LoadStep(PipelineStep):
                 data = context.pipeline.get_product_from_cache(product, visit, identity)
                 if issubclass(product, PfsFiberArray):
                     # Make sure that targets are the same
-                    if target is None:
-                        target = data.target
-                    elif not target == data.target:
+                    if target is not None and (target != data.target):
                         raise PipelineError(f'Target information in PfsSingle files do not match.')
                 elif issubclass(product, PfsFiberArraySet):
+                    pass
+                elif issubclass(product, PfsTargetSpectra):
                     pass
                 elif issubclass(product, PfsDesign):
                     pass
@@ -82,6 +82,10 @@ class LoadStep(PipelineStep):
                 raise PipelineError(f'objId in config `{context.config.target.objId}` does not match objID in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsFiberArraySet):
             if visit != data.identity.visit:
+                raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
+        elif issubclass(product, PfsTargetSpectra):
+            # Verify that visit numbers match
+            if visit != data[list(data.keys())[0]].observations.visit[0]:
                 raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsDesign):
             if issubclass(product, PfsConfig):

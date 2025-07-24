@@ -169,7 +169,7 @@ class GAPipeline(Pipeline):
             {
                 'type': RVFitStep,
                 'name': 'rvfit',
-                'func': RVFitStep.validate_config,
+                'func': RVFitStep.init,
                 'critical': True,
                 'substeps': [
                     {
@@ -406,7 +406,7 @@ class GAPipeline(Pipeline):
                     if not found:
                         msg = f'{product.__name__} file for identity `{identity}` not available.'
                         raise FileNotFoundError(msg)
-            elif issubclass(product, (PfsFiberArraySet, PfsConfig)):
+            elif issubclass(product, (PfsFiberArraySet, PfsTargetSpectra, PfsConfig)):
                 # Data product contains multiple objects
                 if visit not in self.product_cache[product]:
                     found = False
@@ -432,6 +432,8 @@ class GAPipeline(Pipeline):
         if issubclass(product, PfsFiberArray):
             return self.product_cache[product][visit][identity.objId]
         elif issubclass(product, PfsFiberArraySet):
+            return self.product_cache[product][visit]
+        elif issubclass(product, PfsTargetSpectra):
             return self.product_cache[product][visit]
         elif issubclass(product, PfsDesign):
             return self.product_cache[product][visit]
@@ -481,6 +483,9 @@ class GAPipeline(Pipeline):
                 arms = self.product_cache[product][visit][identity.objId].observations.arm[0]
             elif issubclass(product, PfsFiberArraySet):
                 arms = self.product_cache[product][visit].identity.arm
+            elif issubclass(product, PfsTargetSpectra):
+                data = self.product_cache[product][visit]
+                arms = data[list(self.product_cache[product][visit].keys())[0]].observations.arm[0]
             else:
                 arms = ''
                     
@@ -522,8 +527,17 @@ class GAPipeline(Pipeline):
                 data = self.product_cache[t][visit]
                 if reader.is_available(data, arm=arm):
                     reader.read_from_pfsFiberArraySet(data, spec, arm=arm,
-                                                        fiberid=spec.fiberid,
-                                                        wave_limits=wave_limits)
+                                                      fiberid=spec.fiberid,
+                                                      wave_limits=wave_limits)
+                    found = True
+                else:
+                    return False, None
+            elif issubclass(t, PfsTargetSpectra):       # PfsCalibrated etc
+                data = self.product_cache[t][visit]
+                if reader.is_available(data, arm=arm, objid=identity.objId):
+                    reader.read_from_pfsTargetSpectra(data, spec, arm=arm,
+                                                      objid=identity.objId,
+                                                      wave_limits=wave_limits)
                     found = True
                 else:
                     return False, None

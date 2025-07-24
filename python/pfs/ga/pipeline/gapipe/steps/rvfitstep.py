@@ -19,19 +19,16 @@ class RVFitStep(PipelineStep):
 
     #region Run
 
-    def validate_config(self, context):
-        """
-        RV fitting pre-validation.
-        """
-        
+    def init(self, context):
+
         if not context.config.run_rvfit:
             logger.info('RV fitting is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=True)
-        
+
         # Find the set of available arms in the available files
         avail_arms = set()
         for t in context.pipeline.required_product_types:
-            if issubclass(t, (PfsFiberArray, PfsFiberArraySet)):
+            if issubclass(t, (PfsFiberArray, PfsFiberArraySet, PfsTargetSpectra)):
                 avail_arms = avail_arms.union(context.pipeline.get_avail_arms(t))
 
         # Verify that all arms required in the config are available
