@@ -23,7 +23,7 @@ class Progress():
     
     top = property(__get_top)
 
-    def __get_progress(self, name):
+    def __get_progress(self):
         return self.__progress
     
     progress = property(__get_progress)
