@@ -8,7 +8,9 @@ class Progress():
     Mixin class to implement a progress bar, dry-run and top, etc.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
         self.__dry_run = False              # Dry run mode
         self.__top = None                   # Stop after this many objects
         self.__progress = False             # Display a progress bar

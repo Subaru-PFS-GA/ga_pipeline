@@ -8,7 +8,9 @@ class BatchScript():
     Mixin class to implement submitting jobs to slurm etc.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
         self.__batch = None                 # Type of batch system to use, None for none
         self.__partition = 'default'
         self.__cpus = 4
@@ -46,9 +48,9 @@ srun {command}
 
         # Submit the job to slurm
         if self.dry_run:
-            logger.info(f'Dry run: sbatch script for {item}.')
+            logger.debug(f'Dry run: sbatch script for {item}.')
         else:
-            logger.info(f'Submitting sbatch script for {item}.')
+            logger.debug(f'Submitting sbatch script for {item}.')
 
             # Execute the sbatch command and pass in sbatch_script via stdin
             process = subprocess.Popen(
@@ -60,4 +62,4 @@ srun {command}
             )
             stdout, stderr = process.communicate(sbatch_script)
             if process.returncode != 0:
-                raise RuntimeError(f'Sbatch submission failed: {stderr.strip()}')
+                raise RuntimeError(f'sbatch submission failed: {stderr.strip()}')

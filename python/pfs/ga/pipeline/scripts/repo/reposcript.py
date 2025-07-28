@@ -10,12 +10,13 @@ import commentjson as json
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from ..pipelinescript import PipelineScript
+from ..progress import Progress
 from ..batchscript import BatchScript
 from ...common import Script, PipelineError, ConfigJSONEncoder
 
 from ...setup_logger import logger
 
-class RepoScript(PipelineScript, BatchScript):
+class RepoScript(PipelineScript, BatchScript, Progress):
     """
     Search PFS repo for data files and print useful information about them.
 
@@ -23,9 +24,8 @@ class RepoScript(PipelineScript, BatchScript):
     without relying on Butler.
     """
 
-    def __init__(self):
-        PipelineScript.__init__(self, log_level=logging.WARNING, log_to_file=False)
-        BatchScript.__init__(self)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.__commands = {
             'info': SimpleNamespace(
@@ -69,6 +69,7 @@ class RepoScript(PipelineScript, BatchScript):
         self.add_arg('--format', type=str, choices=['table', 'json', 'path'])
 
         PipelineScript._add_args(self)
+        Progress._add_args(self)
         BatchScript._add_args(self)
 
     def _init_from_args(self, args):
@@ -85,6 +86,7 @@ class RepoScript(PipelineScript, BatchScript):
         self.__format = self.get_arg('format', args, self.__format)
 
         PipelineScript._init_from_args(self, args)
+        Progress._init_from_args(self, args)
         BatchScript._init_from_args(self, args)
 
     def prepare(self):
@@ -154,7 +156,7 @@ class RepoScript(PipelineScript, BatchScript):
         filenames, identities = self.__get_extract_product_filenames()
 
         # Load the products one by one and extract all sub-products
-        for i, fn in enumerate(filenames):
+        for i, fn in enumerate(self._wrap_in_progressbar(filenames)):
             product = self.input_repo.match_container_product_type(os.path.basename(fn))
             subprods = self.input_repo.load_products_from_container(
                 *product,
@@ -170,12 +172,16 @@ class RepoScript(PipelineScript, BatchScript):
                             subprod, identity=subid,
                             variables={'datadir': self.config.workdir})
 
+            if self.top is not None and i >= self.top:
+                logger.info(f'Stop after processing {self.top} objects.')
+                break
+
     def __submit_extract_product(self):
         self.__validate_extract_product()
         filenames, identities = self.__get_extract_product_filenames()
 
         # Submit a job for each product matching the filters
-        for i, fn in enumerate(filenames):
+        for i, fn in enumerate(self._wrap_in_progressbar(filenames)):
             command = f'python -m pfs.ga.pipeline.scripts.repo.reposcript extract-product {fn}'
             
             # Add the filters
@@ -185,6 +191,10 @@ class RepoScript(PipelineScript, BatchScript):
                     command += f' {args}'
             
             self._submit_job(command, fn)
+
+            if self.top is not None and i >= self.top:
+                logger.info(f'Stop after processing {self.top} objects.')
+                break
 
     def __run_find_object(self):
         identities = self.input_repo.find_objects(groupby='none')
