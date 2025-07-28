@@ -141,3 +141,7 @@ The directories are the following.
 * `./src` is to store the source code of GAPIPE and its dependencies
 * `./stack` is to store the installed software stack, such as the LSST stack
 * `./work` is to store temporary files during GAPIPE processing
+
+## 1.5 Custom environment configurations
+
+The initialization script `bin/init` allows you to customize the environment variables that are set when GAPIPE is initialized. The script reads the environment configuration files found under `./configs/envs`. These are standard shell script files that are sourced during inizialization. The file `default` is created by the install script based on the configuration options set in Section. 1.1.2. You can create your own environment configuration files and use them by passing the `--env` or `-e` option to the `init` script, e.g. `./bin/init --env myenv`. This allows for running the pipeline with different configurations without having to install multiple versions. This is more relevant when running in heterogeneous environments or during development.

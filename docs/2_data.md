@@ -27,7 +27,19 @@ $GAPIPE_DIR/data/
           - <psf_name>.fits
 ```
 
+# 2.1.1 Importing synthetic stellar grids
+
 # 2.2 Observation data
+
+PFS spectrum data files come with three different storage models:
+
+* single spectrum files, such as PfsSingle, 
+* multiple spectrum files, such as PfsArm and PfsMerged and 
+* container files that contain multiple spectra, such as PfsCalibrated, which contain several PfsSingle spectra.
+
+For flexibility, GAPIPE can handle any of these storage models, regardless of the level of processing of the data.
+
+Container files are usually large and take significantly more time and I/O to load individual spectra from them, so we provide functionality to extract the individual spectra from the containers before processing. For example, the `gapipe-repo extract` command can be used to extract individual spectra from a PfsCalibrated container file into individual PfsSingle files. The files are extracted into the `$GAPIPE_WORKDIR` staging directory.
 
 # 2.2.1 Using GAPIPE with Butler
 

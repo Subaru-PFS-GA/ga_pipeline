@@ -19,7 +19,6 @@ TBW
 1.3 Updating GAPIPE
 1.4 Installation directory structure
 2 Data
-3 Configuring the pipeline
-4 Running the pipeline
-5 Development
-6 Reference
+3 Running the pipeline
+4 Development
+5 Reference
