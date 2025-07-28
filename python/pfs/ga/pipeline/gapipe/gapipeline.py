@@ -1,8 +1,4 @@
 import os
-import time
-from datetime import datetime
-import pytz
-import numpy as np
 from types import SimpleNamespace
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
@@ -190,8 +186,8 @@ class GAPipeline(Pipeline):
                         'critical': True,
                     },
                     {
-                        'name': 'rvfit_fit',
-                        'func': RVFitStep.fit,
+                        'name': 'rvfit_run',
+                        'func': RVFitStep.run,
                         'critical': True,
                     },
                     {
@@ -200,21 +196,30 @@ class GAPipeline(Pipeline):
                         'critical': False,
                     },
                     {
-                        'name': 'rvfit_coadd',
-                        'func': RVFitStep.coadd,
-                        'critical': False
-                    },
-                    {
                         'name': 'rvfit_cleanup',
                         'func': RVFitStep.cleanup,
                         'critical': True,
                     },
                 ]
             },
-            # {
-            #     # TODO: factor out co-add from rvfit
-            #     'type': CoaddStep,
-            # },
+            {
+                'type': CoaddStep,
+                'name': 'coadd',
+                'func': CoaddStep.init,
+                'critical': True,
+                'substeps': [
+                    {
+                        'name': 'coadd_run',
+                        'func': CoaddStep.run,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'coadd_cleanup',
+                        'func': CoaddStep.cleanup,
+                        'critical': True,
+                    },
+                ]
+            },
             {
                 'type': ChemFitStep,
                 'name': 'chemfit',
