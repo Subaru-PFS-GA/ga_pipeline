@@ -561,6 +561,12 @@ class Script():
 
         logger.info(f'Starting execution of {self.get_command_name()}.')
 
+        # If running inside a batch system (currently only slurm), log the job ID
+        if self.is_env('SLURM_JOB_ID'):
+            job_id = self.get_env('SLURM_JOB_ID')
+            hostname = self.get_env('HOSTNAME', 'unknown')
+            logger.info(f'Running in SLURM job {job_id} on server {hostname}.')
+
         try:
             self.run()
         except Exception as ex:
