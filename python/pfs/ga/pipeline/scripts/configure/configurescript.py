@@ -85,6 +85,7 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
+        logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
         identities = self.input_repo.find_objects(groupby='objid')
 
         if len(identities) == 0:
@@ -185,11 +186,13 @@ class ConfigureScript(PipelineScript, Progress):
             m = np.full_like(mask, False, dtype=bool)
 
             # Try each repository in order
+            found = False
             for repo in [self.input_repo, self.work_repo]:
                 # Look up the product type based on its name as a string. If the
                 # product is not available in a certain repo, skip to the next one.
                 try:
-                    prod = repo.parse_product_type(product_name)
+                    product_type = repo.parse_product_type(product_name)
+                    found = True
                 except ValueError:
                     logger.debug(f'Product type `{product_name}` not available in repo of type {type(repo.repo).__name__}.')
                     continue
@@ -197,20 +200,26 @@ class ConfigureScript(PipelineScript, Progress):
                 for i in range(len(identity.visit)):
                     try:
                         fn, _ = repo.locate_product(
-                            prod,
+                            product_type,
                             visit = identity.visit[i],
                             pfsDesignId = identity.pfsDesignId[i],
                             catId = identity.catId[i],
-                            objid = identity.objId[i])
+                            objId = identity.objId[i])
                     except FileNotFoundError:
                         fn = None
 
-                    if fn is None or not os.path.isfile(fn):
-                        logger.warning(f'Required product `{product_name}` for object {objid} not found: {fn}, ignoring.')
+                    if fn is None:
+                        logger.warning(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} not found.')
+                    elif not os.path.isfile(fn):
+                        logger.warning(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} not found.')
                     else:
                         m[i] = True
 
                 break   # If we found the product in one of the repositories, we can stop looking further.
+
+            if not found:
+                logger.warning(f'Required product type `{product_name}` not found in any of the repositories for object 0x{objid:x}.')
+                continue
 
             mask &= m
                 

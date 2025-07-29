@@ -319,33 +319,33 @@ class GAPipeline(Pipeline):
                         f.writelines(tracebacks[i])
                         f.write('\n')
 
-    def locate_data_products(self, product, required=True):
+    def locate_data_products(self, product_type, required=True):
         """
         Try to look up each data product, first in the product cache, then
         in the data repositories. If `required` is `True`, raise an error if the
         product is not found in any of the repositories.
         """
 
-        product_name = ','.join([p.__name__ for p in product]) if isinstance(product, tuple) else product.__name__
+        product_name = ','.join([p.__name__ for p in product_type]) if isinstance(product_type, tuple) else product_type.__name__
 
         for i, visit, identity in self.config.enumerate_visits():
             # Try to look up the product in the cache first
-            if self.product_cache is not None and product in self.product_cache:
-                if product is tuple and issubclass(product[-1], PfsFiberArray):
+            if self.product_cache is not None and product_type in self.product_cache:
+                if product_type is tuple and issubclass(product_type[-1], PfsFiberArray):
                     # e.g. PfsSingle within PfsCalibrated
-                    if visit in self.product_cache[product[-1]]:
-                        if identity.objId in self.product_cache[product[-1]][visit]:
+                    if visit in self.product_cache[product_type[-1]]:
+                        if identity.objId in self.product_cache[product_type[-1]][visit]:
                             # Product is already in the cache, skip
                             return
-                elif issubclass(product, PfsFiberArray):
+                elif issubclass(product_type, PfsFiberArray):
                     # Data product contains a single object
-                    if visit in self.product_cache[product]:
-                        if identity.objId in self.product_cache[product][visit]:
+                    if visit in self.product_cache[product_type]:
+                        if identity.objId in self.product_cache[product_type][visit]:
                             # Product is already in the cache, skip
                             return
-                elif issubclass(product, PfsFiberArraySet):
+                elif issubclass(product_type, PfsFiberArraySet):
                     # Data product contains multiple objects
-                    if visit in self.product_cache[product]:
+                    if visit in self.product_cache[product_type]:
                         # Product is already in the cache, skip
                         return
                 else:
@@ -356,8 +356,12 @@ class GAPipeline(Pipeline):
             # data products are already copied to the output directory.
             found = False
             for repo in [self.__input_repo, self.__work_repo]:
+                if not repo.has_product(product_type):
+                    logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
+                    continue
+
                 try:
-                    repo.locate_product(product, **identity.__dict__)
+                    repo.locate_product(product_type, **identity.__dict__)
                     found = True
                     break
                 except KeyError:
