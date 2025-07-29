@@ -155,8 +155,14 @@ class RepoScript(PipelineScript, BatchScript, Progress):
         self.__validate_extract_product()
         filenames, identities = self.__get_extract_product_filenames()
 
+        # Wrap the iterator in a progress bar if requested
+        if self.progress is not None and self.progress:
+            # Decrease log-level to WARNING to avoid cluttering the output with debug messages
+            logger.setLevel('WARNING')
+            filenames = self._wrap_in_progressbar(filenames, total=len(filenames))
+
         # Load the products one by one and extract all sub-products
-        for i, fn in enumerate(self._wrap_in_progressbar(filenames)):
+        for i, fn in enumerate(filenames):
             product = self.input_repo.match_container_product_type(os.path.basename(fn))
             subprods = self.input_repo.load_products_from_container(
                 *product,
@@ -184,11 +190,13 @@ class RepoScript(PipelineScript, BatchScript, Progress):
         for i, fn in enumerate(self._wrap_in_progressbar(filenames)):
             command = f'python -m pfs.ga.pipeline.scripts.repo.reposcript extract-product {fn}'
             
-            # Add the filters
+            # Add the repo filters
             for key, filter in self.input_repo.object_filters.__dict__.items():
                 args = filter.render(lower=True)
                 if args is not None:
                     command += f' {args}'
+
+            # TODO: Add other command-line arguments
             
             self._submit_job(command, fn)
 
