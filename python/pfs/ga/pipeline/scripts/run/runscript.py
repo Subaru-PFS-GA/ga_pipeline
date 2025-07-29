@@ -81,14 +81,8 @@ class RunScript(PipelineScript, BatchScript, Progress):
 
         config_files = self.__get_config_files()
 
-        # Wrap the iterator in a progress bar if requested
-        if self.progress is not None and self.progress:
-            # Decrease log-level to WARNING to avoid cluttering the output with debug messages
-            logger.setLevel('WARNING')
-            self._wrap_in_progressbar(config_files, total=len(config_files))
-
         # Submit a job for each config file
-        for i, fn in enumerate(config_files):
+        for i, fn in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
             command = f'python -m pfs.ga.pipeline.scripts.run.runscript --config {fn}'
 
             self._submit_job(command, fn)
@@ -112,7 +106,7 @@ class RunScript(PipelineScript, BatchScript, Progress):
             work_repo = self.work_repo,
             trace = self.__trace)
 
-        for i, config_file in enumerate(self._wrap_in_progressbar(config_files)):
+        for i, config_file in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
             self.__run_pipeline(config_file)
 
             # TODO: Add other command-line arguments

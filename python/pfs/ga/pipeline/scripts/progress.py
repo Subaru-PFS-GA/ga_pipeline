@@ -40,5 +40,12 @@ class Progress():
         self.__top = self.get_arg('top', args, self.__top)
         self.__progress = self.get_arg('progress', args, self.__progress)
 
-    def _wrap_in_progressbar(self, iterable, total=None):
-        return tqdm(iterable, total=total)
+    def _wrap_in_progressbar(self, iterable, total=None, logger=None):
+        # Wrap the iterator in a progress bar if requested
+        if self.progress is not None and self.progress:
+            if logger is not None:
+                # Decrease log-level to WARNING to avoid cluttering the output with debug messages
+                logger.setLevel('WARNING')
+            return tqdm(iterable, total=total)
+        else:
+            return iterable

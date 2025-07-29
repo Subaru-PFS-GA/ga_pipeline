@@ -96,16 +96,10 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Create the iterator that we will loop over to generate the configuration files.
         configs = self.__create_output_configs(identities, obs_params, stellar_params)
-
-        # Wrap the iterator in a progress bar if requested
-        if self.progress is not None and self.progress:
-            # Decrease log-level to WARNING to avoid cluttering the output with debug messages
-            logger.setLevel('WARNING')
-            configs = self._wrap_in_progressbar(configs, total=len(identities))
         
         # Generate the configuration file for each target
         q = 0
-        for objid, config, filename in configs:
+        for objid, config, filename in self._wrap_in_progressbar(configs, total=len(identities), logger=logger):
             self.__save_config_file(objid, config, filename)
 
             q += 1
