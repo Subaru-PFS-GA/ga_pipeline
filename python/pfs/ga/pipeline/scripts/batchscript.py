@@ -48,10 +48,8 @@ srun {command}
 
         # Submit the job to slurm
         if self.dry_run:
-            logger.debug(f'Dry run: sbatch script for {item}.')
+            logger.info(f'Dry run: sbatch script for {item}.')
         else:
-            logger.debug(f'Submitting sbatch script for {item}.')
-
             # Execute the sbatch command and pass in sbatch_script via stdin
             process = subprocess.Popen(
                 ['sbatch'],
@@ -63,3 +61,5 @@ srun {command}
             stdout, stderr = process.communicate(sbatch_script)
             if process.returncode != 0:
                 raise RuntimeError(f'sbatch submission failed: {stderr.strip()}')
+
+            logger.info(f'Submitted sbatch script for {item}.')
