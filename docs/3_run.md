@@ -114,13 +114,13 @@ To generate the configuration files for all objects that match the search filter
 
     $ gapipe-configure --config ./configs/gapipe/run21/single.py --visit $VISITS --catid $CATID --targettype SCIENCE
 
-You can use the `--top` option to limit the number of objects to process. This is useful for testing the configuration script and the pipeline processing steps.
+Specify the `--progress` option to see a progress bar and the number of objects processed so far. You can use the `--top` option to limit the number of objects to process. This is useful for testing the configuration script and the pipeline processing steps.
 
 See the reference section for a complete list of command-line arguments.
 
-## 3.5.1 Specifying the stellar parameters to define priors
+## 3.5.1 Specifying the stellar parameters to define the priors
 
-In order to generate config files with parameter priors that depend on the photometric stellar parameters, known velociities, etc, use the `--stellar-params` and `--obs-params` options to specify the files containing the stellar parameters and observational parameters, respectively. For example:
+In order to generate config files with parameter priors that depend on the photometric stellar parameters, known velocities, etc, use the `--stellar-params` and `--obs-params` options to specify the files containing the stellar parameters and observational parameters, respectively. For example:
 
     $ gapipe-configure --config ./configs/gapipe/run21/single.py --objid $OBJID --visit $VISITS --stellar-params stellar_params.csv --obs-params obs_params.csv
 
