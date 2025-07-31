@@ -11,7 +11,7 @@
 
 # Defaults
 GAPIPE_DEBUG=0                                  # 1 for debugging
-GAPIPE_LOGLEVEL=1                               # log level
+GAPIPE_LOGLEVEL=1                               # Console log level
 GAPIPE_FORCE=0                                  # Force installation
 GAPIPE_DIR="$(realpath "${HOME}")/gapipe"       # Installation directory
 GAPIPE_PACKAGE="SOURCE"                         # Install from source instead of package
@@ -132,9 +132,19 @@ function print_usage() {
 
 function print_summary() {
     conda_dir=$(get_conda_dir)
-    echo "Installation completed successfully."
     echo "Please run the following command to activate the GAPIPE environment:"
     echo "cd ${GAPIPE_DIR}/src/ga_pipeline && source ./bin/init"
+}
+
+function init_logging() {
+    # Initialize log file for the installation commands
+    INSTALL_LOG_DIR="$(join_path "${GAPIPE_DIR}" "logs")"
+    INSTALL_COMMANDS_LOG="$(join_path "${INSTALL_LOG_DIR}" "commands.log")"
+    INSTALL_MESSAGES_LOG="$(join_path "${INSTALL_LOG_DIR}" "install.log")"
+
+    mkdir -p "${INSTALL_LOG_DIR}"
+    echo "# Logging started at $(date)" >> "${INSTALL_COMMANDS_LOG}"
+    echo "# Logging started at $(date)" >> "${INSTALL_MESSAGES_LOG}"
 }
 
 function log_message() {
@@ -146,18 +156,30 @@ function log_message() {
         return
     fi
 
+    dt="$(date '+%Y-%m-%d %H:%M:%S')"
+
+    if [[ -n $INSTALL_MESSAGES_LOG ]]; then
+        case "$level" in
+            4) echo "$dt [DEBG] $message" >> "$INSTALL_MESSAGES_LOG" ;;
+            3) echo "$dt [INFO] $message" >> "$INSTALL_MESSAGES_LOG" ;;
+            2) echo "$dt [WARN] $message" >> "$INSTALL_MESSAGES_LOG" ;;
+            1) echo "$dt [ERRR] $message" >> "$INSTALL_MESSAGES_LOG" ;;
+            *) echo "$message" >> "$INSTALL_MESSAGES_LOG" ;;
+        esac
+    fi
+
     case "$level" in
         4)
-            echo -e "\033[1;34m[DEBG]\033[0m $message"
+            echo -e "$dt \033[1;34m[DEBG]\033[0m $message"
             ;;
         3)
-            echo -e "\033[1;34m[INFO]\033[0m $message"
+            echo -e "$dt \033[1;34m[INFO]\033[0m $message"
             ;;
         2)
-            echo -e "\033[1;33m[WARN]\033[0m $message"
+            echo -e "$dt \033[1;33m[WARN]\033[0m $message"
             ;;
         1)
-            echo -e "\033[1;31m[ERRR]\033[0m $message"
+            echo -e "$dt \033[1;31m[ERRR]\033[0m $message"
             ;;
         *)
             echo "$message"
@@ -180,37 +202,59 @@ function log_error() {
 }
 
 function print_args() {
-    log_info "GAPIPE_DEBUG: $GAPIPE_DEBUG"
-    log_info "GAPIPE_FORCE: $GAPIPE_FORCE"
-    log_info "GAPIPE_LOGLEVEL: $GAPIPE_LOGLEVEL"
-    log_info "GAPIPE_DIR: $GAPIPE_DIR"
-    log_info "GAPIPE_CONDA_DIR: $GAPIPE_CONDA_DIR"
-    log_info "GAPIPE_CONDA_ENV: $GAPIPE_CONDA_ENV"
-    log_info "GAPIPE_CONDA_ENV_FILE: $GAPIPE_CONDA_ENV_FILE"
-    log_info "GAPIPE_PACKAGE: $GAPIPE_PACKAGE"
-    log_info "GAPIPE_LSST: $GAPIPE_LSST"
+    # Loop over all bash variables and print them if their name starts with GAPIPE_
+    log_info "Installation parameters:"
+    for var in $(compgen -v | grep '^GAPIPE_'); do
+        value="${!var}"
+        if [[ -n "$value" ]]; then
+            log_info "  $var: $value"
+        else
+            log_info "  $var: (not set)"
+        fi
+    done
 }
 
 function join_path() {
-    if [[ "$2" = /* ]]; then
-        # If the second path is absolute, return it as is
-        echo "$2"
-    else
-        echo "${1%/}/$2"  # Otherwise, join paths while avoiding duplicate slashes
-    fi
+    local result=""
+    for part in "$@"; do
+        # If part is empty, skip
+        [[ -z "$part" ]] && continue
+        # If part is absolute, reset result
+        if [[ "$part" = /* ]]; then
+            result="$part"
+        else
+            if [[ -z "$result" ]]; then
+                result="$part"
+            else
+                result="${result%/}/$part"
+            fi
+        fi
+    done
+    echo "$result"
 }
 
 function run_cmd() {
     # Run a command and log its output
 
     cmd=$1
+    log_file="$2"
 
     # Log the command into the installation command file
     log_debug "Running command: ${cmd}"
-    echo "${cmd}" >> "${INSTALL_LOG_FILE}"
+    if [[ -n $INSTALL_COMMANDS_LOG ]]; then
+        echo "${cmd}" >> "${INSTALL_COMMANDS_LOG}"
+    fi
     
     # Run the command
-    eval "${cmd}"
+    if [[ -n $log_file ]]; then
+        # If a log file is specified, redirect output to it
+        log_file=$(join_path "${INSTALL_LOG_DIR}" "${log_file}")
+        echo "\$ cd $PWD" >> "$log_file"
+        echo "\$ ${cmd}" >> "$log_file"
+        eval "${cmd}" 2>&1 | tee -a "$log_file"
+    else
+        eval "${cmd}"
+    fi
 }
 
 function download_file() {
@@ -222,7 +266,9 @@ function download_file() {
     target_file="$2"
 
     log_info "Downloading file from ${url} to $(realpath ${target_file})."
-    run_cmd "curl -sOL \"${url}\" -o \"${target_file}\""
+    run_cmd \
+        "curl -sOL \"${url}\" -o \"${target_file}\"" \
+        "download.log"
 }
 
 function ensure_github_ssh() {
@@ -254,7 +300,9 @@ function clone_github_repo() {
     fi
 
     log_info "Cloning repository ${repo_name} from ${url} into ${target_dir}."
-    run_cmd "git clone --quiet --recursive \"${url}\" \"${target_dir}\""
+    run_cmd \
+        "git clone --quiet --recursive \"${url}\" \"${target_dir}\"" \
+        "git_clone_$(basename "$repo_name").log"
 }
 
 function checkout_git_tag() {
@@ -267,7 +315,9 @@ function checkout_git_tag() {
     repo_name=$(basename "$(pwd)")
 
     log_info "Checking out tag ${git_tag} for ${repo_name}"
-    run_cmd "git checkout --quiet \"${git_tag}\""
+    run_cmd \
+        "git checkout --quiet \"${git_tag}\"" \
+        "git_checkout_$(basename "$repo_name").log"
 }
 
 function get_conda_dir() {
@@ -288,13 +338,17 @@ function install_conda() {
     log_info "Conda installation not found. Installing Miniconda into ${conda_dir}."
 
     log_info "Downloading Miniconda3 installer."
-    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "./miniconda.sh"
+    download_file \
+        "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
+        "./miniconda.sh"
     
     log_info "Executing Miniconda3 installer."
-    bash "./miniconda.sh" -b -p "${conda_dir}"
+    run_cmd \
+        "./miniconda.sh" -b -p "${conda_dir}" \
+        "miniconda_install.log"
 
     log_info "Removing Miniconda3 installer."
-    rm "./miniconda.sh"
+    run_cmd "./miniconda.sh"
 }
 
 function is_conda_env() {
@@ -326,7 +380,9 @@ function install_conda_env() {
     env_name="$1"
     env_file="$2"
 
-    run_cmd "conda env create --yes --quiet --name \""${env_name}"\" --file \""${env_file}"\""
+    run_cmd \
+        "conda env create --yes --quiet --name \""${env_name}"\" --file \""${env_file}"\"" \
+        "conda_create_${env_name}.log"
 }
 
 function update_conda_env() {
@@ -337,7 +393,11 @@ function update_conda_env() {
     env_name="$1"
     env_file="$2"
 
-    run_cmd "conda env update --quiet --name \""${env_name}"\" --file \""${env_file}"\""
+    log_info "Updating conda environment ${env_name} from ${env_file}."
+
+    run_cmd \
+        "conda env update --quiet --name \""${env_name}"\" --file \""${env_file}"\"" \
+        "conda_update_${env_name}.log"
 }
 
 function get_lsst_dir() {
@@ -404,11 +464,13 @@ function install_lsst_eups_packages() {
       
     # Install the packages using EUPS by tag
     for package in ${pkgs}; do
-        eups list | grep "${package}" | grep -q "$tag" && {
+        eups list 2> /dev/null | grep "${package}" | grep -q "$tag" && {
             log_info "EUPS package ${package} is already installed. Skipping."
         } || {
             log_info "Installing EUPS package $package $tag"
-            run_cmd "eups distrib install "$package" -t "${tag}" --no-server-tags"
+            run_cmd \
+                "eups distrib install "$package" -t "${tag}" --no-server-tags" \
+                "eups_install.log"
         }
     done
 
@@ -451,7 +513,9 @@ function install_lsst() {
     export SCONSFLAGS="-j $NUMTHREADS"
 
     reset_eups
-    run_cmd "./lsstinstall -T \"${lsst_version}\" -p \"${lsst_conda_dir}\" -e \"${lsst_env}\""
+    run_cmd \
+        "./lsstinstall -T \"${lsst_version}\" -p \"${lsst_conda_dir}\" -e \"${lsst_env}\"" \
+        "lsstinstall.log"
 
     run_cmd "popd > /dev/null"
 
@@ -499,11 +563,13 @@ function install_pfs_eups_packages() {
     # Install the packages using EUPS by version number
     # Here version is the LSST version, e.g. w.2025.23, including dots and not underscores
     for package in ${pkgs}; do
-        eups list | grep "${package}" | grep -q "$version" && {
+        eups list 2> /dev/null | grep "${package}" | grep -q "$version" && {
             log_info "EUPS package ${package} is already installed. Skipping."
         } || {
             log_info "Installing EUPS package $package $version"
-            run_cmd "eups distrib install $package $version"
+            run_cmd \
+                "eups distrib install $package $version" \
+                "eups_install.log"
         }
     done
 
@@ -583,14 +649,14 @@ function install_pfsspec_source() {
 
     # Check out each submodule to the HEAD of the current branch
     log_info "Checking out submodules for pfsspec."
-    run_cmd "bash ./bin/checkout"
+    run_cmd "bash ./bin/checkout" "checkout_pfsspec.log"
 
     # Initialize the pfsspec environment in a new shell in order to generate the symlinks
     log_info "Initializing the pfsspec environment."
 
     # Source the init script into a new shell in order to set up the
     # source code symlinks etc.
-    run_cmd "bash -c \"source ./bin/init\""
+    run_cmd "bash -c \"source ./bin/init\"" "init_pfsspec.log"
     
     log_info "Finished installing pfsspec."
 
@@ -697,7 +763,7 @@ function install_gapipe_source() {
     generate_gapipe_env_file
 
     # Initialize the gapipe environment in a new shell in order to generate the symlinks
-    run_cmd "bash -c \"source ./bin/init\""
+    run_cmd "bash -c \"source ./bin/init\"" "init_gapipe.log"
 
     run_cmd "popd > /dev/null"
     log_info "Finished installing gapipe."
@@ -720,6 +786,21 @@ set -e
 
 print_header
 parse_args "$@"
+
+# Check if the installation directory exists and create if not
+if [[ -d "${GAPIPE_DIR}" ]]; then
+    if [[ $GAPIPE_FORCE -eq 1 ]]; then
+        log_warning "Installation directory ${GAPIPE_DIR} already exists, but --force option is set. Proceeding with installation."
+    else
+        log_error "Installation directory ${GAPIPE_DIR} already exists. Use --force to overwrite."
+        exit 1
+    fi
+else
+    log_info "Creating gapipe directory ${GAPIPE_DIR}."
+    run_cmd "mkdir -p \"${GAPIPE_DIR}\""
+fi
+
+init_logging
 print_args
 
 # Get the path of the currently executing script
@@ -731,6 +812,10 @@ else
     SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 fi
 log_info "Install script directory is ${SCRIPT_DIR}"
+
+# Make sure no other python installations interfere with the installation
+run_cmd "unset PYTHONPATH"
+run_cmd "unset CONDA_DEFAULT_ENV CONDA_EXE CONDA_PREFIX CONDA_PROMPT_MODIFIER CONDA_PYTHON_EXE CONDA_SHLVL"
 
 # Some other setting
 NUMTHREADS=$(($(nproc) / 2))
@@ -746,32 +831,10 @@ if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
     ensure_github_ssh
 fi
 
-# Check if the installation directory exists and create if not
-if [[ -d "${GAPIPE_DIR}" ]]; then
-    if [[ $GAPIPE_FORCE -eq 1 ]]; then
-        log_warning "Installation directory ${GAPIPE_DIR} already exists, but --force option is set. Proceeding with installation."
-    else
-        log_error "Installation directory ${GAPIPE_DIR} already exists. Use --force to overwrite."
-        exit 1
-    fi
-else
-    log_info "Creating gapipe directory ${GAPIPE_DIR}."
-    mkdir -p "${GAPIPE_DIR}"
-fi
-
-# Initialize Log file for the installation commands
-INSTALL_LOG_FILE="$(join_path "${GAPIPE_DIR}" "install.log")"
-echo "# Logging started at $(date)" >> "${INSTALL_LOG_FILE}"
-
-run_cmd "pushd \"$(realpath "${GAPIPE_DIR}")\" > /dev/null"
-
 # Create subdirectories for the installation
+run_cmd "pushd \"$(realpath "${GAPIPE_DIR}")\" > /dev/null"
 run_cmd "mkdir -p ./bin"
 run_cmd "mkdir -p ./data"
-
-# Make sure no other python installations interfere with the installation
-run_cmd "unset PYTHONPATH"
-run_cmd "unset CONDA_DEFAULT_ENV CONDA_EXE CONDA_PREFIX CONDA_PROMPT_MODIFIER CONDA_PYTHON_EXE CONDA_SHLVL"
 
 # If installing on the LSST stack, run the LSST installation, otherwise
 # run the Anaconda installation
@@ -879,6 +942,8 @@ run_cmd "mkdir -p \"${GAPIPE_DIR}/out\""
 # TODO: Check if the installation was successful
 
 run_cmd "popd > /dev/null"
+
+log_info "GAPIPE Installation completed successfully."
 
 # Print the installation summary
 print_summary
