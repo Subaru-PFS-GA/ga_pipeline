@@ -45,8 +45,10 @@ class RunScript(PipelineScript, BatchScript, Progress):
     def prepare(self):
         super().prepare()
 
-        # Override logging directory to use the same as the pipeline workdir
-        self._set_log_file_to_workdir()
+        # Override logging directory to use the same as the pipeline workdir,
+        # unless the log file is set from the command-line.
+        if not self.is_arg('log_file'):
+            self._set_log_file_to_workdir()
 
     def run(self):
         if self.is_batch():
@@ -81,11 +83,20 @@ class RunScript(PipelineScript, BatchScript, Progress):
 
         config_files = self.__get_config_files()
 
-        # Submit a job for each config file
-        for i, fn in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
-            command = f'python -m pfs.ga.pipeline.scripts.run.runscript --config {fn}'
+        logger.info(f'Found {len(config_files)} config files matching the filters. Scheduling for batch submission.')
 
-            self._submit_job(command, fn)
+        # Submit a job for each config file
+        for i, config_file in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
+            item = os.path.splitext(os.path.basename(config_file))[0]
+            log_dir = os.path.dirname(config_file)
+            log_file = os.path.splitext(config_file)[0] + '.log'
+
+            command = f'python -m pfs.ga.pipeline.scripts.run.runscript'
+            command += f' --config {config_file}'
+            command += f' --no-log-to-console'
+            command += f' --log-file {log_file}'
+
+            self._submit_job(command, item, output_dir=log_dir)
 
             if self.top is not None and i >= self.top:
                 logger.info(f'Stop after processing {self.top} objects.')

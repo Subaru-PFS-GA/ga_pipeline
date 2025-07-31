@@ -234,6 +234,9 @@ class Script():
         self.add_arg('--debug', action='store_true', help='Enable debug mode')
         self.add_arg('--profile', action='store_true', help='Enable performance profiler')
         self.add_arg('--log-level', type=str, help='Set log level')
+        self.add_arg('--log-file', type=str, help='Set log file')
+        self.add_arg('--log-to-console', dest='log_to_console', action='store_true', help='Log to console')
+        self.add_arg('--no-log-to-console', dest='log_to_console', action='store_false', help='Do not log to console')
 
     def _init_from_args_pre_logging(self, args):
         """
@@ -258,6 +261,9 @@ class Script():
             
         if self.__debug and self.__log_level > logging.DEBUG:
             self.__log_level = logging.DEBUG
+
+        self.__log_file = self.get_arg('log_file', args, self.__log_file)
+        self.__log_to_console = self.get_arg('log_to_console', args, self.__log_to_console)
 
     def _init_from_args(self, args):
         """
@@ -597,7 +603,10 @@ class Script():
         
         command = self.get_command_name()
         time = self.__timestamp
-        self.__log_file = f'{command}_{time}.log'
+
+        # If the log file is not overridden from the command-line, set it to the default
+        if self.__log_file is None:
+            self.__log_file = f'{command}_{time}.log'
 
     def run(self):
         """

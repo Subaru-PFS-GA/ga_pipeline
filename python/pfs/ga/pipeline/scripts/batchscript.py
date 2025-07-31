@@ -34,12 +34,16 @@ class BatchScript():
         self.__memory = self.get_arg('memory', args, self.__memory)
         self.__time = self.get_arg('time', args, self.__time)
     
-    def _submit_job(self, command, item):
+    def _submit_job(self, command, item, output_dir=None, output_file=None):
+        output_dir = output_dir if output_dir is not None else os.getcwd()
+        output_file = output_file if output_file is not None else r'slurm-%j.out'
+
         sbatch_script = f"""#!/bin/env bash
 #SBATCH --partition {self.__partition}
 #SBATCH --cpus-per-task {self.__cpus}
 #SBATCH --mem {self.__memory}
 #SBATCH --time {self.__time}
+#SBATCH --output={os.path.join(output_dir, output_file)}
 
 set -e
 
