@@ -3,11 +3,11 @@ from unittest import TestCase
 
 from pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo as PfsFileSystemRepo
-from pfs.ga.pipeline.repo import PfsFileSystemConfig
+from pfs.ga.pipeline.repo import GAPipeWorkdirConfig
 from pfs.ga.pipeline.gapipe import GAPipeline, GAPipelineTrace
 from pfs.ga.pipeline.gapipe.config import GAPipelineConfig
 from pfs.ga.pipeline.gapipe.steps import *
-from tests.pipeline.gapipe.config.configs import *
+from pipeline.gapipe.config.configs import *
 
 class TestGAPipeline(TestCase):
     def get_test_config(self):
@@ -24,7 +24,7 @@ class TestGAPipeline(TestCase):
         return config
     
     def get_test_repo(self, config):
-        return PfsFileSystemRepo(PfsFileSystemConfig)
+        return PfsFileSystemRepo(GAPipeWorkdirConfig)
         
     def create_test_pipeline(self, config, repo):
         trace = GAPipelineTrace(config.figdir)
