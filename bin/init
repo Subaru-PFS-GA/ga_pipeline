@@ -84,7 +84,7 @@ GAPIPE_PATH="$PATH"
 # preceed the PYTHONPATH set by conda environment activation. Conda would
 # put it at the end of the PYTHONPATH, which is not what we want.
 GAPIPE_PYTHONPATH="$GAPIPE_PYTHONPATH:$PYTHONPATH"
-unset PYTHONPATH
+unset PYTHONPATH CONDA_PYTHON_EXE CONDA_DEFAULT_ENV
 
 # Set up environment
 echo "Activating conda environment $GAPIPE_CONDAENV"
@@ -126,7 +126,7 @@ function sanitize_path() {
 }
 
 # Create the new PATH and remove duplicates
-export PATH=$(sanitize_path "$GAPIPE_PATH:$PATH")
+export PATH=$(sanitize_path "$PATH:$GAPIPE_PATH")
 
 # Create the new PYTHONPATH with gapipe and pfsspec paths at the front
 # Also remove duplicates
@@ -136,6 +136,7 @@ export PYTHONPATH=$(sanitize_path "$GAPIPE_PYTHONPATH:$PYTHONPATH")
 cat > .env <<EOF
 PATH="$PATH"
 PYTHONPATH="$PYTHONPATH"
+LD_LIBRARY_PATH="$LD_LIBRARYPATH"
 
 DISPLAY="$DISPLAY"
 CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
