@@ -157,8 +157,13 @@ class RepoScript(PipelineScript, BatchScript, Progress):
 
         # Load the products one by one and extract all sub-products
         for i, fn in enumerate(self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):
+            if self.__product is not None:
+                product = self.__product
+            else:
+                product = self.input_repo.match_container_product_type(os.path.basename(fn))
+
             subprods = self.input_repo.load_products_from_container(
-                *self.__product,
+                *product,
                 filename=fn,
                 ignore_missing_files=True)
 
