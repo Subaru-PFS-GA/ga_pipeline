@@ -46,6 +46,7 @@ class Progress():
             if logger is not None:
                 # Decrease log-level to WARNING to avoid cluttering the output with debug messages
                 logger.setLevel('WARNING')
-            return tqdm(iterable, total=total)
+            with tqdm(iterable, total=total) as iterable:
+                return iterable
         else:
             return iterable
