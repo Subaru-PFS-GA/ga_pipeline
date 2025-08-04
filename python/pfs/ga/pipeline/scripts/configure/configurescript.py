@@ -6,6 +6,7 @@ from copy import deepcopy
 from glob import glob
 from types import SimpleNamespace
 from datetime import datetime
+from collections import defaultdict
 import numpy as np
 
 from pfs.datamodel import *
@@ -169,8 +170,11 @@ class ConfigureScript(PipelineScript, Progress):
         return target
 
     def __locate_required_products(self, objid, identity):
-        # self.config is the prototype configuration object that we can use
-        # to get a list of required input files.
+        """
+        Iterate over all objects and check if the required products are available.
+
+        Maintain a list of already located products to avoid too many queries to Butler.
+        """
 
         mask = np.full_like(identity.visit, True, dtype=bool)
 
@@ -192,13 +196,10 @@ class ConfigureScript(PipelineScript, Progress):
                     continue
 
                 for i in range(len(identity.visit)):
+                    id = { k: v[i] for k, v in identity.__dict__.items() }
+
                     try:
-                        fn, _ = repo.locate_product(
-                            product_type,
-                            visit = identity.visit[i],
-                            pfsDesignId = identity.pfsDesignId[i],
-                            catId = identity.catId[i],
-                            objId = identity.objId[i])
+                        fn, _ = repo.locate_product(product_type, **id)
                     except FileNotFoundError:
                         fn = None
 
