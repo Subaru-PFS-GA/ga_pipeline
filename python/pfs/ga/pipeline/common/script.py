@@ -259,11 +259,12 @@ class Script():
             else:
                 raise ValueError(f'Invalid log level `{log_level}`.')
             
-        if self.__debug and self.__log_level > logging.DEBUG:
-            self.__log_level = logging.DEBUG
-
         self.__log_file = self.get_arg('log_file', args, self.__log_file)
         self.__log_to_console = self.get_arg('log_to_console', args, self.__log_to_console)
+
+        if self.__debug and self.__log_level > logging.DEBUG:
+            self.__log_level = logging.DEBUG
+            self.__log_to_console = True
 
     def _init_from_args(self, args):
         """
