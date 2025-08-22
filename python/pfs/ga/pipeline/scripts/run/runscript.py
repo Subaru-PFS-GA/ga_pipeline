@@ -134,7 +134,7 @@ class RunScript(PipelineScript, BatchScript, Progress):
         # Load the configuration
         config = GAPipelineConfig()
         config.load(config_file, ignore_collisions=True)
-        self.__update_directories(config)
+        self._update_directories(config)
 
         # Generate a string ID for the object being processed
         id = str(config.target.identity)
@@ -175,7 +175,7 @@ class RunScript(PipelineScript, BatchScript, Progress):
         self.pop_log_settings()
         self.start_logging()
 
-    def __update_directories(self, config):
+    def _update_directories(self, config):
         """
         Ensure the precedence of the configuration settings
         """

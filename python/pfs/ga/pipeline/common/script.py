@@ -43,6 +43,8 @@ class Script():
             Log to console.
         """
 
+        self.__args = {}
+
         self.__log_level = log_level                # Default log level
         self.__log_to_file = log_to_file            # Log to file
         self.__log_to_console = log_to_console      # Log to console
@@ -561,7 +563,7 @@ class Script():
         self.prepare()
 
         # Start logging and profiler
-        self.start_logging()    
+        self.start_logging()
         self._init_from_args(self.__args)
         self._dump_settings()
         self.__start_profiler()
