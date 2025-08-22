@@ -239,9 +239,11 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Update config with directory names
 
-        # Input data directories
-        config.datadir = self.input_repo.get_resolved_variable('datadir')
-        config.rerundir = self.input_repo.get_resolved_variable('rerundir')
+        # Input data directories; if not set, use the default from the config
+        if 'datadir' in self.input_repo.variables:
+            config.datadir = self.input_repo.get_resolved_variable('datadir')
+        if 'rerundir' in self.input_repo.variables:
+            config.rerundir = self.input_repo.get_resolved_variable('rerundir')
 
         logger.debug(f'Configured data directory for object {identity}: {config.datadir}')
         logger.debug(f'Configured rerun directory for object {identity}: {config.rerundir}')
