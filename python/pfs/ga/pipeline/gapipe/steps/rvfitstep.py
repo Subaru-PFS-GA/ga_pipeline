@@ -294,9 +294,8 @@ class RVFitStep(PipelineStep):
         context.pipeline.rvfit.spec_norm, context.pipeline.rvfit.temp_norm = context.pipeline.rvfit.get_normalization(context.pipeline.rvfit_spectra)
 
         # Run the maximum likelihood fitting
-        context.pipeline.rvfit_results = context.pipeline.rvfit.run_ml(context.pipeline.rvfit_spectra)
-
         # TODO: add MCMC
+        context.pipeline.rvfit_results = context.pipeline.rvfit.run_ml(context.pipeline.rvfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
