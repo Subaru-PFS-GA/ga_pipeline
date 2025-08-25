@@ -46,12 +46,6 @@ where `$VISIT` is the visit ID or a list of visit IDs. You can get the list of v
 
 The `--format path` option specifies that the output should be the file path of the PfsCalibrated file.
 
-Individual objects can be located within container data products -- such as PfsSingle objects within PfsCalibrated files -- by using the `--objid` option:
-
-    $ gapipe-repo find-product PfsCalibrated,PfsSingle --visit $VISIT --objid $OBJID --format path
-
-where `$OBJID` is the object ID in hexadecimal notation, e.g. `0x6000030bf`.
-
 To get the available information on a specific object, you can use the `find-object` command:
 
     $ gapipe-repo find-object --visit $VISIT --objid $OBJID
@@ -132,7 +126,7 @@ The pipeline can be executed on individual object or submitted as a batch job. T
 
 To execute the pipeline on a single object, use the `run` script and pass the path to the configuration file as an argument:
 
-    $ gapipe-run --config /datascope/subaru/user/dobos/gapipe/rerun/run16/20240709/pfsGAObject/10015/00001/1,1/pfsGAObject-10015-00001-1,1-0000000000005d41-007-0x34957c6298e62be0.yaml
+    $ gapipe-run --config $GAPIPE_WORKDIR$/run21_June2025/pfsGAObject/10092/000000020000607f-028-0x53aa1227c7ab7463/pfsGAObject-10092-000000020000607f-028-0x53aa1227c7ab7463.yaml
 
 The `run` script will execute the pipeline on the object specified in the configuration file. The output will be written to the `outdir` directory specified in the configuration file.
 
@@ -150,7 +144,7 @@ See Section 4.2 for a description of these arguments.
 
 # 3.5 Submitting a batch job
 
-
+    $ gapipe-run --catid $CATID --visit $VISITS --batch slurm --partition v100 --cpus 4 --mem 16G --top 100 --progress
 
 # 3.6 Collecting the results
 
