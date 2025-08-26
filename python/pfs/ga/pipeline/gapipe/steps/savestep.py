@@ -1,4 +1,5 @@
 import os
+import numpy as np
 
 import pfs.datamodel
 from pfs.datamodel import *
@@ -13,14 +14,34 @@ class SaveStep(PipelineStep):
         super().__init__(name)
 
     def run(self, context):
+
+        state = context.state
+        merged_spectrum = state.coadd_results.merged_spectrum
+
         # Construct the output object based on the results from the pipeline steps
         # TODO: 
         metadata = {}
-        flux_table = None
+
+        flags = MaskHelper(**{ v: k for k, v in merged_spectrum.mask_flags.items() })
+
+        # Construct the flux table, this is an alternative representation of the spectrum
+        shape = merged_spectrum.wave.shape
+        flux_table = GAFluxTable(
+            merged_spectrum.wave,
+            merged_spectrum.flux,
+            merged_spectrum.flux_err,
+            merged_spectrum.flux_model if merged_spectrum.flux_model is not None else np.zeros(shape),
+            merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape),
+            np.zeros(shape),    # Placeholder for norm_flux,
+            np.zeros(shape),    # Placeholder for norm_error
+            np.zeros(shape),    # Placeholder for norm_model
+            merged_spectrum.mask,
+            flags
+        )
 
         stellar_params = self.__get_stellar_params(context)
         stellar_params_covar = context.pipeline.rvfit_results.cov
-        velocity_corrections = self.__get_velocity_corrections(context.pipeline.coadd_results.spectrum.observations)
+        velocity_corrections = self.__get_velocity_corrections(context.state.coadd_results.merged_spectrum.observations)
         abundances = self.__get_abundances(context)
         abundances_covar = None
         notes = PfsGAObjectNotes()
@@ -28,15 +49,15 @@ class SaveStep(PipelineStep):
         # TODO: where to store the global flags like tempfit_flags?
 
         context.pipeline.pfsGAObject = PfsGAObject(
-            context.pipeline.coadd_results.spectrum.target,
-            context.pipeline.coadd_results.spectrum.observations,
-            context.pipeline.coadd_results.spectrum.wave,
-            context.pipeline.coadd_results.spectrum.flux,
-            context.pipeline.coadd_results.spectrum.mask,
-            context.pipeline.coadd_results.spectrum.sky,
-            context.pipeline.coadd_results.spectrum.covar,
-            context.pipeline.coadd_results.spectrum.covar2,
-            MaskHelper(**{ v: k for k, v in context.pipeline.coadd_results.spectrum.mask_flags.items() }),
+            merged_spectrum.target,
+            merged_spectrum.observations,
+            merged_spectrum.wave,
+            merged_spectrum.flux,
+            merged_spectrum.mask,
+            merged_spectrum.sky,
+            merged_spectrum.covar,
+            merged_spectrum.covar2,
+            flags,
             metadata,
             flux_table,
             stellar_params,
@@ -51,7 +72,7 @@ class SaveStep(PipelineStep):
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
-    def __get_stellar_params(self, context):
+    def __get_stellar_params(self, context, include_snr=True):
         # Extract stellar parameters from rvfit results
 
         # Collect parameters
@@ -81,7 +102,7 @@ class SaveStep(PipelineStep):
         status = []
 
         for p in params_all:
-            method.append('ga1dpipe')
+            method.append('gapipe')
             frame.append('bary')
             param.append(p)
             covarId.append(params_fit.index(p) if p in params_fit else 255)
@@ -113,6 +134,22 @@ class SaveStep(PipelineStep):
             flag.append(f)
             status.append(s)
 
+        if include_snr:
+            for arm in context.state.coadd_results.coadd_spectra:
+                spec = context.state.coadd_results.coadd_spectra[arm][0]
+
+                method.append('gapipe')
+                frame.append('')
+                param.append(f'snr_{arm}')
+                covarId.append(255)
+                unit.append('')
+
+                value.append(spec.snr)
+                value_err.append(0.0)
+
+                flag.append(False)
+                status.append('')
+
         return StellarParams(
             method=np.array(method),
             frame=np.array(frame),
@@ -127,6 +164,13 @@ class SaveStep(PipelineStep):
     
     def __get_velocity_corrections(self, observations):
         # Assume observations are sorted by visit
+
+        # return VelocityCorrections(
+        #     visit=np.array([], dtype=int),
+        #     JD=np.array([], dtype=float),
+        #     helio=np.array([], dtype=float),
+        #     bary=np.array([], dtype=float),
+        # )
 
         # TODO: not obs time data in any of the headers!
         JD = [ 0.0 for v in observations.visit]

@@ -297,6 +297,15 @@ class RVFitStep(PipelineStep):
         # TODO: add MCMC
         context.pipeline.rvfit_results = context.pipeline.rvfit.run_ml(context.pipeline.rvfit_spectra)
 
+        context.pipeline.rvfit_spectra, _ = context.pipeline.rvfit.append_corrections_and_templates(
+            context.pipeline.rvfit_spectra, None,
+            context.pipeline.rvfit_results.rv_fit,
+            context.pipeline.rvfit_results.params_fit,
+            context.pipeline.rvfit_results.a_fit,
+            match='template',
+            apply_correction=False,
+        )
+
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     #endregion

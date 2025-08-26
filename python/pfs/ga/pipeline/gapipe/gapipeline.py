@@ -12,6 +12,8 @@ from ..util import Timer
 from ..common import Script, Pipeline, PipelineStepResults, PipelineError
 from ..repo import GAPipeWorkdirConfig
 from .config import GAPipelineConfig
+from .gapipelinecontext import GAPipelineContext
+from .gapipelinestate import GAPipelineState
 from .gapipelinetrace import GAPipelineTrace
 from .steps import *
 
@@ -69,6 +71,8 @@ class GAPipeline(Pipeline):
     def reset(self):
         super().reset()
 
+        # TODO: these all should go to the state or context object
+
         # TODO: keep this cache around instead when processing multiple objects
         self.product_cache = None           
 
@@ -87,12 +91,6 @@ class GAPipeline(Pipeline):
         self.rvfit_grids = None               # Template grids for RV fitting
         self.rvfit_psfs = None                # PSFs for RV fitting
         self.rvfit_results = None             # Results from RVFit
-
-        self.stacker = None                   # SpectrumStacker object
-
-        self.coadd_arms = None
-        self.coadd_spectra = None             # Spectra used for coaddition
-        self.coadd_results = None             # Results from coaddition
 
     def update(self, script=None, config=None, repo=None, trace=None, id=None):
         super().update(script=script, config=config, trace=trace)
@@ -118,16 +116,29 @@ class GAPipeline(Pipeline):
     #endregion
 
     def create_context(self, state=None, trace=None):    
-        context = SimpleNamespace(
+        context = GAPipelineContext(
             id = self.__id,
             pipeline = self,
             input_repo = self.__input_repo,
             work_repo = self.__work_repo,
             config = self.config,
+            state = state,
             trace = trace
         )
 
         return context
+
+    def create_state(self, pipeline=None, config=None):
+        """
+        Instantiate a state object that will be passed to each step of the pipeline.
+        """
+
+        return GAPipelineState()
+    
+    def destroy_state(self, state):
+        """Clean up the state object after the pipeline execution."""
+
+        del state
 
     def create_steps(self):
         return [

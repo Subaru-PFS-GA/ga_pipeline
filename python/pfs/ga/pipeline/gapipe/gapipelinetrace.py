@@ -120,7 +120,7 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
 
             self.flush_figures()
 
-    def on_coadd_finish_stack(self, spectrum, arms, no_continuum_bit, exclude_bits):
+    def on_coadd_finish_stack(self, coadd_spectra, arms, no_continuum_bit, exclude_bits):
         """
         Fired when the coaddition process finishes.
         
@@ -136,13 +136,33 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         """
 
         if self.plot_coadd_input:
-            self._plot_spectrum('pfsGA-coadd-stack-{id}',
-                                arm=arms,
-                                spectrum=spectrum,
+            self._plot_spectra('pfsGA-coadd-stack-{id}',
+                                coadd_spectra,
                                 plot_flux=True, plot_flux_err=True, plot_mask=True,
                                 mask_bits=no_continuum_bit | exclude_bits,
                                 normalize_cont=False, apply_flux_corr=False,
                                 title='Coadd stacked spectrum - {id}',
+                                diagram_size=(6.5, 3.5))
+
+            self.flush_figures()
+
+    def on_coadd_finish_merged(self, merged_spectrum, arms):
+        """
+        Fired when the coaddition process finishes and the merged spectrum is created.
+        
+        Parameters
+        ----------
+        merged_spectrum : PfsSpectrum
+            The merged spectrum.
+        """
+
+        if self.plot_coadd_input:
+            self._plot_spectrum('pfsGA-coadd-merged-{id}',
+                                arm=arms,
+                                spectrum=merged_spectrum,
+                                plot_flux=True, plot_flux_err=True, plot_mask=True,
+                                normalize_cont=False, apply_flux_corr=False,
+                                title='Coadd merged spectrum - {id}',
                                 diagram_size=(6.5, 3.5))
 
             self.flush_figures()
