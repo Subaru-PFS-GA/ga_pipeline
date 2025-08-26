@@ -162,6 +162,13 @@ BUTLER_CONFIGDIR="$BUTLER_CONFIGDIR"
 BUTLER_COLLECTIONS="$BUTLER_COLLECTIONS"
 EOF
 
+# Configure git filters to strip out notebook outputs
+# It requires a .gitattributes file under each submodule with contents:
+# `nb/**/*.ipynb filter=ipynb_stripout`
+git config --local filter.ipynb_stripout.clean "$(which python) $(git rev-parse --show-toplevel)/bin/ipynb_stripout"
+git config --local filter.ipynb_stripout.smudge cat
+git config --local filter.ipynb_stripout.required true
+
 # Register entrypoint functions
 
 # Search and show information about PFS data products
