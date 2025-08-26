@@ -6,9 +6,3 @@ PipelineStepResults = namedtuple('StepResults', ['success', 'skip_remaining', 's
 class PipelineStep():
     def __init__(self, name=None):
         pass
-
-    def create_context(self, config, pipeline_context):
-        return None
-    
-    def destroy_context(self, config, pipeline_context, step_context):
-        pass
