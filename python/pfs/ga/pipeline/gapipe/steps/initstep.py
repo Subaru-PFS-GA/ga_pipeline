@@ -29,10 +29,10 @@ class InitStep(PipelineStep):
         )
         
         # Initialize the SNR calculator objects
-        context.pipeline.snr = {}
+        context.state.snr = {}
         for arm in context.config.arms:
             snr = SNR_TYPES[context.config.arms[arm]['snr']['type']](**context.config.arms[arm]['snr']['args'])
-            context.pipeline.snr[arm] = snr
+            context.state.snr[arm] = snr
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     

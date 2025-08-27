@@ -17,7 +17,12 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         
         self.__id = id                          # Identity represented as string
         
-        self.plot_exposures = None
+        self.plot_exposures = None              # Plot the input spectra, each exposure separately
+        self.plot_exposures_spec = {}
+        self.plot_rvfit = None                  # Plot the best fit template and residuals after RVFit, each exposure separately
+        self.plot_rvfit_spec = {}
+        self.plot_coadd = None                  # Plot the best fit template and residuals after Coadd
+        self.plot_coadd_spec = {}
 
         super().__init__(figdir=figdir, logdir=logdir,
                          plot_inline=plot_inline, 
@@ -48,9 +53,15 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         super().add_args(parser)
     
     def init_from_args(self, script, args):
+        PipelineTrace.init_from_args(self, script, None, args)
         SpectrumTrace.init_from_args(self, script, None, args)
 
         self.plot_exposures = get_arg('plot_exposures', self.plot_exposures, args)
+        self.plot_exposures_spec = get_arg('plot_exposures_spec', self.plot_exposures_spec, args)
+        self.plot_rvfit = get_arg('plot_rvfit', self.plot_rvfit, args)
+        self.plot_rvfit_spec = get_arg('plot_rvfit_spec', self.plot_rvfit_spec, args)
+        self.plot_coadd = get_arg('plot_coadd', self.plot_coadd, args)
+        self.plot_coadd_spec = get_arg('plot_coadd_spec', self.plot_coadd_spec, args)
 
     def on_load(self, spectra):
         """Fired when the individual exposures are read from the pfsSingle files."""
@@ -58,11 +69,28 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         if self.plot_exposures is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
             or self.plot_exposures:
 
-            self._plot_spectra('pfsGA-exposures-{id}',
-                               spectra,
-                               plot_flux=True, plot_flux_err=True, plot_mask=True,
-                               print_snr=True,
-                               title='Input spectra - {id}',
-                               nrows=2, ncols=1, diagram_size=(6.5, 3.5))
+            for key, config in self.plot_exposures_spec.items():
+                self._plot_spectra(key, spectra, **config)
+                self.flush_figures()
             
-            self.flush_figures()
+    def on_rvfit_finish_fit(self, spectra):
+        # Plot rv_fit and rv_guess and the likelihood function
+        if self.plot_rvfit is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
+            or self.plot_rvfit:
+
+            # Plot the final results based on the configuration settings
+            for key, config in self.plot_rvfit_spec.items():
+                self._plot_spectra(key, spectra, **config)
+                self.flush_figures()
+
+    def on_coadd_finish_coadd(self, spectra):
+        """Fired when the coadding of spectra is finished."""
+
+        # Plot rv_fit and rv_guess and the likelihood function
+        if self.plot_coadd is None and self.plot_level >= Trace.PLOT_LEVEL_INFO \
+            or self.plot_coadd:
+
+            # Plot the final results based on the configuration settings
+            for key, config in self.plot_coadd_spec.items():
+                self._plot_spectra(key, spectra, **config)
+                self.flush_figures()

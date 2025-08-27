@@ -41,15 +41,6 @@ class CoaddConfig(Config):
             'plot_input': None,
             'plot_stack': None,
             'plot_merged': None,
-            'plot_fit_spec': {
-                # Default plots of Coadd results
-                'pfsGA-coadd-best-full-{id}': dict(
-                    plot_flux=True, plot_model=True,
-                    normalize_cont=True),
-                'pfsGA-coadd-residuals-{id}': dict(
-                    plot_residual=True,
-                    normalize_cont=True),
-            },
         }
 
         super().__init__()

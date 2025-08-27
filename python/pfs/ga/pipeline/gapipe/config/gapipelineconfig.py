@@ -19,11 +19,6 @@ class GAPipelineConfig(PipelineConfig):
                  chemfit: ChemfitConfig = ChemfitConfig()):
 
         super().__init__()
-
-        self.trace_args = {
-            'plot_exposures': None,
-            **self.trace_args
-        }
         
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
@@ -199,7 +194,40 @@ class GAPipelineConfig(PipelineConfig):
         self.chemfit = chemfit
         self.run_chemfit = False
 
-        self.trace_args = {}
+        self.trace_args = {
+            'plot_exposures': None,
+            'plot_exposures_spec': {
+                'pfsGA-exposures-full-{id}': dict(
+                    plot_flux=True,
+                    plot_flux_err=True,
+                    plot_mask=True,
+                    print_snr=True,
+                    normalize_cont=True),
+            },
+            'plot_rvfit': None,
+            'plot_rvfit_spec': {
+                # Default plots of RVFit results
+                'pfsGA-tempfit-best-full-{id}': dict(
+                    plot_flux=True, plot_model=True,
+                    normalize_cont=True),
+                'pfsGA-tempfit-residuals-{id}': dict(
+                    plot_flux=False, plot_model=False,
+                    plot_residual=True,
+                    normalize_cont=True),
+            },
+            'plot_coadd': None,
+            'plot_coadd_spec': {
+                # Default plots of Coadd results
+                'pfsGA-coadd-best-full-{id}': dict(
+                    plot_flux=True, plot_model=True,
+                    normalize_cont=True),
+                'pfsGA-coadd-residuals-{id}': dict(
+                    plot_flux=False, plot_model=False,
+                    plot_residual=True,
+                    normalize_cont=True),
+            },
+            **self.trace_args
+        }
 
     def enumerate_visits(self):
         """

@@ -110,16 +110,6 @@ class RVFitConfig(Config):
         }
 
         # RVFIT trace args - these control plotting, etc.
-        self.trace_args = {
-            'plot_fit_spec': {
-                # Default plots of RVFit results
-                'pfsGA-tempfit-best-full-{id}': dict(
-                    plot_flux=True, plot_model=True,
-                    normalize_cont=True),
-                'pfsGA-tempfit-residuals-{id}': dict(
-                    plot_residual=True,
-                    normalize_cont=True),
-            },
-        }
+        self.trace_args = { }
 
         super().__init__()

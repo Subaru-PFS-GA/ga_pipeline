@@ -50,6 +50,9 @@ class CoaddStep(PipelineStep):
             coadd_spectra = coadd_spectra,
             merged_spectrum = merged_spectrum,
         )
+
+        if context.trace is not None:
+            context.trace.on_coadd_finish_coadd(coadd_spectra)
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
@@ -75,6 +78,7 @@ class CoaddStep(PipelineStep):
         for arm in context.state.coadd_arms:
             if arm in input_spectra:
                 stackers[arm] = self.__init_stacker(context,
+                                                    arm,
                                                     no_data_bit=no_data_bit,
                                                     exclude_bits=exclude_bits)
 
@@ -102,12 +106,6 @@ class CoaddStep(PipelineStep):
             match='template',
             apply_correction=True,
         )
-
-        # Calculate the signal to noise in each arm
-        for arm in stacked_spectra:
-            for spec in stacked_spectra[arm]:
-                mask_bits = spec.get_mask_bits(context.config.arms[arm]['snr']['mask_flags'])
-                spec.calculate_snr(context.pipeline.snr[arm], mask_bits=mask_bits)
 
         # TODO: call the trace hook at this point but from the stacker class
 
@@ -183,7 +181,7 @@ class CoaddStep(PipelineStep):
 
                     return no_data_bit, no_continuum_bit, exclude_bits, mask_flags
 
-    def __init_stacker_trace(self, context):
+    def __init_stacker_trace(self, context, arm=None):
         """
         Initialize the trace object if tracing is enabled for the pipeline
         """
@@ -191,7 +189,11 @@ class CoaddStep(PipelineStep):
         if context.trace is not None:
             trace = SpectrumStackerTrace(id=context.id)
             trace.init_from_args(None, None, context.config.coadd.trace_args)
-            trace.update(figdir=context.trace.figdir, logdir=context.trace.logdir, id=context.id)
+            if arm is not None:
+                id = f'{context.id}-{arm}'
+            else:
+                id = context.id
+            trace.update(figdir=context.trace.figdir, logdir=context.trace.logdir, id=id)
 
             # Set the figure output file format
             trace.figure_formats = context.trace.figure_formats
@@ -200,14 +202,18 @@ class CoaddStep(PipelineStep):
 
         return trace
     
-    def __init_stacker(self, context,
+    def __init_stacker(self,
+                       context,
+                       arm,
                        no_data_bit=1,
                        exclude_bits=0):
 
         # Initialize the stacker object
-        trace = self.__init_stacker_trace(context)
+        trace = self.__init_stacker_trace(context, arm)
         stacker = SpectrumStacker(trace)
         stacker.spectrum_type = PfsStellarSpectrum
+        stacker.snr = context.state.snr[arm]
+        stacker.snr_mask_flags = context.config.arms[arm]['snr']['mask_flags']
         stacker.mask_no_data_bit = no_data_bit
         stacker.mask_exclude_bits = exclude_bits
         stacker.init_from_args(None, None, context.config.coadd.stacker_args)

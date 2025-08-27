@@ -79,7 +79,7 @@ class RVFitStep(PipelineStep):
         for arm in spectra:
             for visit, spec in spectra[arm].items():
                 mask_bits = spec.get_mask_bits(context.config.arms[arm]['snr']['mask_flags'])
-                spec.calculate_snr(context.pipeline.snr[arm], mask_bits=mask_bits)
+                spec.calculate_snr(context.state.snr[arm], mask_bits=mask_bits)
         
         # Collect spectra in a format that can be passed to RVFit, i.e
         # handle missing spectra, fully masked spectra, etc.
@@ -305,6 +305,9 @@ class RVFitStep(PipelineStep):
             match='template',
             apply_correction=False,
         )
+
+        if context.trace is not None:
+            context.trace.on_rvfit_finish_fit(context.pipeline.rvfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
