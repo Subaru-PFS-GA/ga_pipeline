@@ -11,16 +11,17 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
                  figdir='.',
                  logdir='.',
                  plot_inline=False, 
-                 plot_level=Trace.PLOT_LEVEL_NONE, 
-                 log_level=Trace.LOG_LEVEL_NONE,
+                 plot_level=Trace.PLOT_LEVEL_INFO, 
+                 log_level=Trace.LOG_LEVEL_INFO,
                  id=None):
         
         self.__id = id                          # Identity represented as string
         
-        self.plot_exposures = True
-        self.plot_flux_correction = True
-
-        self.plot_coadd_input = True
+        self.plot_exposures = None
+        self.plot_coadd_flux_correction = None
+        self.plot_coadd_input = None
+        self.plot_coadd_stack = None
+        self.plot_coadd_merged = None
 
         super().__init__(figdir=figdir, logdir=logdir,
                          plot_inline=plot_inline, 
@@ -53,12 +54,18 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
     def init_from_args(self, script, args):
         SpectrumTrace.init_from_args(self, script, None, args)
 
-        self.plot_flux_correction = get_arg('plot_flux_correction', self.plot_flux_correction, args)
+        self.plot_exposures = get_arg('plot_exposures', self.plot_exposures, args)
+        self.plot_coadd_flux_correction = get_arg('plot_coadd_flux_correction', self.plot_coadd_flux_correction, args)
+        self.plot_coadd_input = get_arg('plot_coadd_input', self.plot_coadd_input, args)
+        self.plot_coadd_stack = get_arg('plot_coadd_stack', self.plot_coadd_stack, args)
+        self.plot_coadd_merged = get_arg('plot_coadd_merged', self.plot_coadd_merged, args)
 
     def on_load(self, spectra):
         """Fired when the individual exposures are read from the pfsSingle files."""
 
-        if self.plot_exposures:
+        if self.plot_exposures is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
+            or self.plot_exposures:
+
             self._plot_spectra('pfsGA-exposures-{id}',
                                spectra,
                                plot_flux=True, plot_flux_err=True, plot_mask=True,
@@ -76,7 +83,8 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
     def on_coadd_eval_correction(self, spectra, templates, corrections, correction_masks, spec_norm, temp_norm):
         """Fired when the flux correction is evaluated."""
 
-        if self.plot_flux_correction or self.plot_level >= Trace.PLOT_LEVEL_DEBUG:
+        if self.plot_coadd_flux_correction is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
+            or self.plot_coadd_flux_correction:
 
             style = styles.thin_line()
             style['alpha'] = 0.25
@@ -109,7 +117,9 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
             The list of bit masks to exclude from coadding.
         """
 
-        if self.plot_coadd_input:
+        if self.plot_coadd_input is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
+            or self.plot_coadd_input:
+
             self._plot_spectra('pfsGA-coadd-input-{id}',
                                spectra,
                                plot_flux=True, plot_flux_err=True, plot_mask=True,
@@ -135,7 +145,16 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
             The list of bit masks to exclude from coadding.
         """
 
-        if self.plot_coadd_input:
+        if self.plot_coadd_input is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
+            or self.plot_coadd_input:
+
+            # TODO: plot each exposure that goes into coadd
+            pass
+
+
+        if self.plot_coadd_stack is None and self.plot_level >= Trace.PLOT_LEVEL_INFO \
+            or self.plot_coadd_stack:
+
             self._plot_spectra('pfsGA-coadd-stack-{id}',
                                 coadd_spectra,
                                 plot_flux=True, plot_flux_err=True, plot_mask=True,
@@ -156,7 +175,9 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
             The merged spectrum.
         """
 
-        if self.plot_coadd_input:
+        if self.plot_coadd_merged is None and self.plot_level >= Trace.PLOT_LEVEL_INFO \
+            or self.plot_coadd_merged:
+
             self._plot_spectrum('pfsGA-coadd-merged-{id}',
                                 arm=arms,
                                 spectrum=merged_spectrum,

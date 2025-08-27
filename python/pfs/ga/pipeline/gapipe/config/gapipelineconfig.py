@@ -17,6 +17,13 @@ class GAPipelineConfig(PipelineConfig):
                  rvfit: RVFitConfig = RVFitConfig(),
                  coadd: CoaddConfig = CoaddConfig(),
                  chemfit: ChemfitConfig = ChemfitConfig()):
+
+        super().__init__()
+
+        self.trace_args = {
+            'plot_exposures': None,
+            **self.trace_args
+        }
         
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
@@ -191,8 +198,8 @@ class GAPipelineConfig(PipelineConfig):
 
         self.chemfit = chemfit
         self.run_chemfit = False
-        
-        super().__init__()
+
+        self.trace_args = {}
 
     def enumerate_visits(self):
         """

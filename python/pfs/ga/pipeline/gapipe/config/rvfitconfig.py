@@ -110,12 +110,7 @@ class RVFitConfig(Config):
         }
 
         # RVFIT trace args - these control plotting, etc.
-        # TODO: change these to False by default
         self.trace_args = {
-            'plot_priors': True,
-            'plot_rv_guess': True,
-            'plot_rv_fit': True,
-            'plot_input_spec': True,
             'plot_fit_spec': {
                 # Default plots of RVFit results
                 'pfsGA-tempfit-best-full-{id}': dict(
@@ -125,8 +120,6 @@ class RVFitConfig(Config):
                     plot_residual=True,
                     normalize_cont=True),
             },
-            'plot_params_priors': True,
-            'plot_params_cov': True
         }
 
         super().__init__()

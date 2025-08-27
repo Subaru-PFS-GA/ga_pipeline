@@ -37,7 +37,10 @@ class CoaddConfig(Config):
         }
 
         self.trace_args = {
-            
+            'plot_coadd_flux_correction': None,
+            'plot_coadd_input': None,
+            'plot_coadd_stack': None,
+            'plot_coadd_merged': None,
         }
 
         super().__init__()
