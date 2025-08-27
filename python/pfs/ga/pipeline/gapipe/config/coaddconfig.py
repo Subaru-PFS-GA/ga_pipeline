@@ -37,10 +37,19 @@ class CoaddConfig(Config):
         }
 
         self.trace_args = {
-            'plot_coadd_flux_correction': None,
-            'plot_coadd_input': None,
-            'plot_coadd_stack': None,
-            'plot_coadd_merged': None,
+            'plot_level': 1,
+            'plot_input': None,
+            'plot_stack': None,
+            'plot_merged': None,
+            'plot_fit_spec': {
+                # Default plots of Coadd results
+                'pfsGA-coadd-best-full-{id}': dict(
+                    plot_flux=True, plot_model=True,
+                    normalize_cont=True),
+                'pfsGA-coadd-residuals-{id}': dict(
+                    plot_residual=True,
+                    normalize_cont=True),
+            },
         }
 
         super().__init__()

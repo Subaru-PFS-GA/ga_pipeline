@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
-from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace, SpectrumMerger
+from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
@@ -50,11 +50,6 @@ class CoaddStep(PipelineStep):
             coadd_spectra = coadd_spectra,
             merged_spectrum = merged_spectrum,
         )
-
-        # Call the trace hooks
-        if context.trace is not None:
-            context.trace.on_coadd_finish_stack(coadd_spectra, context.config.coadd.coadd_arms, no_continuum_bit, exclude_bits)
-            context.trace.on_coadd_finish_merged(merged_spectrum, context.config.coadd.coadd_arms)
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
@@ -66,13 +61,13 @@ class CoaddStep(PipelineStep):
         self.__add_extra_mask_flags(input_spectra, context.config.coadd.extra_mask_flags)
         no_data_bit, no_continuum_bit, exclude_bits, mask_flags = self.__get_mask_flags(context, input_spectra)
 
-        # Call the trace hook to plot the input spectra
-        if context.trace is not None:
-            context.trace.on_coadd_start_stack(
-                { arm: [ s for s in input_spectra[arm] if s is not None ] for arm in input_spectra },
-                no_continuum_bit, exclude_bits)
-
         return input_spectra, no_data_bit, no_continuum_bit, exclude_bits, mask_flags
+
+    def __add_extra_mask_flags(self, spectra, flags):
+        for arm in spectra:
+            for s in spectra[arm]:
+                if s is not None:
+                    s.mask_flags.update(flags)
 
     def __stack_spectra(self, context, input_spectra, no_data_bit, no_continuum_bit, exclude_bits):
         # Initialize the stacker algorithm for each arm separately
@@ -90,15 +85,9 @@ class CoaddStep(PipelineStep):
         stacked_spectra = {}
         for arm, stacker in stackers.items():
             spec = stacker.stack([s for s in input_spectra[arm] if s is not None])
-
-            # TODO: sky? covar? covar2? - these are required for a valid PfsFiberArray
-            # TODO: these should go into the stacker class
-            spec.sky = np.zeros(spec.wave.shape)
-            spec.covar = np.zeros((3,) + spec.wave.shape)
-            spec.covar[1, :] = spec.flux_err**2
-            spec.covar2 = np.zeros((1, 1), dtype=np.float32)
-
             stacked_spectra[arm] = [spec]
+
+        # TODO: move everything below to the stacker class
 
         # Evaluate the best fit model, continuum, etc that might be interesting
         rvfit = context.pipeline.rvfit
@@ -119,6 +108,8 @@ class CoaddStep(PipelineStep):
             for spec in stacked_spectra[arm]:
                 mask_bits = spec.get_mask_bits(context.config.arms[arm]['snr']['mask_flags'])
                 spec.calculate_snr(context.pipeline.snr[arm], mask_bits=mask_bits)
+
+        # TODO: call the trace hook at this point but from the stacker class
 
         return stacked_spectra
 
@@ -167,12 +158,6 @@ class CoaddStep(PipelineStep):
         merged_spectrum.observations = merge_observations(all_observations)
         append_target(merged_spectrum, target)
     
-    def __add_extra_mask_flags(self, spectra, flags):
-        for arm in spectra:
-            for s in spectra[arm]:
-                if s is not None:
-                    s.mask_flags.update(flags)
-    
     def __get_mask_flags(self, context, spectra):
         """
         Return mask bits and mask flags which are supposed to be valid for all spectra.
@@ -197,10 +182,8 @@ class CoaddStep(PipelineStep):
                     exclude_bits = s.get_mask_bits(context.config.coadd.mask_flags_exclude)
 
                     return no_data_bit, no_continuum_bit, exclude_bits, mask_flags
-    
-    def __init_stacker(self, context,
-                             no_data_bit=1,
-                             exclude_bits=0):
+
+    def __init_stacker_trace(self, context):
         """
         Initialize the trace object if tracing is enabled for the pipeline
         """
@@ -208,17 +191,21 @@ class CoaddStep(PipelineStep):
         if context.trace is not None:
             trace = SpectrumStackerTrace(id=context.id)
             trace.init_from_args(None, None, context.config.coadd.trace_args)
-
-            # Set output directories based on pipeline trace
-            trace.figdir = context.trace.figdir
-            trace.logdir = context.trace.logdir
+            trace.update(figdir=context.trace.figdir, logdir=context.trace.logdir, id=context.id)
 
             # Set the figure output file format
             trace.figure_formats = context.trace.figure_formats
         else:
             trace = None
 
+        return trace
+    
+    def __init_stacker(self, context,
+                       no_data_bit=1,
+                       exclude_bits=0):
+
         # Initialize the stacker object
+        trace = self.__init_stacker_trace(context)
         stacker = SpectrumStacker(trace)
         stacker.spectrum_type = PfsStellarSpectrum
         stacker.mask_no_data_bit = no_data_bit
@@ -227,27 +214,19 @@ class CoaddStep(PipelineStep):
 
         return stacker
 
-    def __init_merger(self, context):
-    
-        # TODO: expand this similar to __init_stacker
+    def __init_merger(self, context,
+                       no_data_bit=1,
+                       exclude_bits=0):
 
-        merger = SpectrumMerger()
-        merger.spectrum_type = PfsStellarSpectrum
+        # Initialize the stacker object
+        trace = self.__init_stacker_trace(context)
+        stacker = SpectrumStacker(trace)
+        stacker.spectrum_type = PfsStellarSpectrum
+        stacker.mask_no_data_bit = no_data_bit
+        stacker.mask_exclude_bits = exclude_bits
+        stacker.init_from_args(None, None, context.config.coadd.stacker_args)
 
-        return merger
-
-    def __get_templates(self, context, spectra):
-        # Return the templates at the best fit parameters
-
-        # Interpolate the templates to the best fit parameters
-        templates, missing = context.pipeline.rvfit.get_templates(
-            spectra,
-            context.pipeline.rvfit_results.params_fit)
-        
-        if context.trace is not None:
-            context.trace.on_coadd_get_templates(spectra, templates)
-
-        return templates
+        return stacker
     
     #endregion
     #region Cleanup
