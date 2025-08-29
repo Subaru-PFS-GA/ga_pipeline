@@ -17,6 +17,8 @@ from .pipelinestep import PipelineStep, PipelineStepResults
 from .setup_logger import logger
 
 class Pipeline():
+    # TODO: make pipeline stateless by moving config and trace to the context
+
     def __init__(self, /,
                  script: Script = None,
                  config: PipelineConfig = None,

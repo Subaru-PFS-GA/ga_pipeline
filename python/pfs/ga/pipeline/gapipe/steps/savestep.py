@@ -47,6 +47,7 @@ class SaveStep(PipelineStep):
         notes = PfsGAObjectNotes()
 
         # TODO: where to store the global flags like tempfit_flags?
+        #       these are available in rvfit_results.flags
 
         context.pipeline.pfsGAObject = PfsGAObject(
             merged_spectrum.target,
