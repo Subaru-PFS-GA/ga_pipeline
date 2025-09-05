@@ -7,8 +7,9 @@ try:
 except ModuleNotFoundError:
     debugpy = None
 
+from pfs.ga.common.scripts import Script
+
 from ..util import Timer
-from .script import Script
 from .pipelineerror import PipelineError
 from .pipelineconfig import PipelineConfig
 from .pipelinetrace import PipelineTrace

@@ -1,6 +1,6 @@
 import logging
 
-from .config import Config
+from pfs.ga.common.config import Config
 
 class PipelineConfig(Config):
     def __init__(self):

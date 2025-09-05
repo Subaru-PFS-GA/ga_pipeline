@@ -3,12 +3,14 @@ from types import SimpleNamespace
 import pandas as pd
 from copy import deepcopy
 
+from pfs.ga.common.scripts import Script
+from pfs.ga.common.config import ConfigJSONEncoder
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
 from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo
 from ..gapipe.config import *
 from ..repo import GAPipeWorkdirConfig, PfsGen3ButlerConfig
-from ..common import Script, PipelineError, ConfigJSONEncoder
+from ..common import PipelineError
 
 from ..setup_logger import logger
 
@@ -88,6 +90,20 @@ class PipelineScript(Script):
         self._init_work_repo()
 
         super()._init_from_args(args)
+
+    def get_command_name(self):
+        """
+        Returns the command name based on the script class name.
+
+        Returns
+        -------
+        str
+            Command name.
+        """
+
+        name = self.__class__.__name__.lower()
+        name = name.replace('script', '')
+        return f'gapipe-{name}'
 
     def _create_config(self):
         return GAPipelineConfig()

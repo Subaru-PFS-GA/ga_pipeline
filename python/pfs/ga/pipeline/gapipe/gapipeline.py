@@ -3,13 +3,14 @@ from types import SimpleNamespace
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
+from pfs.ga.common.scripts import Script
 from pfs.ga.pfsspec.survey.repo import Repo, FileSystemRepo
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.io import PfsSpectrumReader
 
 from ..constants import Constants
 from ..util import Timer
-from ..common import Script, Pipeline, PipelineStepResults, PipelineError
+from ..common import Pipeline, PipelineStepResults, PipelineError
 from ..repo import GAPipeWorkdirConfig
 from .config import GAPipelineConfig
 from .gapipelinecontext import GAPipelineContext

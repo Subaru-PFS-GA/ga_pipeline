@@ -1,4 +1,4 @@
-from ...common.config import Config
+from pfs.ga.common.config import Config
 
 class GAObjectObservationsConfig(Config):
     """
