@@ -12,13 +12,14 @@ import numpy as np
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 
+from pfs.ga.common.scripts import Progress
+
 from ..pipelinescript import PipelineScript
-from ..progress import Progress
 from ...gapipe.config import *
 
 from ...setup_logger import logger
 
-class ConfigureScript(PipelineScript, Progress):
+class ConfigureScript(PipelineScript):
     """
     Generate the job configuration file for a set of observations.
 

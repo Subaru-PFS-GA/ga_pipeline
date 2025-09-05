@@ -3,15 +3,15 @@
 import os
 import logging
 
+from pfs.ga.common.scripts import Batch, Progress
+
 from ...gapipe import GAPipeline, GAPipelineTrace
 from ..pipelinescript import PipelineScript
-from ..progress import Progress
-from ..batchscript import BatchScript
 from ...gapipe.config import *
 
 from ...setup_logger import logger
 
-class RunScript(PipelineScript, BatchScript, Progress):
+class RunScript(PipelineScript, Batch, Progress):
     """
     Runs the pipeline from a configuration file. The configuration file is either
     passed to it as a parameter, or the script can look it up by the indentity
@@ -33,14 +33,14 @@ class RunScript(PipelineScript, BatchScript, Progress):
 
         PipelineScript._add_args(self)
         Progress._add_args(self)
-        BatchScript._add_args(self)
+        Batch._add_args(self)
 
     def _init_from_args(self, args):
         self.__config_files = self.get_arg('config', args, self.__config_files)
 
         PipelineScript._init_from_args(self, args)
         Progress._init_from_args(self, args)
-        BatchScript._init_from_args(self, args)
+        Batch._init_from_args(self, args)
 
     def prepare(self):
         super().prepare()

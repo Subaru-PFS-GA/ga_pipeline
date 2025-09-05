@@ -9,17 +9,15 @@ import pandas as pd
 import commentjson as json
 
 from pfs.ga.common.config import ConfigJSONEncoder
-from pfs.ga.common.scripts import Script
+from pfs.ga.common.scripts import Batch, Progress
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
 from ..pipelinescript import PipelineScript
-from ..progress import Progress
-from ..batchscript import BatchScript
 from ...common import PipelineError
 
 from ...setup_logger import logger
 
-class RepoScript(PipelineScript, BatchScript, Progress):
+class RepoScript(PipelineScript, Batch, Progress):
     """
     Search PFS repo for data files and print useful information about them.
 
@@ -73,7 +71,7 @@ class RepoScript(PipelineScript, BatchScript, Progress):
 
         PipelineScript._add_args(self)
         Progress._add_args(self)
-        BatchScript._add_args(self)
+        Batch._add_args(self)
 
     def _init_from_args(self, args):
         self.__command = self.get_arg('command')
@@ -90,7 +88,7 @@ class RepoScript(PipelineScript, BatchScript, Progress):
 
         PipelineScript._init_from_args(self, args)
         Progress._init_from_args(self, args)
-        BatchScript._init_from_args(self, args)
+        Batch._init_from_args(self, args)
 
     def prepare(self):
         return PipelineScript.prepare(self)
