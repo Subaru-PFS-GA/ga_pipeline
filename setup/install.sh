@@ -41,6 +41,8 @@ LSST_BUTLER_COLLECTIONS="${PFS_CONFIGDIR}:${PFS_RERUNDIR}"
 # up-to-date version of GA extensions yet.
 DATAMODEL_GITHUB="Subaru-PFS/datamodel"
 DATAMODEL_GIT_TAG="tickets/DAMD-162"
+GACOMMON_GITHUB="Subaru-PFS-GA/ga_common"
+GACOMMON_GIT_TAG="master"
 PFSSPEC_GITHUB="Subaru-PFS-GA/ga_pfsspec_all"
 PFSSPEC_GIT_TAG="master"
 GAPIPE_GITHUB="Subaru-PFS-GA/ga_pipeline"
@@ -597,6 +599,27 @@ function install_datamodel_source() {
     run_cmd "popd > /dev/null"
 }
 
+function install_gacommon_source() {
+    # Clone and check out the ga_common repository
+    # Assume already in the src directory
+
+    log_info "Installing and configuring ga_common from source."
+
+    # If the ga_common directory doesn't exist, clone the repository
+    if [[ ! -d "ga_common" ]]; then
+        clone_github_repo "${GACOMMON_GITHUB}" ga_common 1
+    else
+        log_info "ga_common repository already exists. Skipping cloning."
+    fi
+    
+    run_cmd "pushd ga_common > /dev/null"
+    checkout_git_tag "${GACOMMON_GIT_TAG}"
+
+    log_info "Finished installing ga_common."
+
+    run_cmd "popd > /dev/null"
+}
+
 function install_pfsspec_conda() {
     echo "Installing pfsspec as a conda package is not implemented yet." >/dev/stderr
     exit -2
@@ -739,6 +762,7 @@ export PFSSPEC_PFS_CONFIGDIR="${PFS_DATADIR}/${PFS_CONFIGDIR}"
 # Format: <module_name>:<path_to_source>:<rel_path_to_module>
 export GAPIPE_MODULES=\\
 "datamodel:${GAPIPE_DIR}/src/datamodel:python
+ga_common:${GAPIPE_DIR}/src/ga_common:python
 ga_pfsspec:${GAPIPE_DIR}/src/ga_pfsspec_all:python"
 EOF
 }
@@ -918,6 +942,7 @@ if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
 
     # Clone and configure the repositories
     install_datamodel_source
+    install_gacommon_source
     install_pfsspec_source
     install_chemfit_source
     install_gapipe_source
