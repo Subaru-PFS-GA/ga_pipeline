@@ -2,7 +2,7 @@
 
 # This script is used to install the PFS GA Pipeline software stack.
 # Example usage:
-#   ./setup/install.sh --debug -d /path/to/install/dir --conda
+#   ./setup/install.sh --debug -d /path/to/install/dir --source
 
 # TODO: allow installing gapipe as package (conda and/or eups)
 # TODO: write generated files into the log
@@ -322,7 +322,9 @@ function git_clone() {
         "git clone --recursive \"${url}\" \"${target_dir}\"" \
         "git_clone_$(basename "$repo_name").log"
 
+    run_cmd "pushd \"${target_dir}\" > /dev/null"
     run_cmd "git config pull.ff only"
+    run_cmd "popd > /dev/null"
 }
 
 function git_checkout() {
