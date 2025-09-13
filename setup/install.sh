@@ -11,6 +11,7 @@
 
 # Defaults
 GAPIPE_DEBUG=0                                  # 1 for debugging
+GAPIPE_UPGRADE=0                                # 1 for upgrading an existing installation
 GAPIPE_LOGLEVEL=1                               # Console log level
 GAPIPE_FORCE=0                                  # Force installation
 GAPIPE_DIR="$(realpath "${HOME}")/gapipe"       # Installation directory
@@ -66,6 +67,10 @@ function parse_args() {
         --debug)
             GAPIPE_DEBUG=1
             GAPIPE_LOGLEVEL=4
+            shift
+            ;;
+        --upgrade)
+            GAPIPE_UPGRADE=1
             shift
             ;;
         -f|--force)
@@ -247,16 +252,27 @@ function run_cmd() {
         echo "${cmd}" >> "${INSTALL_COMMANDS_LOG}"
     fi
     
-    # Run the command
+    # If a log file is specified, redirect output into it
     if [[ -n $log_file ]]; then
-        # If a log file is specified, redirect output to it
         log_file=$(join_path "${INSTALL_LOG_DIR}" "${log_file}")
         echo "\$ cd $PWD" >> "$log_file"
         echo "\$ ${cmd}" >> "$log_file"
-        eval "${cmd}" 2>&1 | tee -a "$log_file"
-    else
-        eval "${cmd}"
+
+        cmd=""${cmd}" 2>&1 | tee -a \"$log_file\""
     fi
+    
+    # Temporarily disable exit on error to capture the exit status
+    set +e
+    eval "${cmd}"
+    local status=$?
+    set -e
+
+    # Log and error message if the status in non-zero
+    # if [[ $status -ne 0 ]]; then
+    #     log_error "Command failed with exit status $status: ${cmd}"
+    # fi
+
+    return $status
 }
 
 function download_file() {
@@ -284,7 +300,7 @@ function ensure_github_ssh() {
     }
 }
 
-function clone_github_repo() {
+function git_clone() {
     # Clone the GitHub repository
 
     # $1: repository name
@@ -303,11 +319,13 @@ function clone_github_repo() {
 
     log_info "Cloning repository ${repo_name} from ${url} into ${target_dir}."
     run_cmd \
-        "git clone --quiet --recursive \"${url}\" \"${target_dir}\"" \
+        "git clone --recursive \"${url}\" \"${target_dir}\"" \
         "git_clone_$(basename "$repo_name").log"
+
+    run_cmd "git config pull.ff only"
 }
 
-function checkout_git_tag() {
+function git_checkout() {
     # Check out the specified git tag
     # Assume the git repo is the current working directory
 
@@ -318,8 +336,90 @@ function checkout_git_tag() {
 
     log_info "Checking out tag ${git_tag} for ${repo_name}"
     run_cmd \
-        "git checkout --quiet \"${git_tag}\"" \
+        "git checkout \"${git_tag}\"" \
         "git_checkout_$(basename "$repo_name").log"
+}
+
+function git_fetch() {
+    # Fetch the latest changes from the remote repository
+    # Assume the git repo is the current working directory
+
+    repo_name=$(basename "$(pwd)")
+
+    log_info "Fetching latest changes for ${repo_name}"
+    run_cmd \
+        "git fetch" \
+        "git_fetch_$(basename "$repo_name").log"
+}
+
+function git_pull() {
+    # Pull the latest changes from the remote repository
+    # Assume the git repo is the current working directory
+
+    repo_name=$(basename "$(pwd)")
+
+    log_info "Pulling latest changes for ${repo_name}"
+    run_cmd "git config pull.ff only"
+    run_cmd \
+        "git pull" \
+        "git_pull_$(basename "$repo_name").log"
+}
+
+function git_reset() {
+    # Reset the current branch to the latest commit from origin
+    # Assume the git repo is the current working directory
+
+    branch_name="$1"
+    repo_name=$(basename "$(pwd)")
+
+    log_info "Reseting repo ${repo_name} to latest commit from origin/${branch_name}"
+    run_cmd \
+        "git reset --hard \"origin/${branch_name}\"" \
+        "git_reset_$(basename "$repo_name").log"
+}
+
+function is_git_tag() {
+    # Check if the specified git tag exists in the current repository
+    # Assume the git repo is the current working directory
+
+    git_tag="$1"
+
+    run_cmd "git show-ref --tags --quiet --verify \"refs/tags/${git_tag}\""
+    return $?
+}
+
+function is_git_branch() {
+    # Check if the specified git branch exists in the current repository
+    # Assume the git repo is the current working directory
+
+    git_branch="$1"
+
+    run_cmd "git show-ref --heads --quiet --verify \"refs/heads/${git_branch}\""
+    return $?
+}
+
+function git_checkout_or_update() {
+    # If the specified git tag is already checked out, do nothing.
+    # If already on the branch, pull the latest changes.
+    # If on a different tag or commit, check out the specified tag.
+    # If on a different branch, switch to the specified tag.
+
+    git_tag="$1"
+    repo_name=$(basename "$(pwd)")
+
+    git_fetch
+
+    if is_git_tag "${git_tag}"; then
+        git_checkout "${git_tag}"
+    elif is_git_branch "${git_tag}"; then
+        # To handle the case when the branches have diverged (due to rebase, etc.)
+        # we make sure that the branch is reset to the lastest commit from origin
+        git_checkout "${git_tag}"
+        git_reset "${git_tag}"
+    else
+        log_error "Git tag or branch ${git_tag} does not exist in repository ${repo_name}."
+        exit 1
+    fi
 }
 
 function get_conda_dir() {
@@ -351,6 +451,11 @@ function install_conda() {
 
     log_info "Removing Miniconda3 installer."
     run_cmd "./miniconda.sh"
+}
+
+function update_conda() {
+    echo "Updating conda is not implemented yet." >/dev/stderr
+    exit 2
 }
 
 function is_conda_env() {
@@ -529,6 +634,10 @@ function install_lsst() {
     fi
 }
 
+function upgrade_lsst() {
+    log_info "Upgrading the LSST stack is not implemented yet."
+}
+
 function activate_lsst_conda_env() {
     # Activate the LSST conda environment and set up the EUPS environment
 
@@ -578,46 +687,37 @@ function install_pfs_eups_packages() {
     run_shebangtron
 }
 
-function install_datamodel_source() {
-    # Clone and check out the datamodel repository
+function install_module_source()
+{
+    # Clone and check out a git repository
     # Assume already in the src directory
 
-    log_info "Installing and configuring datamodel from source."
+    module="$1"
+    repo="$2"
+    tag="$3"
+
+    log_info "Installing and configuring ${module} from source."
 
     # If the datamodel directory doesn't exist, clone the repository
-    if [[ ! -d "datamodel" ]]; then
-        clone_github_repo "${DATAMODEL_GITHUB}" datamodel 1
+    if [[ ! -d "${module}" ]]; then
+        git_clone "${repo}" ${module} 1
+            
+        run_cmd "pushd ${module} > /dev/null"
+        git_checkout "${tag}"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished installing ${module}."
+    elif [[ -d "${module}" && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "Module ${module} already exists, but --upgrade option is set. Proceeding with upgrade."
+
+        run_cmd "pushd ${module} > /dev/null"
+        git_checkout_or_update "${tag}"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished upgrading module ${module}."
     else
-        log_info "Datamodel repository already exists. Skipping cloning."
+        log_info "Module ${module} already exists. Skipping cloning."
     fi
-    
-    run_cmd "pushd datamodel > /dev/null"
-    checkout_git_tag "${DATAMODEL_GIT_TAG}"
-
-    log_info "Finished installing datamodel."
-
-    run_cmd "popd > /dev/null"
-}
-
-function install_gacommon_source() {
-    # Clone and check out the ga_common repository
-    # Assume already in the src directory
-
-    log_info "Installing and configuring ga_common from source."
-
-    # If the ga_common directory doesn't exist, clone the repository
-    if [[ ! -d "ga_common" ]]; then
-        clone_github_repo "${GACOMMON_GITHUB}" ga_common 1
-    else
-        log_info "ga_common repository already exists. Skipping cloning."
-    fi
-    
-    run_cmd "pushd ga_common > /dev/null"
-    checkout_git_tag "${GACOMMON_GIT_TAG}"
-
-    log_info "Finished installing ga_common."
-
-    run_cmd "popd > /dev/null"
 }
 
 function install_pfsspec_conda() {
@@ -659,31 +759,42 @@ function install_pfsspec_source() {
     log_info "Installing and configuring pfsspec from source."
 
     if [[ ! -d "ga_pfsspec_all" ]]; then
-        clone_github_repo "${PFSSPEC_GITHUB}" ga_pfsspec_all 1
+        git_clone "${PFSSPEC_GITHUB}" ga_pfsspec_all 1
+
+        run_cmd "pushd ga_pfsspec_all > /dev/null"
+        git_checkout "${PFSSPEC_GIT_TAG}"
+
+        # Generate the default pfsspec environment
+        generate_pfsspec_env_file
+
+        # Check out each submodule to the HEAD of the current branch
+        log_info "Checking out submodules for pfsspec."
+        run_cmd "bash ./bin/checkout" "checkout_pfsspec.log"
+
+        # Initialize the pfsspec environment in a new shell in order to generate the symlinks
+        log_info "Initializing the pfsspec environment."
+
+        # Source the init script into a new shell in order to set up the
+        # source code symlinks etc.
+        run_cmd "bash -c \"source ./bin/init\"" "init_pfsspec.log"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished installing pfsspec."
+    elif [[ -d "ga_pfsspec_all" && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "pfsspec repository already exists, but --upgrade option is set. Proceeding with upgrade."
+
+        run_cmd "pushd ga_pfsspec_all > /dev/null"
+        git_checkout_or_update "${PFSSPEC_GIT_TAG}"
+
+        # Check out each submodule to the HEAD of the current branch
+        log_info "Updating submodules for pfsspec."
+        run_cmd "bash ./bin/pull" "pull_pfsspec.log"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished upgrading pfsspec."
     else
         log_info "pfsspec repository already exists. Skipping cloning."
     fi
-
-    run_cmd "pushd ga_pfsspec_all > /dev/null"
-    checkout_git_tag "${PFSSPEC_GIT_TAG}"
-
-    # Generate the default pfsspec environment
-    generate_pfsspec_env_file
-
-    # Check out each submodule to the HEAD of the current branch
-    log_info "Checking out submodules for pfsspec."
-    run_cmd "bash ./bin/checkout" "checkout_pfsspec.log"
-
-    # Initialize the pfsspec environment in a new shell in order to generate the symlinks
-    log_info "Initializing the pfsspec environment."
-
-    # Source the init script into a new shell in order to set up the
-    # source code symlinks etc.
-    run_cmd "bash -c \"source ./bin/init\"" "init_pfsspec.log"
-    
-    log_info "Finished installing pfsspec."
-
-    run_cmd "popd > /dev/null"
 }
 
 function install_chemfit_conda() {
@@ -694,25 +805,6 @@ function install_chemfit_conda() {
 function install_chemfit_eups() {
     echo "Installing chemfit as an EUPS package is not implemented yet." >/dev/stderr
     exit -2
-}
-
-function install_chemfit_source() {
-    # Clone and check out the chemfit repository
-    # Assume already in the src directory
-
-    log_info "Installing and configuring chemfit."
-
-    if [[ ! -d "ga_chemfit" ]]; then
-        clone_github_repo "${CHEMFIT_GITHUB}" ga_chemfit 1
-    else
-        log_info "chemfit repository already exists. Skipping cloning."
-    fi
-
-    run_cmd "pushd ga_chemfit > /dev/null"
-    checkout_git_tag "${CHEMFIT_GIT_TAG}"  
-    log_info "Finished installing chemfit."
-    
-    run_cmd "popd > /dev/null"
 }
 
 function install_gapipe_conda() {
@@ -774,23 +866,30 @@ function install_gapipe_source() {
     log_info "Installing and configuring gapipe."
 
     if [[ ! -d "ga_pipeline" ]]; then
-        clone_github_repo "${GAPIPE_GITHUB}" ga_pipeline 1
+        git_clone "${GAPIPE_GITHUB}" ga_pipeline 1
+
+        run_cmd "pushd ga_pipeline > /dev/null"
+        git_checkout "${GAPIPE_GIT_TAG}"
+
+        # Generate the default gapipe environment
+        generate_gapipe_env_file
+
+        # Initialize the gapipe environment in a new shell in order to generate the symlinks
+        run_cmd "bash -c \"source ./bin/init\"" "init_gapipe.log"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished installing gapipe."
+    elif [[ -d "ga_pipeline" && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "gapipe repository already exists, but --upgrade option is set. Proceeding with upgrade."
+
+        run_cmd "pushd ga_pfsspec_all > /dev/null"
+        git_checkout_or_update "${PFSSPEC_GIT_TAG}"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished upgrading gapipe."
     else
         log_info "ga_pipeline repository already exists. Skipping cloning."
     fi
-
-    
-    run_cmd "pushd ga_pipeline > /dev/null"
-    checkout_git_tag "${GAPIPE_GIT_TAG}"
-
-    # Generate the default gapipe environment
-    generate_gapipe_env_file
-
-    # Initialize the gapipe environment in a new shell in order to generate the symlinks
-    run_cmd "bash -c \"source ./bin/init\"" "init_gapipe.log"
-
-    run_cmd "popd > /dev/null"
-    log_info "Finished installing gapipe."
 }
 
 function init_gapipe_source() {
@@ -813,15 +912,22 @@ parse_args "$@"
 
 # Check if the installation directory exists and create if not
 if [[ -d "${GAPIPE_DIR}" ]]; then
-    if [[ $GAPIPE_FORCE -eq 1 ]]; then
+    if [[ $GAPIPE_UPGRADE -eq 0 && $GAPIPE_FORCE -eq 1 ]]; then
         log_warning "Installation directory ${GAPIPE_DIR} already exists, but --force option is set. Proceeding with installation."
+    elif [[ $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "Installation directory ${GAPIPE_DIR} already exists, proceeding with upgrade."
     else
         log_error "Installation directory ${GAPIPE_DIR} already exists. Use --force to overwrite."
         exit 1
     fi
 else
-    log_info "Creating gapipe directory ${GAPIPE_DIR}."
-    run_cmd "mkdir -p \"${GAPIPE_DIR}\""
+    if [[ $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_error "Installation directory ${GAPIPE_DIR} does not exist, cannot upgrade."
+        exit 1
+    else
+        log_info "Creating gapipe directory ${GAPIPE_DIR}."
+        run_cmd "mkdir -p \"${GAPIPE_DIR}\""
+    fi
 fi
 
 init_logging
@@ -873,8 +979,11 @@ if [[ $GAPIPE_LSST -eq 1 ]]; then
 
     log_info "LSST installation directory is set to ${lsst_dir}, conda directory is set to ${lsst_conda_dir}, and conda environment is set to ${lsst_conda_env}."
     
-    if [[ -d "${lsst_dir}" ]]; then
+    if [[ -d "${lsst_dir}" && $GAPIPE_UPGRADE -eq 0 ]]; then
         log_info "LSST stack already installed, skipping task."
+    elif [[ -d "${lsst_dir}" && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "LSST stack already installed, but --upgrade option is set. Proceeding with upgrade."
+        upgrade_lsst "${lsst_dir}" "${lsst_conda_dir}" "${lsst_conda_env}" "${lsst_version}"
     else
         log_info "LSST stack not found, installing LSST stack version ${lsst_version}."
         install_lsst "${lsst_dir}" "${lsst_conda_dir}" "${lsst_conda_env}" "${lsst_version}"
@@ -906,8 +1015,11 @@ else
 
     # Check if conda is installed and if not, donwload and execute installer silently
     conda_dir=$(get_conda_dir)
-    if [[ -d "$conda_dir" ]]; then
+    if [[ -d "$conda_dir" && $GAPIPE_UPGRADE -eq 0 ]]; then
         log_info "Conda already installed, skipping task."
+    elif [[ -d "$conda_dir" && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "Conda already installed, but --upgrade option is set. Proceeding with upgrade."
+        update_conda "${conda_dir}"
     else
         log_info "Conda not found, installing conda."
         install_conda "${conda_dir}"
@@ -918,12 +1030,15 @@ else
     run_cmd "source \"${conda_dir}/bin/activate\" base"
 
     # Check if the target environment exists
-    if is_conda_env; then
+    if [[ is_conda_env == 1 && $GAPIPE_UPGRADE -eq 0 ]]; then
         log_info "Conda environment ${GAPIPE_CONDA_ENV} already exists, skipping task."
         # TODO: only install packages
+    elif [[ is_conda_env == 1 && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "Conda environment ${GAPIPE_CONDA_ENV} already exists, but --upgrade option is set. Proceeding with upgrade."
+        update_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
     else
         log_info "Conda environment ${GAPIPE_CONDA_ENV} does not exist, creating it."
-        update_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
+        install_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
     fi
 
     run_cmd "conda deactivate"
@@ -941,10 +1056,12 @@ if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
     run_cmd "pushd \"${GAPIPE_DIR}/src\" > /dev/null"
 
     # Clone and configure the repositories
-    install_datamodel_source
-    install_gacommon_source
+    install_module_source "datamodel" "${DATAMODEL_GITHUB}" "${DATAMODEL_GIT_TAG}"
+    install_module_source "ga_common" "${GACOMMON_GITHUB}" "${GACOMMON_GIT_TAG}"
+    install_module_source "ga_chemfit" "${CHEMFIT_GITHUB}" "${CHEMFIT_GIT_TAG}"
+
     install_pfsspec_source
-    install_chemfit_source
+
     install_gapipe_source
 
     run_cmd "popd > /dev/null"
@@ -968,7 +1085,11 @@ run_cmd "mkdir -p \"${GAPIPE_DIR}/out\""
 
 run_cmd "popd > /dev/null"
 
-log_info "GAPIPE Installation completed successfully."
+if [[ $GAPIPE_UPGRADE -eq 1 ]]; then
+    log_info "GAPIPE upgrade completed successfully."
+else
+    log_info "GAPIPE installation completed successfully."
+fi
 
 # Print the installation summary
 print_summary
