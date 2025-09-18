@@ -1,4 +1,8 @@
+from typing import Dict, List
+
 from pfs.ga.common.config import Config
+
+from .magnitudeconfig import MagnitudeConfig
 
 class RVFitConfig(Config):
     """
@@ -26,7 +30,10 @@ class RVFitConfig(Config):
         Correction model to use. Either 'fluxcorr' or 'contnorm'.
     """
 
-    def __init__(self):
+    def __init__(
+            self,
+            magnitudes: Dict[str, MagnitudeConfig] = None,
+        ):
 
         # RVFIT global parameters
         
@@ -38,6 +45,7 @@ class RVFitConfig(Config):
         self.model_grid_mmap = True               # Memory map model grid files (only on supported file systems)
         self.model_grid_preload = False           # Preload model grid into memory (requires large memory)
         self.psf_path = None                      # Line spread function path, use {arm} for wildcard
+        self.magnitudes = magnitudes              # Magnitudes to use in fluxed template fitting
 
         self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
 

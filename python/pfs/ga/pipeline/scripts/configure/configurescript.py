@@ -19,7 +19,7 @@ from ...gapipe.config import *
 
 from ...setup_logger import logger
 
-class ConfigureScript(PipelineScript):
+class ConfigureScript(PipelineScript, Progress):
     """
     Generate the job configuration file for a set of observations.
 
@@ -88,7 +88,8 @@ class ConfigureScript(PipelineScript):
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
-        identities = self.input_repo.find_objects(groupby='objid')
+        pfs_configs = self.input_repo.load_pfsConfigs()
+        identities = self.input_repo.find_objects(pfs_configs=pfs_configs, groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
@@ -96,43 +97,42 @@ class ConfigureScript(PipelineScript):
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
-        # Create the iterator that we will loop over to generate the configuration files.
-        configs = self.__create_output_configs(identities, obs_params, stellar_params)
+        # Create the iterator that we will loop over to generate the pipeline configuration files.
+        pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_params, stellar_params)
         
         # Generate the configuration file for each target
         q = 0
-        for objid, config, filename in self._wrap_in_progressbar(configs, total=len(identities), logger=logger):
-            self.__save_config_file(objid, config, filename)
+        for objid, pipeline_config, filename in self._wrap_in_progressbar(pipeline_configs, total=len(identities), logger=logger):
+            self.__save_pipeline_config(objid, pipeline_config, filename)
 
             q += 1
             if self.top is not None and q >= self.top:
                 logger.warning(f'Stopping after {q} objects.')
                 break
 
-    def __create_output_configs(self, identities, obs_params=None, stellar_params=None):
+    def __create_pipeline_configs(self, identities, pfs_configs, obs_params=None, stellar_params=None):
         for objid, identity in identities.items():
             # Get target identity and list of observations to be included
-            target = self.__get_target_config(objid, identity)
+            target = self.__create_target_config(objid, identity)
 
             # Skip objects where the target configuration could not be created
             # (e.g. no required products found)
             if target is None:
                 continue
 
-            # Create general pipeline configuration
-            config, filename = self.__get_pipeline_config(objid, target.identity)
-            config.target = target
+            # Create a pipeline configuration object specific to the object
+            pipeline_config, filename = self.__create_pipeline_config(objid, target.identity)
+            pipeline_config.target = target
 
             # Look up the stellar parameters in the params file and configure
             # template fitting
-            if stellar_params is not None and objid in stellar_params.index:
-                self.__configure_rvfit(config, obs_params, stellar_params, objid)
+            self.__configure_rvfit(objid, pipeline_config, pfs_configs, obs_params, stellar_params)
 
             # TODO: add further steps
 
-            yield objid, config, filename
+            yield objid, pipeline_config, filename
 
-    def __get_target_config(self, objid, id):
+    def __create_target_config(self, objid, id):
         """
         Return the configuration section objects for each target
         """
@@ -221,7 +221,7 @@ class ConfigureScript(PipelineScript):
                 
         return mask
 
-    def __get_pipeline_config(self, objid, identity, ext='.yaml'):
+    def __create_pipeline_config(self, objid, identity, ext='.yaml'):
         """
         Initialze a pipeline configuration object based on the template and the target.
         """
@@ -232,10 +232,9 @@ class ConfigureScript(PipelineScript):
         # Compose the directory and file names for the identity of the object
         # The file should be written somewhere under the work directory
 
+        # Name of the output pipeline configuration
         dir = self.work_repo.format_dir(GAPipelineConfig, identity)
         config_file = self.work_repo.format_filename(GAPipelineConfig, identity)
-
-        # Name of the output pipeline configuration
         filename = os.path.join(dir, config_file)
 
         # Update config with directory names
@@ -253,14 +252,88 @@ class ConfigureScript(PipelineScript):
 
         return config, filename
 
-    def __configure_rvfit(self, config, obs_params, stellar_params, objid):
-        if obs_params is not None:
-            self.__configure_rvfit_obs_param_priors(config, obs_params.loc[objid])
-            
-        if stellar_params is not None:
-            self.__configure_rvfit_stellar_param_priors(config, stellar_params, objid)
+    def __configure_rvfit(self, objid, pipeline_config, pfs_configs, obs_params, stellar_params):
+        self.__configure_rvfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
+        self.__configure_rvfit_stellar_param_priors(objid, pipeline_config, pfs_configs, stellar_params)
 
-    def __configure_rvfit_stellar_param_priors(self, config, stellar_params, objid):
+    def __configure_rvfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
+        # Look up fluxes in the pfs_config file and set the photometric fluxes
+        # to constrain template fitting
+        # The configuration template has a list of magnitudes that can be used. Match these
+        # to the fluxes available in the pfsConfig file, set the values and the errors.
+        pfs_config = pfs_configs[pipeline_config.target.observations.visit[0]]
+        idx = np.where(pfs_config.objId == objid)[0].item()
+
+        # Check if any magnitudes with filter curves are defined in the config template
+        # and if so, try to match them to the filters available in pfsConfig
+        if pipeline_config.rvfit.magnitudes is not None:
+            for filter_index, filter_name in enumerate(pfs_config.filterNames[idx]):
+                if filter_name is not None and filter_name != 'none':
+                    # Try to match the filter name to something in the configuration
+                    filter_found = False
+                    for fn, mag in pipeline_config.rvfit.magnitudes.items():
+                        if mag.filter_name is None or isinstance(mag.filter_name, (list, tuple)) and len(mag.filter_name) == 0:
+                            # If the filter name is not set, match on the key
+                            if fn == filter_name:
+                                filter_found = True
+                                break
+                        else:
+                            # If the filter name is set, match on that
+                            if isinstance(mag.filter_name, str):
+                                names = [mag.filter_name]
+                            else:
+                                names = mag.filter_name
+
+                            if filter_name in names:
+                                filter_found = True
+                                break
+                        
+                    if filter_found:
+                        # Set the values from pfsConfig, with a preference order
+                        # of the fluxes
+                        flux_found = False
+                        for flux, flux_error in [
+                            (pfs_config.psfFlux[idx][filter_index], pfs_config.psfFluxErr[idx][filter_index]),
+                            (pfs_config.fiberFlux[idx][filter_index], pfs_config.fiberFluxErr[idx][filter_index]),
+                            (pfs_config.totalFlux[idx][filter_index], pfs_config.totalFluxErr[idx][filter_index]),
+                        ]:
+                            
+                            if flux is not None and flux_error is not None and \
+                                np.isfinite(flux) and np.isfinite(flux_error):
+
+                                flux_found = True
+                                mag.flux = flux
+                                mag.flux_error = flux_error
+
+                                # TODO: calculate magnitudes?
+                                break
+
+                        if not flux_found:
+                            logger.warning(f'No fluxes found in pfsConfig for object 0x{objid:x}, filter {filter_name}, skipping setting magnitude.')
+
+
+        # TODO: take parameters from the obs_params data frame
+        if obs_params is None:
+            pass
+        elif objid not in obs_params.index:
+            logger.warning(f'Observations parameters for object 0x{objid:x} not found, skipping configuring fluxes.')
+            return
+
+        # Only keep magnitudes that are available in pfsConfig or obs_params
+        magnitudes = {}
+        for k, v in pipeline_config.rvfit.magnitudes.items():
+            if v.flux is not None:
+                magnitudes[k] = v
+
+        pipeline_config.rvfit.magnitudes = magnitudes
+
+    def __configure_rvfit_stellar_param_priors(self, objid, pipeline_config, pfs_configs, stellar_params):
+        if stellar_params is None:
+            return
+        elif objid not in stellar_params.index:
+            logger.warning(f'Stellar parameters for object 0x{objid:x} not found, skipping configuring priors.')
+            return
+
         pp = stellar_params.loc[objid]
         for k in ['M_H', 'T_eff', 'log_g', 'a_M', 'rv']:
             k_min = f'{k}_min'
@@ -271,8 +344,8 @@ class ConfigureScript(PipelineScript):
 
             # Limits
 
-            if k in config.rvfit.rvfit_args and config.rvfit.rvfit_args[k] is not None:
-                values = config.rvfit.rvfit_args[k]
+            if k in pipeline_config.rvfit.rvfit_args and pipeline_config.rvfit.rvfit_args[k] is not None:
+                values = pipeline_config.rvfit.rvfit_args[k]
             else:
                 values = None
 
@@ -293,13 +366,13 @@ class ConfigureScript(PipelineScript):
                     values[1] = pp[k_max]
 
             if values is not None:
-                config.rvfit.rvfit_args[k] = values
+                pipeline_config.rvfit.rvfit_args[k] = values
 
             # Distribution
 
-            if k_dist in config.rvfit.rvfit_args and config.rvfit.rvfit_args[k_dist] is not None:
-                dist = config.rvfit.rvfit_args[k_dist][0]
-                dist_args = config.rvfit.rvfit_args[k_dist][1:]
+            if k_dist in pipeline_config.rvfit.rvfit_args and pipeline_config.rvfit.rvfit_args[k_dist] is not None:
+                dist = pipeline_config.rvfit.rvfit_args[k_dist][0]
+                dist_args = pipeline_config.rvfit.rvfit_args[k_dist][1:]
             else:
                 dist = None
                 dist_args = None
@@ -315,9 +388,9 @@ class ConfigureScript(PipelineScript):
                     raise NotImplementedError()
 
             if dist is not None and dist_args is not None:
-                config.rvfit.rvfit_args[k_dist] = [dist] + dist_args
+                pipeline_config.rvfit.rvfit_args[k_dist] = [dist] + dist_args
     
-    def __save_config_file(self, objid, config, filename):
+    def __save_pipeline_config(self, objid, pipeline_config, filename):
         """
         Generate a config file for each of the inputs.
         """
@@ -325,7 +398,7 @@ class ConfigureScript(PipelineScript):
         if not self.dry_run:
             logger.info(f'Saving configuration file `{filename}`.')
             os.makedirs(os.path.dirname(filename), exist_ok=True)
-            config.save(filename)
+            pipeline_config.save(filename)
         else:
             logger.info(f'Skipped saving configuration file `{filename}`.')
 

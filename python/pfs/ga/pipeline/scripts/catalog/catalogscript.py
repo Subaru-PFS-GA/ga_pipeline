@@ -64,15 +64,15 @@ class CatalogScript(PipelineScript):
         params = self._load_stellar_params_file(self.__params, self.__params_id)
 
         # Find all config files matching the command-line arguments.
-        configs = {}
+        pfs_configs = {}
         filenames, ids = self.input_repo.find_product(PfsConfig)
         for visit, fn in zip(ids.visit, filenames):
             config, id, fn = self.input_repo.load_product(PfsConfig, filename=fn)
-            configs[id.visit] = config
+            pfs_configs[id.visit] = config
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
-        identities = self.input_repo.find_objects(configs=configs, groupby='objid')
+        identities = self.input_repo.find_objects(pfs_configs=pfs_configs, groupby='objid')
 
         if len(identities) == 0:
             logger.error('No objects found matching the filters.')
@@ -80,7 +80,7 @@ class CatalogScript(PipelineScript):
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
-        catalog = self.__create_catalog(configs, identities)
+        catalog = self.__create_catalog(pfs_configs, identities)
         logger.info(f'Created catalog with {len(catalog.catalog)} objects.')
 
         _, filename, _ = self.input_repo.get_data_path(catalog)
