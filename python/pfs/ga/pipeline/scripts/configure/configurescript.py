@@ -38,6 +38,7 @@ class ConfigureScript(PipelineScript, Progress):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.__obs_logs = None                      # Observation log files
         self.__obs_params = None                    # Observation parameters file
         self.__obs_params_id = 'objid'              # ID column of the observation parameters
         self.__obs_params_visit = 'visit'           # Visit ID column of the observation parameters
@@ -46,6 +47,7 @@ class ConfigureScript(PipelineScript, Progress):
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
+        self.add_arg('--obs-logs', type=str, nargs='*', help='Observation log files')
         self.add_arg('--obs-params', type=str, help='Observation parameters file')
         self.add_arg('--obs-params-id', type=str, help='ObjID column of the observation parameters to use')
         self.add_arg('--obs-params-visit', type=str, help='Visit ID column of the observation parameters to use')
@@ -56,6 +58,7 @@ class ConfigureScript(PipelineScript, Progress):
         Progress._add_args(self)
 
     def _init_from_args(self, args):
+        self.__obs_logs = self.get_arg('obs_logs', args, self.__obs_logs)
         self.__obs_params = self.get_arg('obs_params', args, self.__obs_params)
         self.__obs_params_id = self.get_arg('obs_params_id', args, self.__obs_params_id)
         self.__obs_params_visit = self.get_arg('obs_params_visit', args, self.__obs_params_visit)
@@ -79,16 +82,31 @@ class ConfigureScript(PipelineScript, Progress):
         files = ' '.join(self.config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
+        # Load the observation logs
+        if self.__obs_logs is not None:
+            obs_log = self._load_obs_log_files(self.__obs_logs)
+        else:
+            logger.warning('No observation log files specified, skipping loading obslog.')
+            obs_log = None
+
         # Load the observational parameters such as broadband magnitudes, velocity corrections etc.
-        obs_params = self._load_obs_params_file(self.__obs_params, self.__obs_params_id, self.__obs_params_visit)
+        if self.__obs_params is not None:
+            obs_params = self._load_obs_params_file(self.__obs_params, self.__obs_params_id, self.__obs_params_visit)
+        else:
+            obs_params = None
 
         # Load the stellar parameters
-        stellar_params = self._load_stellar_params_file(self.__stellar_params, self.__stellar_params_id)
+        if self.__stellar_params is not None:
+            stellar_params = self._load_stellar_params_file(self.__stellar_params, self.__stellar_params_id)
+        else:
+            stellar_params = None
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
         pfs_configs = self.input_repo.load_pfsConfigs()
+
+        # Get the dictionary of object identities matching the filters, keyed by objid
         identities = self.input_repo.find_objects(pfs_configs=pfs_configs, groupby='objid')
 
         if len(identities) == 0:
@@ -98,7 +116,7 @@ class ConfigureScript(PipelineScript, Progress):
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
         # Create the iterator that we will loop over to generate the pipeline configuration files.
-        pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_params, stellar_params)
+        pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_log, obs_params, stellar_params)
         
         # Generate the configuration file for each target
         q = 0
@@ -110,8 +128,22 @@ class ConfigureScript(PipelineScript, Progress):
                 logger.warning(f'Stopping after {q} objects.')
                 break
 
-    def __create_pipeline_configs(self, identities, pfs_configs, obs_params=None, stellar_params=None):
+    def __create_pipeline_configs(self, identities, pfs_configs, obs_log=None, obs_params=None, stellar_params=None):
         for objid, identity in identities.items():
+            # Update the identity from the observation log if available
+            if obs_log is not None:
+                # Update seeing and exptime from obs_log. Obstime is taken from
+                # pfsConfig which is more accurate since the obslog only has the
+                # time of the start of the command, not the start of the exposure.
+                exptime = []
+                seeing = []
+                for visit in identity.visit:
+                    exptime.append(obs_log.loc[visit, 'avg_exptime'])
+                    seeing.append(obs_log.loc[visit, 'seeing_median'])
+
+                identity.exptime = np.array(exptime, dtype=float)
+                identity.seeing = np.array(seeing, dtype=float)
+
             # Get target identity and list of observations to be included
             target = self.__create_target_config(objid, identity)
 
@@ -165,6 +197,7 @@ class ConfigureScript(PipelineScript, Progress):
                 fiberStatus = id.fiberStatus[visit_mask],
                 obstime = id.obstime[visit_mask],
                 exptime = id.exptime[visit_mask],
+                seeing = id.seeing[visit_mask],
             )
         )
 
@@ -253,10 +286,23 @@ class ConfigureScript(PipelineScript, Progress):
         return config, filename
 
     def __configure_rvfit(self, objid, pipeline_config, pfs_configs, obs_params, stellar_params):
+        # TODO: replace this with obs_log?
         self.__configure_rvfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
-        self.__configure_rvfit_stellar_param_priors(objid, pipeline_config, pfs_configs, stellar_params)
+
+        self.__configure_rvfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
+
+        if stellar_params is None:
+            pass
+        elif objid not in stellar_params.index:
+            logger.warning(f'Stellar parameters for object 0x{objid:x} not found, skipping configuring priors.')
+        else:
+            self.__configure_rvfit_magnitudes_stellar_params(objid, pipeline_config, stellar_params)
+            self.__configure_rvfit_stellar_param_priors(objid, pipeline_config, pfs_configs, stellar_params)
 
     def __configure_rvfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
+        pass
+
+    def __configure_rvfit_magnitudes_pfs_config(self, objid, pipeline_config, pfs_configs):
         # Look up fluxes in the pfs_config file and set the photometric fluxes
         # to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
@@ -311,14 +357,6 @@ class ConfigureScript(PipelineScript, Progress):
                         if not flux_found:
                             logger.warning(f'No fluxes found in pfsConfig for object 0x{objid:x}, filter {filter_name}, skipping setting magnitude.')
 
-
-        # TODO: take parameters from the obs_params data frame
-        if obs_params is None:
-            pass
-        elif objid not in obs_params.index:
-            logger.warning(f'Observations parameters for object 0x{objid:x} not found, skipping configuring fluxes.')
-            return
-
         # Only keep magnitudes that are available in pfsConfig or obs_params
         magnitudes = {}
         for k, v in pipeline_config.rvfit.magnitudes.items():
@@ -327,13 +365,10 @@ class ConfigureScript(PipelineScript, Progress):
 
         pipeline_config.rvfit.magnitudes = magnitudes
 
-    def __configure_rvfit_stellar_param_priors(self, objid, pipeline_config, pfs_configs, stellar_params):
-        if stellar_params is None:
-            return
-        elif objid not in stellar_params.index:
-            logger.warning(f'Stellar parameters for object 0x{objid:x} not found, skipping configuring priors.')
-            return
+    def __configure_rvfit_magnitudes_stellar_params(self, objid, pipeline_config, stellar_params):
+        pass
 
+    def __configure_rvfit_stellar_param_priors(self, objid, pipeline_config, pfs_configs, stellar_params):
         pp = stellar_params.loc[objid]
         for k in ['M_H', 'T_eff', 'log_g', 'a_M', 'rv']:
             k_min = f'{k}_min'

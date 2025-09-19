@@ -13,7 +13,8 @@ class GAObjectObservationsConfig(Config):
                 fiberId = None,
                 fiberStatus = None,
                 obstime = None,
-                exptime = None):
+                exptime = None,
+                seeing = None):
 
         self.visit = visit
         self.arms = arms
@@ -23,5 +24,6 @@ class GAObjectObservationsConfig(Config):
         self.fiberStatus = fiberStatus
         self.obstime = obstime
         self.exptime = exptime
+        self.seeing = seeing
 
         super().__init__()

@@ -1,7 +1,9 @@
 import os
+from glob import glob
 from types import SimpleNamespace
 import pandas as pd
 from copy import deepcopy
+from dateutil import parser as dateparser
 
 from pfs.ga.common.scripts import Script
 from pfs.ga.common.config import ConfigJSONEncoder
@@ -162,40 +164,86 @@ class PipelineScript(Script):
             self.work_repo.get_resolved_variable('rerundir'),
             logfile)
 
+    def _load_obs_log_files(self, obs_logs_path):
+        if isinstance(obs_logs_path, str):
+            obs_logs_path = [ obs_logs_path ]
+
+        obs_log = None
+
+        for path in obs_logs_path:
+            files = glob(path)
+            for f in files:
+                logger.info(f'Loading observation log from {f}.')
+
+                columns = {
+                    '# visit_id': pd.Int32Dtype(),
+                    'pfs_design_id': str,
+                    'sequence_name': pd.StringDtype(),
+                    'issued_at': str,                  # HST
+                    'avg_exptime': float,
+                    'seeing_median': float,
+                    'transparency_median': float,
+                    'eet_b': float,
+                    'eet_r': float,
+                    'eet_n': float,
+                    'eet_m': float
+                }
+
+                column_names = {
+
+                }
+
+                df = pd.read_csv(f,
+                         delimiter=',',
+                         header=0,
+                         usecols=list(columns.keys()),
+                         dtype=columns)
+
+                # Rename all columns starting with '#' to remove the hash and
+                # then use the mapping to rename the columns
+                df.columns = df.columns.str.replace('# ', '', regex=False)
+
+                # df['pfs_design_id'] = df['pfs_design_id'].map(lambda x: f'0x{int(x, 16):016x}')
+                df['issued_at'] = df['issued_at'].map(lambda x: dateparser.parse(x))
+
+                if obs_log is None:
+                    obs_log = df
+                else:
+                    obs_log = pd.concat([obs_log, df], ignore_index=True)
+
+        # Index by visit_id
+        obs_log.set_index('visit_id', inplace=True)
+        
+        return obs_log
+
     def _load_obs_params_file(self, obs_params_file, obs_params_id, obs_params_visit):
-        if obs_params_file is not None:
-            logger.info(f'Loading observation parameters from {obs_params_file}.')
-            obs_params = pd.read_feather(obs_params_file)
+        logger.info(f'Loading observation parameters from {obs_params_file}.')
+        obs_params = pd.read_feather(obs_params_file)
 
-            logger.info(f'Found {len(obs_params)} entries in observation parameter file.')
+        logger.info(f'Found {len(obs_params)} entries in observation parameter file.')
 
-            if obs_params_id not in obs_params.columns:
-                raise ValueError(f'ID column {obs_params_id} not found in observation parameter file.')
-            if obs_params_visit not in obs_params.columns:
-                raise ValueError(f'Visit column {obs_params_visit} not found in observation parameter file.')
+        if obs_params_id not in obs_params.columns:
+            raise ValueError(f'ID column {obs_params_id} not found in observation parameter file.')
+        if obs_params_visit not in obs_params.columns:
+            raise ValueError(f'Visit column {obs_params_visit} not found in observation parameter file.')
 
-            obs_params = obs_params.set_index(obs_params_id) 
+        obs_params = obs_params.set_index(obs_params_id) 
 
-            return obs_params
-        else:
-            return None
+        return obs_params
 
     def _load_stellar_params_file(self, stellar_params_file, stellar_params_id):
         # TODO: update this if multiple files are needed or the file format changes
-        if stellar_params_file is not None:
-            logger.info(f'Loading stellar parameters from {stellar_params_file}.')
-            stellar_params = pd.read_feather(stellar_params_file)
+        logger.info(f'Loading stellar parameters from {stellar_params_file}.')
+        stellar_params = pd.read_feather(stellar_params_file)
 
-            logger.info(f'Found {len(stellar_params)} entries in stellar parameter file.')
+        logger.info(f'Found {len(stellar_params)} entries in stellar parameter file.')
 
-            if stellar_params_id not in stellar_params.columns:
-                raise ValueError(f'ID column {stellar_params_id} not found in stellar parameter file.')
+        if stellar_params_id not in stellar_params.columns:
+            raise ValueError(f'ID column {stellar_params_id} not found in stellar parameter file.')
 
-            stellar_params = stellar_params.set_index(stellar_params_id) 
+        stellar_params = stellar_params.set_index(stellar_params_id) 
 
-            return stellar_params
-        else:
-            return None
+        return stellar_params
 
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')

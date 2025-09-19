@@ -61,7 +61,10 @@ class CatalogScript(PipelineScript):
         """
 
         # Load the stellar parameters
-        params = self._load_stellar_params_file(self.__params, self.__params_id)
+        if self.__params is not None:
+            params = self._load_stellar_params_file(self.__params, self.__params_id)
+        else:
+            params = None
 
         # Find all config files matching the command-line arguments.
         pfs_configs = {}
