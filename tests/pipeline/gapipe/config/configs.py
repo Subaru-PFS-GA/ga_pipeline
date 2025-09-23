@@ -1,28 +1,28 @@
-TEST_CONFIG_RUN17_10015 = dict(
+TEST_CONFIG_RUN21_JUNE2025_10092 = dict(
     rerundir = 'rerun/run17',
     target = dict(
         identity = dict(
-            catId = 10015,
+            catId = 10092,
             tract = 1,
             patch = '1,1',
-            objId = 3,
+            objId = 25769842441,
             nVisit = 2,
-            pfsVisitHash = 0x40137cf8387c4130,
+            pfsVisitHash = 6954995582404002557,
         ),
         observations = dict(
-            visit = [ 111009, 111010, ],
+            visit = [ 123064, 123066, ],
             arm = [ 'bmn', 'bmn' ],
-            spectrograph = [ 3, 3 ],
-            pfsDesignId = [ 0x6d832ca291636984, 0x6d832ca291636984 ],
-            fiberId = [ 1777, 1777 ],
+            spectrograph = [ 1, 1 ],
+            pfsDesignId = [ 8643551219043481049, 8643551219043481049 ],
+            fiberId = [ 116, 116 ],
             fiberStatus = [ 1, 1 ],
-            pfiNominal = [ [ -81.89517211914062, -76.48998260498047 ], [ -81.89517211914062, -76.48998260498047 ] ],
-            pfiCenter = [ [ -81.89949035644531, -76.49072265625 ], [ -81.89949035644531, -76.49072265625 ] ],
+            # pfiNominal = [ [ -81.89517211914062, -76.48998260498047 ], [ -81.89517211914062, -76.48998260498047 ] ],
+            # pfiCenter = [ [ -81.89949035644531, -76.49072265625 ], [ -81.89949035644531, -76.49072265625 ] ],
             obsTime = [ '2024-05-29T00:00:00', '2024-05-29T00:15:00' ],
             expTime = [ 1800, 1800 ],
         )
     ),
-    rvfit = dict(
+    tempfit = dict(
         model_grid_path = '/datascope/subaru/data/pfsspec/models/stellar/grid/phoenix/phoenix_HiRes/spectra.h5',
         psf_path = '/datascope/subaru/data/pfsspec/subaru/pfs/psf/import/{arm}.real/gauss.h5',    
         fit_arms = [ 'b', 'm', 'n' ],
@@ -46,11 +46,15 @@ TEST_CONFIG_RUN17_10015 = dict(
             # 'SUSPECT',
             'UNMASKEDNAN'
         ],
-        rvfit_args = dict(
+        correction_model = 'fluxcorr',
+        correction_model_args = dict(
             flux_corr_per_arm = True,
             flux_corr_per_exp = False,
+            flux_corr_degree = 10,
+        ),
+        tempfit_args = dict(
             amplitude_per_arm = True,
-            amplitude_per_exp = True,
+            amplitude_per_exp = True
         ),
         trace_args = dict(
             plot_fit_spec = {

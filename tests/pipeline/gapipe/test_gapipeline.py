@@ -2,7 +2,8 @@ import os
 from unittest import TestCase
 
 from pfs.datamodel import *
-from pfs.ga.pfsspec.survey.repo import FileSystemRepo as PfsFileSystemRepo
+from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo, PfsGen3ButlerConfig, PfsGen3FileSystemConfig
+from pfs.ga.pfsspec.survey.repo import ButlerRepo, FileSystemRepo
 from pfs.ga.pipeline.repo import GAPipeWorkdirConfig
 from pfs.ga.pipeline.gapipe import GAPipeline, GAPipelineTrace
 from pfs.ga.pipeline.gapipe.config import GAPipelineConfig
@@ -12,7 +13,7 @@ from pipeline.gapipe.config.configs import *
 class TestGAPipeline(TestCase):
     def get_test_config(self):
         config = GAPipelineConfig()
-        config.load(TEST_CONFIG_RUN17_10015, ignore_collisions=True)
+        config.load(TEST_CONFIG_RUN21_JUNE2025_10092, ignore_collisions=True)
 
         workdir = os.path.expandvars(os.path.join('./tmp/test/work', f'{config.target.identity.objId:016x}'))
 
@@ -24,26 +25,31 @@ class TestGAPipeline(TestCase):
         return config
     
     def get_test_repo(self, config):
-        return PfsFileSystemRepo(GAPipeWorkdirConfig)
-        
-    def create_test_pipeline(self, config, repo):
-        trace = GAPipelineTrace(config.figdir)
-        pipeline = GAPipeline(config=config, trace=trace, repo=repo)
-        return pipeline
+        # return PfsGen3FileSystemRepo(GAPipeWorkdirConfig)
+        input_repo =  PfsGen3Repo(
+            repo_type = ButlerRepo,
+            config = PfsGen3ButlerConfig
+        )
 
-    def test_validate_config(self):
-        config = self.get_test_config()
-        repo = self.get_test_repo(config)
-        pipeline = self.create_test_pipeline(config, repo)
-        pipeline.validate_config()
+        work_repo = PfsGen3Repo(
+            repo_type = FileSystemRepo,
+            config = GAPipeWorkdirConfig
+        )
+
+        return input_repo, work_repo
+        
+    def create_test_pipeline(self, config, input_repo, work_repo):
+        trace = GAPipelineTrace(config.figdir)
+        pipeline = GAPipeline(config=config, trace=trace, input_repo=input_repo, work_repo=work_repo)
+        return pipeline
 
     # TODO: these have been moved to the script from the pipeline
     #       modify tests accordingly
 
     # def test_start_stop_logging(self):
     #     config = self.get_test_config()
-    #     repo = self.get_test_repo(config)
-    #     pipeline = self.create_test_pipeline(config, repo)
+    #     input_repo, work_repo = self.get_test_repo(config)
+    #     pipeline = self.create_test_pipeline(config, input_repo, work_repo)
 
     #     pipeline._Pipeline__start_logging()
     #     pipeline._Pipeline__stop_logging()
@@ -53,95 +59,40 @@ class TestGAPipeline(TestCase):
 
     def test_start_stop_tracing(self):
         config = self.get_test_config()
-        repo = self.get_test_repo(config)
-        pipeline = self.create_test_pipeline(config, repo)
+        input_repo, work_repo = self.get_test_repo(config)
+        pipeline = self.create_test_pipeline(config, input_repo, work_repo)
 
         pipeline._Pipeline__start_tracing()
         pipeline._Pipeline__stop_tracing()
 
-    def test_step_init(self):
+    def test_steps(self):
         config = self.get_test_config()
-        repo = self.get_test_repo(config)
-        pipeline = self.create_test_pipeline(config, repo)
+        input_repo, work_repo = self.get_test_repo(config)
+        pipeline = self.create_test_pipeline(config, input_repo, work_repo)
         pipeline.reset()
 
         pipeline._Pipeline__start_tracing()
-        context = pipeline.create_context(trace=pipeline._Pipeline__trace)
+        state = pipeline.create_state()
+        context = pipeline.create_context(state=state, trace=pipeline._Pipeline__trace)
 
-        InitStep().run(context)
-
-        pipeline._Pipeline__stop_tracing()
-
-    def test_step_load(self):
-        config = self.get_test_config()
-        repo = self.get_test_repo(config)
-        pipeline = self.create_test_pipeline(config, repo)
-        pipeline.reset()
-
-        pipeline._Pipeline__start_tracing()
-        context = pipeline.create_context(trace=pipeline._Pipeline__trace)
-
+        ValidateStep().run(context)
         InitStep().run(context)
         LoadStep().run(context)
         LoadStep().validate(context)
+        TempFitStep().init(context)
+        TempFitStep().load(context)
+        TempFitStep().validate_data(context)
+        TempFitStep().preprocess(context)
+        TempFitStep().run(context)
+        TempFitStep().map_log_L(context)
+        TempFitStep().cleanup(context)
+        CoaddStep().init(context)
+        CoaddStep().run(context)
+        CoaddStep().cleanup(context)
+        ChemFitStep().run(context)
+        SaveStep().run(context)
+        CleanupStep().run(context)
 
         pipeline._Pipeline__stop_tracing()
 
         self.assertEqual(2, len(pipeline.product_cache[PfsSingle]))
-
-    def test_step_vcorr(self):
-        config = self.get_test_config()
-        pipeline = self.create_test_pipeline(config)
-        pipeline._Pipeline__start_logging()
-        
-        pipeline._GA1DPipeline__step_load()
-        pipeline._GA1DPipeline__step_validate()
-        pipeline._GA1DPipeline__step_vcorr()
-        
-        pipeline._Pipeline__stop_logging()
-
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
-
-    def test_step_rvfit(self):
-        config = self.get_test_config()
-        pipeline = self.create_test_pipeline(config)
-        pipeline._Pipeline__start_logging()
-        
-        pipeline._GA1DPipeline__step_load()
-        pipeline._GA1DPipeline__step_validate()
-        pipeline._GA1DPipeline__step_vcorr()
-        pipeline._GA1DPipeline__step_rvfit()
-        
-        pipeline._Pipeline__stop_logging()
-
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
-
-    def test_step_coadd(self):
-        config = self.get_test_config()
-        pipeline = self.create_test_pipeline(config)
-        pipeline._Pipeline__start_logging()
-        
-        pipeline._GA1DPipeline__step_load()
-        pipeline._GA1DPipeline__step_validate()
-        pipeline._GA1DPipeline__step_vcorr()
-        pipeline._GA1DPipeline__step_rvfit()
-        pipeline._GA1DPipeline__step_coadd()
-        
-        pipeline._Pipeline__stop_logging()
-
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))
-
-    def test_step_rvfit_save(self):
-        config = self.get_test_config()
-        pipeline = self.create_test_pipeline(config)
-        pipeline._Pipeline__start_logging()
-        
-        pipeline._GA1DPipeline__step_load()
-        pipeline._GA1DPipeline__step_validate()
-        pipeline._GA1DPipeline__step_rvfit()
-        pipeline._GA1DPipeline__step_coadd()
-        pipeline._GA1DPipeline__step_save()
-        
-        pipeline._Pipeline__stop_logging()
-
-        self.assertEqual(2, len(pipeline._GA1DPipeline__pfsSingle))

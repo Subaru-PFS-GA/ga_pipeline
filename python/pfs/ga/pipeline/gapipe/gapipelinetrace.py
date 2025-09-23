@@ -19,8 +19,8 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
         
         self.plot_exposures = None              # Plot the input spectra, each exposure separately
         self.plot_exposures_spec = {}
-        self.plot_rvfit = None                  # Plot the best fit template and residuals after RVFit, each exposure separately
-        self.plot_rvfit_spec = {}
+        self.plot_tempfit = None                  # Plot the best fit template and residuals after TempFit, each exposure separately
+        self.plot_tempfit_spec = {}
         self.plot_coadd = None                  # Plot the best fit template and residuals after Coadd
         self.plot_coadd_spec = {}
 
@@ -58,8 +58,8 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
 
         self.plot_exposures = get_arg('plot_exposures', self.plot_exposures, args)
         self.plot_exposures_spec = get_arg('plot_exposures_spec', self.plot_exposures_spec, args)
-        self.plot_rvfit = get_arg('plot_rvfit', self.plot_rvfit, args)
-        self.plot_rvfit_spec = get_arg('plot_rvfit_spec', self.plot_rvfit_spec, args)
+        self.plot_tempfit = get_arg('plot_tempfit', self.plot_tempfit, args)
+        self.plot_tempfit_spec = get_arg('plot_tempfit_spec', self.plot_tempfit_spec, args)
         self.plot_coadd = get_arg('plot_coadd', self.plot_coadd, args)
         self.plot_coadd_spec = get_arg('plot_coadd_spec', self.plot_coadd_spec, args)
 
@@ -73,13 +73,13 @@ class GAPipelineTrace(PipelineTrace, SpectrumTrace):
                 self._plot_spectra(key, spectra, **config)
                 self.flush_figures()
             
-    def on_rvfit_finish_fit(self, spectra):
+    def on_tempfit_finish_fit(self, spectra):
         # Plot rv_fit and rv_guess and the likelihood function
-        if self.plot_rvfit is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
-            or self.plot_rvfit:
+        if self.plot_tempfit is None and self.plot_level >= Trace.PLOT_LEVEL_DEBUG \
+            or self.plot_tempfit:
 
             # Plot the final results based on the configuration settings
-            for key, config in self.plot_rvfit_spec.items():
+            for key, config in self.plot_tempfit_spec.items():
                 self._plot_spectra(key, spectra, **config)
                 self.flush_figures()
 

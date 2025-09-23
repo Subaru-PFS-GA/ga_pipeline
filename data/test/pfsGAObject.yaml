@@ -1,73 +1,143 @@
+trace_args:
+  plot_exposures: null
+  plot_exposures_spec:
+    pfsGA-exposures-full-{id}:
+      plot_flux: true
+      plot_flux_err: true
+      plot_mask: true
+      print_snr: true
+      normalize_cont: true
+  plot_tempfit: null
+  plot_tempfit_spec:
+    pfsGA-tempfit-best-full-{id}:
+      plot_flux: true
+      plot_model: true
+      normalize_cont: true
+    pfsGA-tempfit-residuals-{id}:
+      plot_flux: false
+      plot_model: false
+      plot_residual: true
+      normalize_cont: true
+    pfsGA-tempfit-best-400nm-{id}:
+      wlim:
+      - 385
+      - 405
+      plot_flux: true
+      plot_model: true
+      normalize_cont: true
+    pfsGA-tempfit-best-Ca-{id}:
+      wlim:
+      - 849
+      - 870
+      plot_flux: true
+      plot_model: true
+      normalize_cont: true
+  plot_coadd: null
+  plot_coadd_spec:
+    pfsGA-coadd-best-full-{id}:
+      plot_flux: true
+      plot_model: true
+      normalize_cont: true
+    pfsGA-coadd-residuals-{id}:
+      plot_flux: false
+      plot_model: false
+      plot_residual: true
+      normalize_cont: true
+    pfsGA-coadd-best-400nm-{id}:
+      wlim:
+      - 385
+      - 405
+      plot_flux: true
+      plot_model: true
+      normalize_cont: true
+    pfsGA-coadd-best-Ca-{id}:
+      wlim:
+      - 849
+      - 870
+      plot_flux: true
+      plot_model: true
+      normalize_cont: true
+  plot_level: 1
+logdir: null
+figdir: null
+loglevel: 20
 workdir: /datascope/subaru/user/dobos/gapipe/work
-datadir: /datascope/subaru/data/commissioning
-rerundir: run17/20240604
-outdir: null
+datadir: /datascope/subaru/data/ssp/2d
+rerundir: run21_June2025
+outdir: /datascope/subaru/user/dobos/gapipe/out
+rerun: run21_June2025
+ignore_missing_files: true
 target:
-  proposalId: S24A-EN16-GA1
+  proposalId: S25A-OT02
   targetType: 1
   identity:
-    catId: 10015
+    catId: 10092
     tract: 1
     patch: 1,1
-    objId: 3
-    nVisit: 10
-    pfsVisitHash: 4617171448526291248
+    objId: 25769842441
+    nVisit: 11
+    pfsVisitHash: 6954995582404002557
   observations:
     visit:
-    - 111009
-    - 111010
-    - 111316
-    - 111317
-    - 111318
-    - 111482
-    - 111483
-    - 111635
-    - 111636
-    - 111637
+    - 123064
+    - 123066
+    - 123067
+    - 123416
+    - 123417
+    - 123418
+    - 123419
+    - 123526
+    - 123527
+    - 123528
+    - 123529
     arm:
-    - bmn
-    - bmn
     - mbn
     - mbn
-    - rbn
-    - bnm
-    - bnm
-    - bnm
-    - bnm
-    - bnm
+    - mbn
+    - mbn
+    - mbn
+    - mbn
+    - mbn
+    - nmb
+    - nmb
+    - nmb
+    - nmb
     spectrograph:
-    - 3
-    - 3
-    - 3
-    - 3
-    - 3
-    - 3
-    - 3
-    - 3
-    - 3
-    - 3
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
     pfsDesignId:
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
-    - 7891200048818776452
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
+    - 8643551219043481049
     fiberId:
-    - 1777
-    - 1777
-    - 1777
-    - 1777
-    - 1777
-    - 1777
-    - 1777
-    - 1777
-    - 1777
-    - 1777
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
+    - 116
     fiberStatus:
     - 1
     - 1
@@ -79,131 +149,171 @@ target:
     - 1
     - 1
     - 1
-    pfiNominal:
-    - - -81.89517211914062
-      - -76.48998260498047
-    - - -81.89517211914062
-      - -76.48998260498047
-    - - -81.8759765625
-      - -76.4581298828125
-    - - -81.8759765625
-      - -76.4581298828125
-    - - -81.8759765625
-      - -76.4581298828125
-    - - -81.90031433105469
-      - -76.47883605957031
-    - - -81.90031433105469
-      - -76.47883605957031
-    - - -81.89909362792969
-      - -76.4828872680664
-    - - -81.89909362792969
-      - -76.4828872680664
-    - - -81.89909362792969
-      - -76.4828872680664
-    pfiCenter:
-    - - -81.89949035644531
-      - -76.49072265625
-    - - -81.89949035644531
-      - -76.49072265625
-    - - -81.87791442871094
-      - -76.45674133300781
-    - - -81.87791442871094
-      - -76.45674133300781
-    - - -81.87791442871094
-      - -76.45674133300781
-    - - -81.90031433105469
-      - -76.47883605957031
-    - - -81.90031433105469
-      - -76.47883605957031
-    - - -81.9030990600586
-      - -76.4864730834961
-    - - -81.9030990600586
-      - -76.4864730834961
-    - - -81.9030990600586
-      - -76.4864730834961
+    - 1
     obsTime:
-    - 2024-05-29T00:00:00
-    - 2024-05-29T00:00:00
-    - 2024-05-31T00:00:00
-    - 2024-05-31T00:00:00
-    - 2024-05-31T00:00:00
-    - 2024-06-01T00:00:00
-    - 2024-06-01T00:00:00
-    - 2024-06-02T00:00:00
-    - 2024-06-02T00:00:00
-    - 2024-06-02T00:00:00
+    - '2025-03-30T13:10:34.710Z'
+    - '2025-03-30T13:10:34.710Z'
+    - '2025-03-30T13:10:34.710Z'
+    - '2025-04-02T13:18:11.966Z'
+    - '2025-04-02T13:18:11.966Z'
+    - '2025-04-02T13:18:11.966Z'
+    - '2025-04-02T13:18:11.966Z'
+    - '2025-04-03T13:15:58.026Z'
+    - '2025-04-03T13:15:58.026Z'
+    - '2025-04-03T13:15:58.026Z'
+    - '2025-04-03T13:15:58.026Z'
     expTime:
-    - .nan
-    - .nan
-    - .nan
-    - .nan
-    - .nan
-    - .nan
-    - .nan
-    - .nan
-    - .nan
-    - .nan
+    - null
+    - null
+    - null
+    - null
+    - null
+    - null
+    - null
+    - null
+    - null
+    - null
+    - null
 arms:
   b:
     wave:
-    - 3800
-    - 6500
-    pix_per_res: 3
+    - 3500
+    - 6200
+    snr:
+      type: quantile
+      args:
+        q: 0.95
+        binning: 3
+      mask_flags:
+      - BAD
+      - BAD_FIBERTRACE
+      - BAD_FLAT
+      - BAD_FLUXCAL
+      - BAD_SKY
+      - CR
+      - DETECTED
+      - DETECTED_NEGATIVE
+      - EDGE
+      - FIBERTRACE
+      - INTRP
+      - IPC
+      - NO_DATA
+      - REFLINE
+      - SAT
+      - SUSPECT
+      - UNMASKEDNAN
   r:
     wave:
-    - 6300
-    - 9700
-    pix_per_res: 3
+    - 6600
+    - 9300
+    snr:
+      type: quantile
+      args:
+        q: 0.95
+        binning: 3
+      mask_flags:
+      - BAD
+      - BAD_FIBERTRACE
+      - BAD_FLAT
+      - BAD_FLUXCAL
+      - BAD_SKY
+      - CR
+      - DETECTED
+      - DETECTED_NEGATIVE
+      - EDGE
+      - FIBERTRACE
+      - INTRP
+      - IPC
+      - NO_DATA
+      - REFLINE
+      - SAT
+      - SUSPECT
+      - UNMASKEDNAN
   m:
     wave:
-    - 7100
+    - 7050
     - 8850
-    pix_per_res: 4
+    snr:
+      type: quantile
+      args:
+        q: 0.95
+        binning: 4
+      mask_flags:
+      - BAD
+      - BAD_FIBERTRACE
+      - BAD_FLAT
+      - BAD_FLUXCAL
+      - BAD_SKY
+      - CR
+      - DETECTED
+      - DETECTED_NEGATIVE
+      - EDGE
+      - FIBERTRACE
+      - INTRP
+      - IPC
+      - NO_DATA
+      - REFLINE
+      - SAT
+      - SUSPECT
+      - UNMASKEDNAN
   n:
     wave:
-    - 9400
+    - 9900
     - 12600
-    pix_per_res: 3
+    snr:
+      type: quantile
+      args:
+        q: 0.95
+        binning: 3
+      mask_flags:
+      - BAD
+      - BAD_FIBERTRACE
+      - BAD_FLAT
+      - BAD_FLUXCAL
+      - BAD_SKY
+      - CR
+      - DETECTED
+      - DETECTED_NEGATIVE
+      - EDGE
+      - FIBERTRACE
+      - INTRP
+      - IPC
+      - NO_DATA
+      - REFLINE
+      - SAT
+      - SUSPECT
+      - UNMASKEDNAN
 ref_mag: hsc_g
 v_corr: barycentric
-rvfit:
+tempfit:
   fit_arms:
   - b
+  - r
   - m
-  - n
-  require_all_arms: true
-  model_grid_path: null
+  require_all_arms: false
+  map_log_L: false
+  model_grid_path: /datascope/subaru/data/pfsspec/models/stellar/grid/phoenix/phoenix_HiRes/spectra.h5
   model_grid_args: null
   model_grid_mmap: true
   model_grid_preload: false
-  psf_path: null
+  psf_path: /datascope/subaru/data/pfsspec/subaru/pfs/psf/import/{arm}.real/gauss.h5
   min_unmasked_pixels: 3000
   mask_flags:
   - BAD
-  - BAD_FIBERTRACE
-  - BAD_FLAT
-  - BAD_FLUXCAL
-  - BAD_SKY
   - CR
-  - DETECTED
-  - DETECTED_NEGATIVE
-  - EDGE
-  - FIBERTRACE
-  - INTRP
-  - IPC
-  - NO_DATA
-  - REFLINE
   - SAT
-  - SUSPECT
   - UNMASKEDNAN
   required_products:
   - PfsConfig
-  - PfsMerged
-  correction_model: contnorm
+  - PfsSingle
+  correction_model: fluxcorr
   correction_model_args:
-    cont_per_arm: true
-    cont_per_exp: true
-  rvfit_args:
+    flux_corr_per_arm: true
+    flux_corr_per_exp: false
+    flux_corr_degree: 10
+  wave_include: null
+  wave_exclude: null
+  tempfit_args:
     amplitude_per_arm: true
     amplitude_per_exp: true
     M_H:
@@ -214,12 +324,12 @@ rvfit:
     - -1.5
     - 0.5
     T_eff:
-    - 4000
-    - 6000
+    - 3200
+    - 6500
     T_eff_dist:
     - normal
     - 5500
-    - 50
+    - 500
     log_g:
     - 1.5
     - 5.5
@@ -229,38 +339,41 @@ rvfit:
     - 1.0
     a_M: 0.0
     rv:
-    - -300
-    - 300
+    - -400
+    - 400
+    rv_step: 20
     resampler: interp
   trace_args:
-    plot_priors: true
-    plot_rv_guess: true
-    plot_rv_fit: true
-    plot_input_spec: true
-    plot_fit_spec:
-      pfsGA-RVFit-best-{id}:
-        plot_spectrum: true
-        plot_processed_template: true
-        plot_flux_err: true
-        plot_residuals: false
-      pfsGA-RVFit-residuals-{id}:
-        plot_spectrum: false
-        plot_processed_template: false
-        plot_flux_err: false
-        plot_residuals: true
-    plot_params_priors: true
-    plot_params_cov: true
-run_rvfit: true
+    plot_level: 1
+run_tempfit: true
 coadd:
   coadd_arms:
   - b
   - m
-  - n
-  no_data_flag: NO_DATA
+  - r
+  extra_mask_flags:
+    20: NO_CONTINUUM
+  mask_flags_exclude:
+  - NO_DATA
+  - NO_CONTINUUM
+  - BAD
+  - SAT
+  - CR
+  - INTRP
+  - BAD_FLAT
+  - SUSPECT
+  mask_flag_no_data: NO_DATA
+  mask_flag_no_continuum: NO_CONTINUUM
   stacker_args:
     binning: lin
     binsize: 0.5
-  trace_args: {}
+    normalize_cont: true
+    apply_flux_corr: true
+  trace_args:
+    plot_level: 1
+    plot_input: null
+    plot_stack: null
+    plot_merged: null
 run_coadd: true
 chemfit:
   min_unmasked_pixels: 3000
@@ -286,7 +399,3 @@ chemfit:
   - pfsConfig
   - pfsMerged
 run_chemfit: false
-trace_args: {}
-logdir: null
-figdir: null
-loglevel: 20

@@ -40,14 +40,14 @@ class SaveStep(PipelineStep):
         )
 
         stellar_params = self.__get_stellar_params(context)
-        stellar_params_covar = context.pipeline.rvfit_results.cov
+        stellar_params_covar = context.pipeline.tempfit_results.cov
         velocity_corrections = self.__get_velocity_corrections(context.state.coadd_results.merged_spectrum.observations)
         abundances = self.__get_abundances(context)
         abundances_covar = None
         notes = PfsGAObjectNotes()
 
         # TODO: where to store the global flags like tempfit_flags?
-        #       these are available in rvfit_results.flags
+        #       these are available in tempfit_results.flags
 
         context.pipeline.pfsGAObject = PfsGAObject(
             merged_spectrum.target,
@@ -74,7 +74,7 @@ class SaveStep(PipelineStep):
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     def __get_stellar_params(self, context, include_snr=True):
-        # Extract stellar parameters from rvfit results
+        # Extract stellar parameters from tempfit results
 
         # Collect parameters
         units = {
@@ -87,9 +87,9 @@ class SaveStep(PipelineStep):
 
         # TODO: what if RV is not fitted?
 
-        params_fit = context.pipeline.rvfit_results.params_free + [ 'v_los' ]
-        params_all = [ p for p in context.pipeline.rvfit_results.params_fit ] + [ 'v_los' ]
-        flags_all = {** { p: v for p, v in context.pipeline.rvfit_results.params_flags.items() }, **{ 'v_los': context.pipeline.rvfit_results.rv_flags }}
+        params_fit = context.pipeline.tempfit_results.params_free + [ 'v_los' ]
+        params_all = [ p for p in context.pipeline.tempfit_results.params_fit ] + [ 'v_los' ]
+        flags_all = {** { p: v for p, v in context.pipeline.tempfit_results.params_flags.items() }, **{ 'v_los': context.pipeline.tempfit_results.rv_flags }}
 
         # Construct columns
         method = []
@@ -111,12 +111,12 @@ class SaveStep(PipelineStep):
 
             # Parameter values
 
-            if p in context.pipeline.rvfit_results.params_fit:
-                v = context.pipeline.rvfit_results.params_fit[p]
-                v_err = context.pipeline.rvfit_results.params_err[p]
+            if p in context.pipeline.tempfit_results.params_fit:
+                v = context.pipeline.tempfit_results.params_fit[p]
+                v_err = context.pipeline.tempfit_results.params_err[p]
             elif p == 'v_los':
-                v = context.pipeline.rvfit_results.rv_fit
-                v_err = context.pipeline.rvfit_results.rv_err
+                v = context.pipeline.tempfit_results.rv_fit
+                v_err = context.pipeline.tempfit_results.rv_err
             else:
                 raise NotImplementedError()
             

@@ -4,7 +4,7 @@ from unittest import TestCase
 from pfs.ga.pipeline.gapipe.config import *
 from .configs import *
 
-class TestPipeline(TestCase):
+class TestGAPipelineConfig(TestCase):
     def test_init(self):
         config = GAPipelineConfig()
 
@@ -20,6 +20,6 @@ class TestPipeline(TestCase):
         self.assertIsInstance(config.target, GATargetConfig)
         self.assertIsInstance(config.target.identity, GAObjectIdentityConfig)
         self.assertIsInstance(config.target.observations, GAObjectObservationsConfig)
-        self.assertIsInstance(config.rvfit, RVFitConfig)
+        self.assertIsInstance(config.tempfit, TempFitConfig)
         self.assertIsInstance(config.coadd, CoaddConfig)
         self.assertIsInstance(config.chemfit, ChemfitConfig)

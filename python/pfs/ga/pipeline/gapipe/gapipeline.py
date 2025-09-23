@@ -86,12 +86,12 @@ class GAPipeline(Pipeline):
 
         self.snr = None                       # SNR calculator class for each arm
 
-        self.rvfit = None                     # RVFit object
-        self.rvfit_arms = None                # Arms used for RV fitting
-        self.rvfit_spectra = None             # Spectra used for RV fitting
-        self.rvfit_grids = None               # Template grids for RV fitting
-        self.rvfit_psfs = None                # PSFs for RV fitting
-        self.rvfit_results = None             # Results from RVFit
+        self.tempfit = None                   # TempFit object
+        self.tempfit_arms = None              # Arms used for RV fitting
+        self.tempfit_spectra = None           # Spectra used for RV fitting
+        self.tempfit_grids = None             # Template grids for RV fitting
+        self.tempfit_psfs = None              # PSFs for RV fitting
+        self.tempfit_results = None           # Results from TempFit
 
     def update(self, script=None, config=None, repo=None, trace=None, id=None):
         super().update(script=script, config=config, trace=trace)
@@ -175,41 +175,41 @@ class GAPipeline(Pipeline):
             #     'critical': False
             # },
             {
-                'type': RVFitStep,
-                'name': 'rvfit',
-                'func': RVFitStep.init,
+                'type': TempFitStep,
+                'name': 'tempfit',
+                'func': TempFitStep.init,
                 'critical': True,
                 'substeps': [
                     {
-                        'name': 'rvfit_load',
-                        'func': RVFitStep.load,
+                        'name': 'tempfit_load',
+                        'func': TempFitStep.load,
                         'critical': True,
                         'substeps': [
                             {
-                                'name': 'rvfit_load_validate',
-                                'func': RVFitStep.validate_data,
+                                'name': 'tempfit_load_validate',
+                                'func': TempFitStep.validate_data,
                                 'critical': True
                             }
                         ]
                     },
                     {
-                        'name': 'rvfit_preprocess',
-                        'func': RVFitStep.preprocess,
+                        'name': 'tempfit_preprocess',
+                        'func': TempFitStep.preprocess,
                         'critical': True,
                     },
                     {
-                        'name': 'rvfit_run',
-                        'func': RVFitStep.run,
+                        'name': 'tempfit_run',
+                        'func': TempFitStep.run,
                         'critical': True,
                     },
                     {
-                        'name': 'rvfit_map_log_L',
-                        'func': RVFitStep.map_log_L,
+                        'name': 'tempfit_map_log_L',
+                        'func': TempFitStep.map_log_L,
                         'critical': False,
                     },
                     {
-                        'name': 'rvfit_cleanup',
-                        'func': RVFitStep.cleanup,
+                        'name': 'tempfit_cleanup',
+                        'func': TempFitStep.cleanup,
                         'critical': True,
                     },
                 ]

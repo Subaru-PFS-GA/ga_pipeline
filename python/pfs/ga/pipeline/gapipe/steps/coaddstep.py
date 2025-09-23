@@ -19,7 +19,7 @@ class CoaddStep(PipelineStep):
         super().__init__(name)
 
     def init(self, context):
-        if not context.config.run_rvfit:
+        if not context.config.run_tempfit:
             logger.info('Spectrum stacking required RV fitting which is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=True, skip_substeps=True)
         elif not context.config.run_coadd:
@@ -27,10 +27,10 @@ class CoaddStep(PipelineStep):
             return PipelineStepResults(success=True, skip_remaining=True, skip_substeps=True)
             
         # We can only coadd arms that have been used for RV fitting
-        context.state.coadd_arms = set(context.config.coadd.coadd_arms).intersection(context.pipeline.rvfit_spectra.keys())
+        context.state.coadd_arms = set(context.config.coadd.coadd_arms).intersection(context.pipeline.tempfit_spectra.keys())
 
         if len(context.state.coadd_arms) < len(context.config.coadd.coadd_arms):
-            logger.warning('Not all arms required for co-adding are available from rvfit.')
+            logger.warning('Not all arms required for co-adding are available from tempfit.')
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
@@ -58,7 +58,7 @@ class CoaddStep(PipelineStep):
 
     def __load_spectra(self, context):
         # Only consider the arms that we want to coadd
-        input_spectra = { arm: context.pipeline.rvfit_spectra[arm] for arm in context.state.coadd_arms }
+        input_spectra = { arm: context.pipeline.tempfit_spectra[arm] for arm in context.state.coadd_arms }
         
         # Add the extra mask flags to the spectra and then determine the mask values
         self.__add_extra_mask_flags(input_spectra, context.config.coadd.extra_mask_flags)
@@ -94,14 +94,21 @@ class CoaddStep(PipelineStep):
         # TODO: move everything below to the stacker class
 
         # Evaluate the best fit model, continuum, etc that might be interesting
-        rvfit = context.pipeline.rvfit
-        rvfit.reset()
+        tempfit = context.pipeline.tempfit
+        tempfit.reset()
         
         # Append the flux correction model to the coadded spectra
-        stacked_spectra, _ = rvfit.append_corrections_and_templates(
+
+        # TODO: this won't work if the arms are different from the arms
+        #       used for tempfit, unless the models are initialized for
+        #       the new arms as well
+
+        tempfit.init_correction_models(stacked_spectra, force=True)
+
+        stacked_spectra, _ = tempfit.append_corrections_and_templates(
             stacked_spectra, None,
-            context.pipeline.rvfit_results.rv_fit,
-            context.pipeline.rvfit_results.params_fit,
+            context.pipeline.tempfit_results.rv_fit,
+            context.pipeline.tempfit_results.params_fit,
             a_fit=None,
             match='template',
             apply_correction=True,
@@ -138,9 +145,9 @@ class CoaddStep(PipelineStep):
         # Append observation metadata, this is PFS-specific
         all_observations = []
         target = None
-        for arm in context.pipeline.rvfit_spectra:
+        for arm in context.pipeline.tempfit_spectra:
             observations = []
-            for s in context.pipeline.rvfit_spectra[arm]:
+            for s in context.pipeline.tempfit_spectra[arm]:
                 if s is not None:
                     observations.append(s.observations)
                     all_observations.append(s.observations)

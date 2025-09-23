@@ -13,7 +13,7 @@ from ...common import PipelineError, PipelineStep, PipelineStepResults
 
 from ...setup_logger import logger
 
-class RVFitStep(PipelineStep):
+class TempFitStep(PipelineStep):
     def __init__(self, name=None):
         super().__init__(name)
 
@@ -21,7 +21,7 @@ class RVFitStep(PipelineStep):
 
     def init(self, context):
 
-        if not context.config.run_rvfit:
+        if not context.config.run_tempfit:
             logger.info('RV fitting is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=True)
 
@@ -36,15 +36,15 @@ class RVFitStep(PipelineStep):
                 avail_arms = avail_arms.union(context.pipeline.get_avail_arms(t))
 
         # Verify that all arms required in the config are available
-        context.pipeline.rvfit_arms = set()
-        for arm in context.config.rvfit.fit_arms:
-            message = f'RVFIT requires arm `{arm}` which is not observed.'
-            if context.config.rvfit.require_all_arms and arm not in avail_arms:
+        context.pipeline.tempfit_arms = set()
+        for arm in context.config.tempfit.fit_arms:
+            message = f'TempFit requires arm `{arm}` which is not observed.'
+            if context.config.tempfit.require_all_arms and arm not in avail_arms:
                 raise PipelineError(message)
             elif arm not in avail_arms:
                 logger.warning(message)
             else:
-                context.pipeline.rvfit_arms.add(arm)
+                context.pipeline.tempfit_arms.add(arm)
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -53,27 +53,27 @@ class RVFitStep(PipelineStep):
     
     def load(self, context):
         # Load template grids and PSFs
-        context.pipeline.rvfit_grids = self.__rvfit_load_grid(
+        context.pipeline.tempfit_grids = self.__tempfit_load_grid(
             context,
-            context.pipeline.rvfit_arms)
+            context.pipeline.tempfit_arms)
 
         # TODO: this will change once we get real PSFs from the 2DRP
         # TODO: add trace hook to plot the PSFs
-        context.pipeline.rvfit_psfs = self.__rvfit_load_psf(
+        context.pipeline.tempfit_psfs = self.__tempfit_load_psf(
             context,
-            context.pipeline.rvfit_arms,
-            context.pipeline.rvfit_grids)
+            context.pipeline.tempfit_arms,
+            context.pipeline.tempfit_grids)
         
-        # Initialize the RVFit object
-        context.pipeline.rvfit, context.pipeline.rvfit_trace = self.__rvfit_init(
+        # Initialize the TempFit object
+        context.pipeline.tempfit, context.pipeline.tempfit_trace = self.__tempfit_init(
             context,
-            context.pipeline.rvfit_grids,
-            context.pipeline.rvfit_psfs)
+            context.pipeline.tempfit_grids,
+            context.pipeline.tempfit_psfs)
 
         # Read the spectra from the data products
         spectra = context.pipeline.read_spectra(
             context.pipeline.required_product_types,
-            context.pipeline.rvfit_arms)
+            context.pipeline.tempfit_arms)
 
         # Calculate the signal to noise for each exposure
         for arm in spectra:
@@ -81,21 +81,21 @@ class RVFitStep(PipelineStep):
                 mask_bits = spec.get_mask_bits(context.config.arms[arm]['snr']['mask_flags'])
                 spec.calculate_snr(context.state.snr[arm], mask_bits=mask_bits)
         
-        # Collect spectra in a format that can be passed to RVFit, i.e
+        # Collect spectra in a format that can be passed to TempFit, i.e
         # handle missing spectra, fully masked spectra, etc.
-        context.pipeline.rvfit_spectra = self.__rvfit_collect_spectra(
+        context.pipeline.tempfit_spectra = self.__tempfit_collect_spectra(
             context,
             spectra,
-            context.pipeline.rvfit_arms,
+            context.pipeline.tempfit_arms,
             skip_mostly_masked=False,
-            mask_flags=context.config.rvfit.mask_flags)
+            mask_flags=context.config.tempfit.mask_flags)
         
         if context.trace is not None:
-            context.trace.on_load(context.pipeline.rvfit_spectra)
+            context.trace.on_load(context.pipeline.tempfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
-    def __rvfit_init(self, context, template_grids, template_psfs):
+    def __tempfit_init(self, context, template_grids, template_psfs):
         """
         Initialize the RV fit object.
         """
@@ -103,7 +103,7 @@ class RVFitStep(PipelineStep):
         # Initialize the trace that will be used for logging and plotting
         if context.trace is not None:
             trace = ModelGridTempFitTrace(id=context.id)
-            trace.init_from_args(None, None, context.config.rvfit.trace_args)
+            trace.init_from_args(None, None, context.config.tempfit.trace_args)
 
             # Set output directories based on pipeline trace
             trace.figdir = context.trace.figdir
@@ -116,24 +116,24 @@ class RVFitStep(PipelineStep):
 
         # Create the correction model which determines if we apply flux correction to
         # the templates or continuum-normalize the observations.
-        correction_model = CORRECTION_MODELS[context.config.rvfit.correction_model]()
+        correction_model = CORRECTION_MODELS[context.config.tempfit.correction_model]()
         
         # Create the template fit object that will perform the RV fitting
-        rvfit = ModelGridTempFit(correction_model=correction_model, trace=trace)
+        tempfit = ModelGridTempFit(correction_model=correction_model, trace=trace)
 
-        rvfit.template_grids = template_grids
-        rvfit.template_psf = template_psfs
+        tempfit.template_grids = template_grids
+        tempfit.template_psf = template_psfs
 
-        rvfit.wave_include = context.config.rvfit.wave_include
-        rvfit.wave_exclude = context.config.rvfit.wave_exclude
+        tempfit.wave_include = context.config.tempfit.wave_include
+        tempfit.wave_exclude = context.config.tempfit.wave_exclude
 
         # Initialize the components from the configuration
-        rvfit.init_from_args(None, None, context.config.rvfit.rvfit_args)
-        rvfit.correction_model.init_from_args(None, None, context.config.rvfit.correction_model_args)
+        tempfit.init_from_args(None, None, context.config.tempfit.tempfit_args)
+        tempfit.correction_model.init_from_args(None, None, context.config.tempfit.correction_model_args)
 
-        return rvfit, trace
+        return tempfit, trace
     
-    def __rvfit_collect_spectra(self,
+    def __tempfit_collect_spectra(self,
                                 context,
                                 input_spectra,
                                 use_arms, 
@@ -159,15 +159,15 @@ class RVFitStep(PipelineStep):
 
                     # Calculate mask. True values mean pixels are not masked and to be
                     # included in the fit.
-                    mask = context.pipeline.rvfit.get_full_mask(spec)
+                    mask = context.pipeline.tempfit.get_full_mask(spec)
                     masked_count = (~mask).sum()
 
                     if masked_count == 0:
                         logger.warning(f'All pixels in spectrum {spec.get_name()} are masked.')
                         spec = None
-                    elif skip_mostly_masked and (mask.size - masked_count < context.config.rvfit.min_unmasked_pixels):
+                    elif skip_mostly_masked and (mask.size - masked_count < context.config.tempfit.min_unmasked_pixels):
                         logger.warning(f'Not enough unmasked pixels in spectrum {spec.get_name()}, '
-                                       f'required at least {context.config.rvfit.min_unmasked_pixels}, '
+                                       f'required at least {context.config.tempfit.min_unmasked_pixels}, '
                                        f'found only {mask.size - masked_count}.')
                         spec = None
 
@@ -201,16 +201,16 @@ class RVFitStep(PipelineStep):
 
         return spectra
     
-    def __rvfit_load_grid(self, context, arms):
+    def __tempfit_load_grid(self, context, arms):
         # Load template grids. Make sure each grid is only loaded once, if grid is
         # independent of arm.
 
         grids = {}
         for arm in arms:
-            if isinstance(context.config.rvfit.model_grid_path, dict):
-                fn = context.config.rvfit.model_grid_path[arm].format(arm=arm)
+            if isinstance(context.config.tempfit.model_grid_path, dict):
+                fn = context.config.tempfit.model_grid_path[arm].format(arm=arm)
             else:
-                fn = context.config.rvfit.model_grid_path.format(arm=arm)
+                fn = context.config.tempfit.model_grid_path.format(arm=arm)
 
             skip = False
             for _, grid in grids.items():
@@ -221,9 +221,9 @@ class RVFitStep(PipelineStep):
 
             if not skip:
                 grid = ModelGrid.from_file(fn, 
-                                           preload_arrays=context.config.rvfit.model_grid_preload,
-                                           mmap_arrays=context.config.rvfit.model_grid_mmap, 
-                                           args=context.config.rvfit.model_grid_args,
+                                           preload_arrays=context.config.tempfit.model_grid_preload,
+                                           mmap_arrays=context.config.tempfit.model_grid_mmap, 
+                                           args=context.config.tempfit.model_grid_args,
                                            slice_from_args=False)
                 if grid.wave_edges is None:
                     grid.wave_edges = Binning.find_wave_edges(grid.wave)
@@ -232,13 +232,13 @@ class RVFitStep(PipelineStep):
 
         return grids
     
-    def __rvfit_load_psf(self, context, arms, grids):
+    def __tempfit_load_psf(self, context, arms, grids):
         # Right now load a PSF file generate by the ETC        
         # TODO: Modify this to use PSF from 2D pipeline instead of ETC
         
         psfs = {}
         for arm in arms:
-            fn = context.config.rvfit.psf_path.format(arm=arm)
+            fn = context.config.tempfit.psf_path.format(arm=arm)
             gauss_psf = GaussPsf()
             gauss_psf.load(fn)
 
@@ -263,7 +263,7 @@ class RVFitStep(PipelineStep):
         """
         """
 
-        spectra = context.pipeline.rvfit_spectra
+        spectra = context.pipeline.tempfit_spectra
 
         # Make sure that the bit flags are the same for all spectra
         # TODO: any more validation here?
@@ -291,23 +291,23 @@ class RVFitStep(PipelineStep):
     
     def run(self, context):
         # Determine the normalization factor to be used to keep continuum coefficients unity
-        context.pipeline.rvfit.spec_norm, context.pipeline.rvfit.temp_norm = context.pipeline.rvfit.get_normalization(context.pipeline.rvfit_spectra)
+        context.pipeline.tempfit.spec_norm, context.pipeline.tempfit.temp_norm = context.pipeline.tempfit.get_normalization(context.pipeline.tempfit_spectra)
 
         # Run the maximum likelihood fitting
         # TODO: add MCMC
-        context.pipeline.rvfit_results = context.pipeline.rvfit.run_ml(context.pipeline.rvfit_spectra)
+        context.pipeline.tempfit_results = context.pipeline.tempfit.run_ml(context.pipeline.tempfit_spectra)
 
-        context.pipeline.rvfit_spectra, _ = context.pipeline.rvfit.append_corrections_and_templates(
-            context.pipeline.rvfit_spectra, None,
-            context.pipeline.rvfit_results.rv_fit,
-            context.pipeline.rvfit_results.params_fit,
-            context.pipeline.rvfit_results.a_fit,
+        context.pipeline.tempfit_spectra, _ = context.pipeline.tempfit.append_corrections_and_templates(
+            context.pipeline.tempfit_spectra, None,
+            context.pipeline.tempfit_results.rv_fit,
+            context.pipeline.tempfit_results.params_fit,
+            context.pipeline.tempfit_results.a_fit,
             match='template',
             apply_correction=False,
         )
 
         if context.trace is not None:
-            context.trace.on_rvfit_finish_fit(context.pipeline.rvfit_spectra)
+            context.trace.on_tempfit_finish_fit(context.pipeline.tempfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -319,12 +319,12 @@ class RVFitStep(PipelineStep):
         # TODO: bring out parameters: params, ranges
 
         # Generate a map of log L around the best fit values
-        if not context.config.rvfit.map_log_L:
+        if not context.config.tempfit.map_log_L:
             logger.info('Log L map is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
-        params = context.pipeline.rvfit_results.params_fit
-        params_free = context.pipeline.rvfit.determine_free_params(context.pipeline.rvfit.params_fixed)
+        params = context.pipeline.tempfit_results.params_fit
+        params_free = context.pipeline.tempfit.determine_free_params(context.pipeline.tempfit.params_fixed)
 
         params_map = []        
         params_bounds = {}
@@ -341,10 +341,10 @@ class RVFitStep(PipelineStep):
                 }
                 pf = { p: v for p, v in params.items() if p not in pb }
 
-                context.pipeline.rvfit.map_log_L(
-                    context.pipeline.rvfit_spectra,
+                context.pipeline.tempfit.map_log_L(
+                    context.pipeline.tempfit_spectra,
                     size=10,
-                    rv=context.pipeline.rvfit_results.rv_fit,
+                    rv=context.pipeline.tempfit_results.rv_fit,
                     params_fixed=pf,
                     params_bounds=pb,
                     squeeze=True)
@@ -355,7 +355,7 @@ class RVFitStep(PipelineStep):
     #region Cleanup
     
     def cleanup(self, context):
-        # TODO: free up memory after rvfit
+        # TODO: free up memory after tempfit
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
     #endregion

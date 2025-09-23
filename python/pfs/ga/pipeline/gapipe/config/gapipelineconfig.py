@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from ...common import PipelineConfig
 from .gatargetconfig import GATargetConfig
-from .rvfitconfig import RVFitConfig
+from .tempfitconfig import TempFitConfig
 from .chemfitconfig import ChemfitConfig
 from .coaddconfig import CoaddConfig
 
@@ -14,7 +14,7 @@ class GAPipelineConfig(PipelineConfig):
     def __init__(self,
                  rerun: str = None,
                  target: GATargetConfig = GATargetConfig(),
-                 rvfit: RVFitConfig = RVFitConfig(),
+                 tempfit: TempFitConfig = TempFitConfig(),
                  coadd: CoaddConfig = CoaddConfig(),
                  chemfit: ChemfitConfig = ChemfitConfig()):
 
@@ -185,8 +185,8 @@ class GAPipelineConfig(PipelineConfig):
         # Type of velocity corrections, 'barycentric' or 'heliocentric' or 'none'
         self.v_corr = 'barycentric'
         
-        self.rvfit = rvfit
-        self.run_rvfit = True
+        self.tempfit = tempfit
+        self.run_tempfit = True
 
         self.coadd = coadd
         self.run_coadd = True
@@ -204,9 +204,9 @@ class GAPipelineConfig(PipelineConfig):
                     print_snr=True,
                     normalize_cont=True),
             },
-            'plot_rvfit': None,
-            'plot_rvfit_spec': {
-                # Default plots of RVFit results
+            'plot_tempfit': None,
+            'plot_tempfit_spec': {
+                # Default plots of TempFit results
                 'pfsGA-tempfit-best-full-{id}': dict(
                     plot_flux=True, plot_model=True,
                     normalize_cont=True),

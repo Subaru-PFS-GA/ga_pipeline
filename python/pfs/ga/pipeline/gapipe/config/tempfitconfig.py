@@ -4,7 +4,7 @@ from pfs.ga.common.config import Config
 
 from .magnitudeconfig import MagnitudeConfig
 
-class RVFitConfig(Config):
+class TempFitConfig(Config):
     """
     Configuration class for the RV fit step of the pipeline
 
@@ -35,7 +35,7 @@ class RVFitConfig(Config):
             magnitudes: Dict[str, MagnitudeConfig] = None,
         ):
 
-        # RVFIT global parameters
+        # TempFIT global parameters
         
         self.fit_arms = [ 'b', 'm', 'n' ]
         self.require_all_arms = True              # Require all arms to run fit
@@ -99,7 +99,7 @@ class RVFitConfig(Config):
 
         # Arguments to pass to ModelGridTempFit
         # This is where we can set the parameter priors, etc.
-        self.rvfit_args = {
+        self.tempfit_args = {
             'amplitude_per_arm': True,
             'amplitude_per_exp': True,
 
@@ -117,7 +117,7 @@ class RVFitConfig(Config):
             "resampler": "interp",              # Resampler to use for resampling model grid
         }
 
-        # RVFIT trace args - these control plotting, etc.
+        # TempFit trace args - these control plotting, etc.
         self.trace_args = { }
 
         super().__init__()

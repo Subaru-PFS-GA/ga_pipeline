@@ -141,7 +141,7 @@ class ConfigureScript(PipelineScript, Progress):
                     exptime.append(obs_log.loc[visit, 'avg_exptime'])
                     seeing.append(obs_log.loc[visit, 'seeing_median'])
 
-                identity.exptime = np.array(exptime, dtype=float)
+                identity.expTime = np.array(exptime, dtype=float)
                 identity.seeing = np.array(seeing, dtype=float)
 
             # Get target identity and list of observations to be included
@@ -158,7 +158,7 @@ class ConfigureScript(PipelineScript, Progress):
 
             # Look up the stellar parameters in the params file and configure
             # template fitting
-            self.__configure_rvfit(objid, pipeline_config, pfs_configs, obs_params, stellar_params)
+            self.__configure_tempfit(objid, pipeline_config, pfs_configs, obs_params, stellar_params)
 
             # TODO: add further steps
 
@@ -195,8 +195,8 @@ class ConfigureScript(PipelineScript, Progress):
                 pfsDesignId = id.pfsDesignId[visit_mask],
                 fiberId = id.fiberId[visit_mask],
                 fiberStatus = id.fiberStatus[visit_mask],
-                obstime = id.obstime[visit_mask],
-                exptime = id.exptime[visit_mask],
+                obstime = id.obsTime[visit_mask],
+                exptime = id.expTime[visit_mask],
                 seeing = id.seeing[visit_mask],
             )
         )
@@ -214,7 +214,7 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Check if the required products are available in any of the data
         # repositories. If not, set the mask to False for those visits.
-        for product_name in self.config.rvfit.required_products:
+        for product_name in self.config.tempfit.required_products:
             m = np.full_like(mask, False, dtype=bool)
 
             # Try each repository in order
@@ -285,24 +285,24 @@ class ConfigureScript(PipelineScript, Progress):
 
         return config, filename
 
-    def __configure_rvfit(self, objid, pipeline_config, pfs_configs, obs_params, stellar_params):
+    def __configure_tempfit(self, objid, pipeline_config, pfs_configs, obs_params, stellar_params):
         # TODO: replace this with obs_log?
-        self.__configure_rvfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
+        self.__configure_tempfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
 
-        self.__configure_rvfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
+        self.__configure_tempfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
 
         if stellar_params is None:
             pass
         elif objid not in stellar_params.index:
             logger.warning(f'Stellar parameters for object 0x{objid:x} not found, skipping configuring priors.')
         else:
-            self.__configure_rvfit_magnitudes_stellar_params(objid, pipeline_config, stellar_params)
-            self.__configure_rvfit_stellar_param_priors(objid, pipeline_config, pfs_configs, stellar_params)
+            self.__configure_tempfit_magnitudes_stellar_params(objid, pipeline_config, stellar_params)
+            self.__configure_tempfit_stellar_param_priors(objid, pipeline_config, pfs_configs, stellar_params)
 
-    def __configure_rvfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
+    def __configure_tempfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
         pass
 
-    def __configure_rvfit_magnitudes_pfs_config(self, objid, pipeline_config, pfs_configs):
+    def __configure_tempfit_magnitudes_pfs_config(self, objid, pipeline_config, pfs_configs):
         # Look up fluxes in the pfs_config file and set the photometric fluxes
         # to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
@@ -312,12 +312,12 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Check if any magnitudes with filter curves are defined in the config template
         # and if so, try to match them to the filters available in pfsConfig
-        if pipeline_config.rvfit.magnitudes is not None:
+        if pipeline_config.tempfit.magnitudes is not None:
             for filter_index, filter_name in enumerate(pfs_config.filterNames[idx]):
                 if filter_name is not None and filter_name != 'none':
                     # Try to match the filter name to something in the configuration
                     filter_found = False
-                    for fn, mag in pipeline_config.rvfit.magnitudes.items():
+                    for fn, mag in pipeline_config.tempfit.magnitudes.items():
                         if mag.filter_name is None or isinstance(mag.filter_name, (list, tuple)) and len(mag.filter_name) == 0:
                             # If the filter name is not set, match on the key
                             if fn == filter_name:
@@ -359,16 +359,16 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Only keep magnitudes that are available in pfsConfig or obs_params
         magnitudes = {}
-        for k, v in pipeline_config.rvfit.magnitudes.items():
+        for k, v in pipeline_config.tempfit.magnitudes.items():
             if v.flux is not None:
                 magnitudes[k] = v
 
-        pipeline_config.rvfit.magnitudes = magnitudes
+        pipeline_config.tempfit.magnitudes = magnitudes
 
-    def __configure_rvfit_magnitudes_stellar_params(self, objid, pipeline_config, stellar_params):
+    def __configure_tempfit_magnitudes_stellar_params(self, objid, pipeline_config, stellar_params):
         pass
 
-    def __configure_rvfit_stellar_param_priors(self, objid, pipeline_config, pfs_configs, stellar_params):
+    def __configure_tempfit_stellar_param_priors(self, objid, pipeline_config, pfs_configs, stellar_params):
         pp = stellar_params.loc[objid]
         for k in ['M_H', 'T_eff', 'log_g', 'a_M', 'rv']:
             k_min = f'{k}_min'
@@ -379,8 +379,8 @@ class ConfigureScript(PipelineScript, Progress):
 
             # Limits
 
-            if k in pipeline_config.rvfit.rvfit_args and pipeline_config.rvfit.rvfit_args[k] is not None:
-                values = pipeline_config.rvfit.rvfit_args[k]
+            if k in pipeline_config.tempfit.tempfit_args and pipeline_config.tempfit.tempfit_args[k] is not None:
+                values = pipeline_config.tempfit.tempfit_args[k]
             else:
                 values = None
 
@@ -401,13 +401,13 @@ class ConfigureScript(PipelineScript, Progress):
                     values[1] = pp[k_max]
 
             if values is not None:
-                pipeline_config.rvfit.rvfit_args[k] = values
+                pipeline_config.tempfit.tempfit_args[k] = values
 
             # Distribution
 
-            if k_dist in pipeline_config.rvfit.rvfit_args and pipeline_config.rvfit.rvfit_args[k_dist] is not None:
-                dist = pipeline_config.rvfit.rvfit_args[k_dist][0]
-                dist_args = pipeline_config.rvfit.rvfit_args[k_dist][1:]
+            if k_dist in pipeline_config.tempfit.tempfit_args and pipeline_config.tempfit.tempfit_args[k_dist] is not None:
+                dist = pipeline_config.tempfit.tempfit_args[k_dist][0]
+                dist_args = pipeline_config.tempfit.tempfit_args[k_dist][1:]
             else:
                 dist = None
                 dist_args = None
@@ -423,7 +423,7 @@ class ConfigureScript(PipelineScript, Progress):
                     raise NotImplementedError()
 
             if dist is not None and dist_args is not None:
-                pipeline_config.rvfit.rvfit_args[k_dist] = [dist] + dist_args
+                pipeline_config.tempfit.tempfit_args[k_dist] = [dist] + dist_args
     
     def __save_pipeline_config(self, objid, pipeline_config, filename):
         """

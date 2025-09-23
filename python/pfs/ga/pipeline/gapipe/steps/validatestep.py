@@ -35,7 +35,7 @@ class ValidateStep(PipelineStep):
         self.__validate_input_directories(context)
 
         # Verify that stellar template grids and PSF files exist
-        self.__validate_rvfit_input_files(context)
+        self.__validate_tempfit_input_files(context)
 
         # TODO: Verify that the input files for chemfit exist
         self.__validate_chemfit_input_files(context)
@@ -58,14 +58,14 @@ class ValidateStep(PipelineStep):
                 context.repo.get_resolved_variable('datadir'),
                 context.repo.get_resolved_variable('rerundir')))
 
-    def __validate_rvfit_input_files(self, context):
-        if context.config.run_rvfit:
-            for arm in context.config.rvfit.fit_arms:
+    def __validate_tempfit_input_files(self, context):
+        if context.config.run_tempfit:
+            for arm in context.config.tempfit.fit_arms:
                 # Verify that the synthetic spectrum grids are available
-                if isinstance(context.config.rvfit.model_grid_path, dict):
-                    fn = context.config.rvfit.model_grid_path[arm].format(arm=arm)
+                if isinstance(context.config.tempfit.model_grid_path, dict):
+                    fn = context.config.tempfit.model_grid_path[arm].format(arm=arm)
                 else:
-                    fn = context.config.rvfit.model_grid_path.format(arm=arm)
+                    fn = context.config.tempfit.model_grid_path.format(arm=arm)
                 
                 if not os.path.isfile(fn):
                     raise FileNotFoundError(f'Synthetic spectrum grid `{fn}` not found.')
@@ -74,12 +74,12 @@ class ValidateStep(PipelineStep):
                 
                 # Verify that the PSF files are available
 
-                if isinstance(context.config.rvfit.psf_path, dict):
-                    fn = context.config.rvfit.psf_path[arm].format(arm=arm)
-                elif context.config.rvfit.psf_path is not None:
-                    fn = context.config.rvfit.psf_path.format(arm=arm)
+                if isinstance(context.config.tempfit.psf_path, dict):
+                    fn = context.config.tempfit.psf_path[arm].format(arm=arm)
+                elif context.config.tempfit.psf_path is not None:
+                    fn = context.config.tempfit.psf_path.format(arm=arm)
 
-                if context.config.rvfit.psf_path is not None:
+                if context.config.tempfit.psf_path is not None:
                     if not os.path.isfile(fn):
                         raise FileNotFoundError(f'PSF file `{fn}` not found.')
                     else:
@@ -93,8 +93,8 @@ class ValidateStep(PipelineStep):
 
         required_products = set()
         
-        if context.config.run_rvfit:
-            required_products.update(context.config.rvfit.required_products)
+        if context.config.run_tempfit:
+            required_products.update(context.config.tempfit.required_products)
 
         if context.config.run_chemfit:
             required_products.update(context.config.chemfit.required_products)
