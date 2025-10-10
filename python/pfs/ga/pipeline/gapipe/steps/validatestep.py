@@ -101,14 +101,14 @@ class ValidateStep(PipelineStep):
 
         # Compile the list of required input data products. The data products
         # are identified by their type. The class definitions are located in pfs.datamodel
-        context.pipeline.required_product_types = set()
+        context.state.required_product_types = set()
 
         for t in required_products:
             found = False
             for repo in [ context.input_repo, context.work_repo ]:
                 try:
                     t = repo.parse_product_type(t)
-                    context.pipeline.required_product_types.add(t)
+                    context.state.required_product_types.add(t)
                     found = True
                     break
                 except ValueError as e:
@@ -119,7 +119,7 @@ class ValidateStep(PipelineStep):
 
         # Verify that input data files are available or the input products
         # are already in the cache
-        for t in context.pipeline.required_product_types:
+        for t in context.state.required_product_types:
             self.__validate_input_data_product(context, t)
 
     def __validate_input_data_product(self, context, product, required=True):

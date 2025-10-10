@@ -27,7 +27,7 @@ class TempFitStep(PipelineStep):
 
         # Find the set of available arms in the available files
         avail_arms = set()
-        for t in context.pipeline.required_product_types:
+        for t in context.state.required_product_types:
             # If it is a container type, use the last element
             if isinstance(t, tuple):
                 t = t[-1]
@@ -36,7 +36,7 @@ class TempFitStep(PipelineStep):
                 avail_arms = avail_arms.union(context.pipeline.get_avail_arms(t))
 
         # Verify that all arms required in the config are available
-        context.pipeline.tempfit_arms = set()
+        context.state.tempfit_arms = set()
         for arm in context.config.tempfit.fit_arms:
             message = f'TempFit requires arm `{arm}` which is not observed.'
             if context.config.tempfit.require_all_arms and arm not in avail_arms:
@@ -44,7 +44,7 @@ class TempFitStep(PipelineStep):
             elif arm not in avail_arms:
                 logger.warning(message)
             else:
-                context.pipeline.tempfit_arms.add(arm)
+                context.state.tempfit_arms.add(arm)
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -53,27 +53,27 @@ class TempFitStep(PipelineStep):
     
     def load(self, context):
         # Load template grids and PSFs
-        context.pipeline.tempfit_grids = self.__tempfit_load_grid(
+        context.state.tempfit_grids = self.__tempfit_load_grid(
             context,
-            context.pipeline.tempfit_arms)
+            context.state.tempfit_arms)
 
         # TODO: this will change once we get real PSFs from the 2DRP
         # TODO: add trace hook to plot the PSFs
-        context.pipeline.tempfit_psfs = self.__tempfit_load_psf(
+        context.state.tempfit_psfs = self.__tempfit_load_psf(
             context,
-            context.pipeline.tempfit_arms,
-            context.pipeline.tempfit_grids)
+            context.state.tempfit_arms,
+            context.state.tempfit_grids)
         
         # Initialize the TempFit object
-        context.pipeline.tempfit, context.pipeline.tempfit_trace = self.__tempfit_init(
+        context.state.tempfit, context.state.tempfit_trace = self.__tempfit_init(
             context,
-            context.pipeline.tempfit_grids,
-            context.pipeline.tempfit_psfs)
+            context.state.tempfit_grids,
+            context.state.tempfit_psfs)
 
         # Read the spectra from the data products
         spectra = context.pipeline.read_spectra(
-            context.pipeline.required_product_types,
-            context.pipeline.tempfit_arms)
+            context.state.required_product_types,
+            context.state.tempfit_arms)
 
         # Calculate the signal to noise for each exposure
         for arm in spectra:
@@ -83,15 +83,15 @@ class TempFitStep(PipelineStep):
         
         # Collect spectra in a format that can be passed to TempFit, i.e
         # handle missing spectra, fully masked spectra, etc.
-        context.pipeline.tempfit_spectra = self.__tempfit_collect_spectra(
+        context.state.tempfit_spectra = self.__tempfit_collect_spectra(
             context,
             spectra,
-            context.pipeline.tempfit_arms,
+            context.state.tempfit_arms,
             skip_mostly_masked=False,
             mask_flags=context.config.tempfit.mask_flags)
         
         if context.trace is not None:
-            context.trace.on_load(context.pipeline.tempfit_spectra)
+            context.trace.on_load(context.state.tempfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -164,7 +164,7 @@ class TempFitStep(PipelineStep):
 
                     # Calculate mask. True values mean pixels are not masked and to be
                     # included in the fit.
-                    mask = context.pipeline.tempfit.get_full_mask(spec)
+                    mask = context.state.tempfit.get_full_mask(spec)
                     masked_count = (~mask).sum()
 
                     if masked_count == 0:
@@ -268,7 +268,7 @@ class TempFitStep(PipelineStep):
         """
         """
 
-        spectra = context.pipeline.tempfit_spectra
+        spectra = context.state.tempfit_spectra
 
         # Make sure that the bit flags are the same for all spectra
         # TODO: any more validation here?
@@ -296,23 +296,23 @@ class TempFitStep(PipelineStep):
     
     def run(self, context):
         # Determine the normalization factor to be used to keep continuum coefficients unity
-        context.pipeline.tempfit.spec_norm, context.pipeline.tempfit.temp_norm = context.pipeline.tempfit.get_normalization(context.pipeline.tempfit_spectra)
+        context.state.tempfit.spec_norm, context.state.tempfit.temp_norm = context.state.tempfit.get_normalization(context.state.tempfit_spectra)
 
         # Run the maximum likelihood fitting
         # TODO: add MCMC
-        context.pipeline.tempfit_results = context.pipeline.tempfit.run_ml(context.pipeline.tempfit_spectra)
+        context.state.tempfit_results = context.state.tempfit.run_ml(context.state.tempfit_spectra)
 
-        context.pipeline.tempfit_spectra, _ = context.pipeline.tempfit.append_corrections_and_templates(
-            context.pipeline.tempfit_spectra, None,
-            context.pipeline.tempfit_results.rv_fit,
-            context.pipeline.tempfit_results.params_fit,
-            context.pipeline.tempfit_results.a_fit,
+        context.state.tempfit_spectra, _ = context.state.tempfit.append_corrections_and_templates(
+            context.state.tempfit_spectra, None,
+            context.state.tempfit_results.rv_fit,
+            context.state.tempfit_results.params_fit,
+            context.state.tempfit_results.a_fit,
             match='template',
             apply_correction=False,
         )
 
         if context.trace is not None:
-            context.trace.on_tempfit_finish_fit(context.pipeline.tempfit_spectra)
+            context.trace.on_tempfit_finish_fit(context.state.tempfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -328,8 +328,8 @@ class TempFitStep(PipelineStep):
             logger.info('Log L map is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
-        params = context.pipeline.tempfit_results.params_fit
-        params_free = context.pipeline.tempfit.determine_free_params(context.pipeline.tempfit.params_fixed)
+        params = context.state.tempfit_results.params_fit
+        params_free = context.state.tempfit.determine_free_params(context.state.tempfit.params_fixed)
 
         params_map = []        
         params_bounds = {}
@@ -346,10 +346,10 @@ class TempFitStep(PipelineStep):
                 }
                 pf = { p: v for p, v in params.items() if p not in pb }
 
-                context.pipeline.tempfit.map_log_L(
-                    context.pipeline.tempfit_spectra,
+                context.state.tempfit.map_log_L(
+                    context.state.tempfit_spectra,
                     size=10,
-                    rv=context.pipeline.tempfit_results.rv_fit,
+                    rv=context.state.tempfit_results.rv_fit,
                     params_fixed=pf,
                     params_bounds=pb,
                     squeeze=True)

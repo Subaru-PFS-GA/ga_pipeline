@@ -23,7 +23,7 @@ class LoadStep(PipelineStep):
         """
 
         # Load required data products that aren't already in the cache       
-        for t in context.pipeline.required_product_types:
+        for t in context.state.required_product_types:
             context.pipeline.load_input_products(t)
 
         # TODO: load photometry / prior files
@@ -42,7 +42,7 @@ class LoadStep(PipelineStep):
         target = None
 
         for i, visit, identity in context.config.enumerate_visits():
-            for product in context.pipeline.required_product_types:
+            for product in context.state.required_product_types:
                 data = context.pipeline.get_product_from_cache(product, visit, identity)
                 
                 # Expand if it is a container type
