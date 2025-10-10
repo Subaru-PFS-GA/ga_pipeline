@@ -141,8 +141,12 @@ class ConfigureScript(PipelineScript, Progress):
                     exptime.append(obs_log.loc[visit, 'avg_exptime'])
                     seeing.append(obs_log.loc[visit, 'seeing_median'])
 
-                identity.expTime = np.array(exptime, dtype=float)
+                identity.exptime = np.array(exptime, dtype=float)
                 identity.seeing = np.array(seeing, dtype=float)
+            else:
+                # exptime is part of pfsConfig, but it might be all None
+                identity.exptime = np.array([np.nan] * len(identity.visit), dtype=float)
+                identity.seeing = np.array([np.nan] * len(identity.visit), dtype=float)
 
             # Get target identity and list of observations to be included
             target = self.__create_target_config(objid, identity)
@@ -195,8 +199,8 @@ class ConfigureScript(PipelineScript, Progress):
                 pfsDesignId = id.pfsDesignId[visit_mask],
                 fiberId = id.fiberId[visit_mask],
                 fiberStatus = id.fiberStatus[visit_mask],
-                obstime = id.obsTime[visit_mask],
-                exptime = id.expTime[visit_mask],
+                obsTime = id.obstime[visit_mask],
+                expTime = id.exptime[visit_mask],
                 seeing = id.seeing[visit_mask],
             )
         )
@@ -307,17 +311,19 @@ class ConfigureScript(PipelineScript, Progress):
         # to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
         # to the fluxes available in the pfsConfig file, set the values and the errors.
+
+        # TODO: this takes the very first pfsConfig file, should we do something smarter?
         pfs_config = pfs_configs[pipeline_config.target.observations.visit[0]]
         idx = np.where(pfs_config.objId == objid)[0].item()
 
         # Check if any magnitudes with filter curves are defined in the config template
         # and if so, try to match them to the filters available in pfsConfig
-        if pipeline_config.tempfit.magnitudes is not None:
+        if pipeline_config.tempfit.photometry is not None:
             for filter_index, filter_name in enumerate(pfs_config.filterNames[idx]):
                 if filter_name is not None and filter_name != 'none':
                     # Try to match the filter name to something in the configuration
                     filter_found = False
-                    for fn, mag in pipeline_config.tempfit.magnitudes.items():
+                    for fn, mag in pipeline_config.tempfit.photometry.items():
                         if mag.filter_name is None or isinstance(mag.filter_name, (list, tuple)) and len(mag.filter_name) == 0:
                             # If the filter name is not set, match on the key
                             if fn == filter_name:
@@ -357,15 +363,19 @@ class ConfigureScript(PipelineScript, Progress):
                         if not flux_found:
                             logger.warning(f'No fluxes found in pfsConfig for object 0x{objid:x}, filter {filter_name}, skipping setting magnitude.')
 
-        # Only keep magnitudes that are available in pfsConfig or obs_params
-        magnitudes = {}
-        for k, v in pipeline_config.tempfit.magnitudes.items():
+        # Only keep photometry that is available in pfsConfig or obs_params
+        photometry = {}
+        for k, v in pipeline_config.tempfit.photometry.items():
             if v.flux is not None:
-                magnitudes[k] = v
+                photometry[k] = v
 
-        pipeline_config.tempfit.magnitudes = magnitudes
+        # TODO: verify if magnitudes are consistent because some fluxes in PfsConfig are wrong
+
+        pipeline_config.tempfit.photometry = photometry
 
     def __configure_tempfit_magnitudes_stellar_params(self, objid, pipeline_config, stellar_params):
+        # TODO: when a stellar_params file is provided, look up magnitudes from there as
+        #       well and override magnitude taken from pfsConfig
         pass
 
     def __configure_tempfit_stellar_param_priors(self, objid, pipeline_config, pfs_configs, stellar_params):
