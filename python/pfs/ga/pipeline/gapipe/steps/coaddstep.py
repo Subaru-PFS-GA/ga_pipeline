@@ -104,6 +104,7 @@ class CoaddStep(PipelineStep):
         #       the new arms as well
 
         tempfit.init_correction_models(stacked_spectra, force=True)
+        tempfit.init_extinction_curves(stacked_spectra, force=True)
 
         stacked_spectra, _ = tempfit.append_corrections_and_templates(
             stacked_spectra, None,

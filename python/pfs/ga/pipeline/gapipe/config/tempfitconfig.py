@@ -2,7 +2,7 @@ from typing import Dict, List
 
 from pfs.ga.common.config import Config
 
-from .magnitudeconfig import MagnitudeConfig
+from .photometryconfig import PhotometryConfig
 
 class TempFitConfig(Config):
     """
@@ -28,11 +28,13 @@ class TempFitConfig(Config):
         Minimum number of unmasked pixels required to run the fitting.
     correction_model: str
         Correction model to use. Either 'fluxcorr' or 'contnorm'.
+    extinction_model: str
+        Extinction model to use. 'ccm89', 'fm07' etc.
     """
 
     def __init__(
             self,
-            magnitudes: Dict[str, MagnitudeConfig] = None,
+            photometry: Dict[str, PhotometryConfig] = None,
         ):
 
         # TempFIT global parameters
@@ -45,7 +47,9 @@ class TempFitConfig(Config):
         self.model_grid_mmap = True               # Memory map model grid files (only on supported file systems)
         self.model_grid_preload = False           # Preload model grid into memory (requires large memory)
         self.psf_path = None                      # Line spread function path, use {arm} for wildcard
-        self.magnitudes = magnitudes              # Magnitudes to use in fluxed template fitting
+        
+        # Observed magnitudes to use in fluxed template fitting
+        self.photometry = photometry
 
         self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
 
@@ -97,6 +101,11 @@ class TempFitConfig(Config):
         #     'cont_per_exp': True,
         # }
 
+        self.extinction_model = 'ccm89'
+        self.extinction_model_args = {
+            'R_V': 3.1,
+        }
+
         # Arguments to pass to ModelGridTempFit
         # This is where we can set the parameter priors, etc.
         self.tempfit_args = {
@@ -110,6 +119,9 @@ class TempFitConfig(Config):
             "log_g": [ 1.5, 5.5 ],
             "log_g_dist": [ "normal", 3.5, 1.0 ],
             "a_M": 0.0,
+
+            "ebv": [0.03, 0.06],
+            "ebv_step": 0.01,
             
             "rv": [-400, 400],
             "rv_step": 20,

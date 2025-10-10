@@ -7,7 +7,7 @@ class GAObjectObservationsConfig(Config):
 
     def __init__(self,
                 visit = None,
-                arm = None,
+                arms = None,
                 spectrograph = None,
                 pfsDesignId = None,
                 fiberId = None,
@@ -19,7 +19,7 @@ class GAObjectObservationsConfig(Config):
                 seeing = None):
 
         self.visit = visit
-        self.arm = arm
+        self.arms = arms
         self.spectrograph = spectrograph
         self.pfsDesignId = pfsDesignId
         self.fiberId = fiberId

@@ -5,7 +5,7 @@ from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
-from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS
+from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS, EXTINCTION_MODELS
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.utils import *
 
@@ -117,9 +117,13 @@ class TempFitStep(PipelineStep):
         # Create the correction model which determines if we apply flux correction to
         # the templates or continuum-normalize the observations.
         correction_model = CORRECTION_MODELS[context.config.tempfit.correction_model]()
+        extinction_model = EXTINCTION_MODELS[context.config.tempfit.extinction_model]()
         
         # Create the template fit object that will perform the RV fitting
-        tempfit = ModelGridTempFit(correction_model=correction_model, trace=trace)
+        tempfit = ModelGridTempFit(
+            correction_model=correction_model,
+            extinction_model=extinction_model,
+            trace=trace)
 
         tempfit.template_grids = template_grids
         tempfit.template_psf = template_psfs
@@ -130,6 +134,7 @@ class TempFitStep(PipelineStep):
         # Initialize the components from the configuration
         tempfit.init_from_args(None, None, context.config.tempfit.tempfit_args)
         tempfit.correction_model.init_from_args(None, None, context.config.tempfit.correction_model_args)
+        tempfit.extinction_model.init_from_args(None, None, context.config.tempfit.extinction_model_args)
 
         return tempfit, trace
     

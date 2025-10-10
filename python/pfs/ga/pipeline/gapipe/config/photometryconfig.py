@@ -1,6 +1,6 @@
 from pfs.ga.common.config import Config
 
-class MagnitudeConfig(Config):
+class PhotometryConfig(Config):
     """
     Configuration class for an AB magnitude measurement.
     """
