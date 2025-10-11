@@ -92,7 +92,11 @@ class TempFitStep(PipelineStep):
             skip_mostly_masked=False,
             mask_flags=context.config.tempfit.mask_flags)
 
-        context.state.tempfit_fluxes = self.__tempfit_collect_fluxes(context)
+        # If fitting the broadband magnitudes, collect the fluxes
+        if context.config.tempfit.fit_photometry:
+            context.state.tempfit_fluxes = self.__tempfit_collect_fluxes(context)
+        else:
+            context.state.tempfit_fluxes = None
         
         if context.trace is not None:
             context.trace.on_load(context.state.tempfit_spectra)

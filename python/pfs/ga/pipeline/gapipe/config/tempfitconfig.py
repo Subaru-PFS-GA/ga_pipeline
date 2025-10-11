@@ -39,22 +39,42 @@ class TempFitConfig(Config):
 
         # TempFIT global parameters
         
+        # List of arms to attempt to fit
         self.fit_arms = [ 'b', 'm', 'n' ]
-        self.require_all_arms = True              # Require all arms to run fit
-        self.map_log_L = False                    # Map log likelihood over the model grid
-        self.model_grid_path = None               # Template grid path, str or dict, use {arm} for wildcard
-        self.model_grid_args = None               # Extra arguments to model grid
-        self.model_grid_mmap = True               # Memory map model grid files (only on supported file systems)
-        self.model_grid_preload = False           # Preload model grid into memory (requires large memory)
-        self.psf_path = None                      # Line spread function path, use {arm} for wildcard
+
+        # Require all arms to run fit
+        self.require_all_arms = True              
+        
+        # Map log likelihood over the model grid, expensive but useful for debugging
+        self.map_log_L = False
+
+        # Template grid path, str or dict, use {arm} for wildcard
+        self.model_grid_path = None               
+        
+        # Extra arguments to model grid, such as parameter limits
+        self.model_grid_args = None               
+        
+        # Memory map model grid files (only on supported file systems)
+        # Only works with uncompressed HDF5 files, falls back to lazy-loading if mmap fails
+        self.model_grid_mmap = True               
+        
+        # Preload model grids into memory (requires large memory, not worth it)
+        self.model_grid_preload = False
+
+        # Line spread function path, use {arm} for wildcard
+        self.psf_path = None
         
         # Observed magnitudes to use in fluxed template fitting
         self.photometry = photometry
+        
+        # Fit photometry in addition to spectra
+        self.fit_photometry = True
 
         # Broadband filter throughput cut-off to use when calculating synthetic magnitudes
         self.filter_cutoff = 1e-3
 
-        self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
+        # Only fit if there's enough non-masked pixels, otherwise skip
+        self.min_unmasked_pixels = 3000           
 
         # Flags to treat as masked pixel, combined with logical or.
         self.mask_flags = [
