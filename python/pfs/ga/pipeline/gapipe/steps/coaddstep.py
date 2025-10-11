@@ -39,9 +39,11 @@ class CoaddStep(PipelineStep):
     def run(self, context):       
         input_spectra, no_data_bit, no_continuum_bit, exclude_bits, mask_flags = self.__load_spectra(context)
             
+        # Stack the exposures for each arm separately
         coadd_spectra = self.__stack_spectra(context, input_spectra,
                                              no_data_bit, no_continuum_bit, exclude_bits)
 
+        # Combine the single arm spectra into a single spectrum
         merged_spectrum = self.__merge_spectra(context, coadd_spectra)
 
         self.__append_metadata(context, coadd_spectra, merged_spectrum, mask_flags)
