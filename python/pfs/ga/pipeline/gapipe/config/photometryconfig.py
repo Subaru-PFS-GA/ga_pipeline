@@ -7,6 +7,9 @@ class PhotometryConfig(Config):
 
     def __init__(self):
 
+        # Name of the instrument, e.g. 'ps1', 'hsc' etc.
+        self.instrument = None
+
         # Name of the filter, within the photometric system
         self.filter_name = None
 

@@ -1,9 +1,11 @@
 import os
+from collections import defaultdict
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
+from pfs.ga.pfsspec.core import Filter
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
 from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS, EXTINCTION_MODELS
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
@@ -63,12 +65,12 @@ class TempFitStep(PipelineStep):
             context,
             context.state.tempfit_arms,
             context.state.tempfit_grids)
+
+        # Load the filter curves to fit extinction, if needed
+        context.state.tempfit_synthmag_filters, context.state.tempfit_synthmag_grids = self.__tempfile_load_filters(context)
         
         # Initialize the TempFit object
-        context.state.tempfit, context.state.tempfit_trace = self.__tempfit_init(
-            context,
-            context.state.tempfit_grids,
-            context.state.tempfit_psfs)
+        context.state.tempfit, context.state.tempfit_trace = self.__tempfit_init(context)
 
         # Read the spectra from the data products
         spectra = context.pipeline.read_spectra(
@@ -89,13 +91,15 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_arms,
             skip_mostly_masked=False,
             mask_flags=context.config.tempfit.mask_flags)
+
+        context.state.tempfit_fluxes = self.__tempfit_collect_fluxes(context)
         
         if context.trace is not None:
             context.trace.on_load(context.state.tempfit_spectra)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
-    def __tempfit_init(self, context, template_grids, template_psfs):
+    def __tempfit_init(self, context):
         """
         Initialize the RV fit object.
         """
@@ -125,8 +129,11 @@ class TempFitStep(PipelineStep):
             extinction_model=extinction_model,
             trace=trace)
 
-        tempfit.template_grids = template_grids
-        tempfit.template_psf = template_psfs
+        tempfit.template_grids = context.state.tempfit_grids
+        tempfit.template_psf = context.state.tempfit_psfs
+
+        tempfit.synthmag_filters = context.state.tempfit_synthmag_filters
+        tempfit.synthmag_grids = context.state.tempfit_synthmag_grids
 
         tempfit.wave_include = context.config.tempfit.wave_include
         tempfit.wave_exclude = context.config.tempfit.wave_exclude
@@ -205,6 +212,22 @@ class TempFitStep(PipelineStep):
                 spectra[arm] = [ spectra[arm][visit] for visit in sorted(spectra[arm].keys()) ]
 
         return spectra
+
+    def __tempfit_collect_fluxes(self, context):
+        """
+        Collect photometric fluxes from the spectra.
+        """
+
+        # TODO: do we need to do some kind of mapping here between filter names?
+
+        fluxes = defaultdict(dict)
+        for band, photometry in context.config.tempfit.photometry.items():
+            # TODO: handle the case when we only have magnitudes
+            fluxes[photometry.instrument][band] = (
+                photometry.flux,
+                photometry.flux_error)
+
+        return fluxes
     
     def __tempfit_load_grid(self, context, arms):
         # Load template grids. Make sure each grid is only loaded once, if grid is
@@ -260,6 +283,42 @@ class TempFitStep(PipelineStep):
 
         return psfs
 
+    def __tempfile_load_filters(self, context):
+
+        filters = defaultdict(dict)
+        if context.config.tempfit.photometry is not None:
+            for band, photometry in context.config.tempfit.photometry.items():
+                if photometry.filter_path is not None:
+                    fn = os.path.expandvars(photometry.filter_path)
+                    if not os.path.isfile(fn):
+                        raise FileNotFoundError(f'Filter file `{fn}` for band `{band}` not found.')
+                    else:
+                        f = Filter()
+                        f.read(fn)
+                        f.trim(tol=context.config.tempfit.filter_cutoff)
+                        f.calculate_wave_eff()
+                        filters[photometry.instrument][band] = f
+                        logger.info(f'Using filter curve `{fn}` for band `{band}`.')
+                else:
+                    raise ValueError(f'No filter path specified for band `{band}` in photometry config.')
+
+        # For each filter, look up the model grid that covers the filter wavelength range
+        grids = defaultdict(dict)
+        for instrument in filters:
+            for band, f in filters[instrument].items():
+                found = False
+                for arm, grid in context.state.tempfit_grids.items():
+                    wave, _, _ = grid.get_wave()
+                    if wave[0] < f.wave[0] and f.wave[-1] < wave[-1]:
+                        found = True
+                        break
+                if found:
+                    grids[instrument][band] = grid
+                else:
+                    grids[instrument][band] = None
+                    logger.warning(f'No model grid covers the wavelength range {f.wave[[0, -1]]} of filter `{f.name}`.')
+
+        return filters, grids
     
     #endregion
     #region Validate data
@@ -300,7 +359,10 @@ class TempFitStep(PipelineStep):
 
         # Run the maximum likelihood fitting
         # TODO: add MCMC
-        context.state.tempfit_results = context.state.tempfit.run_ml(context.state.tempfit_spectra)
+        context.state.tempfit_results = context.state.tempfit.run_ml(
+            context.state.tempfit_spectra,
+            fluxes=context.state.tempfit_fluxes
+        )
 
         context.state.tempfit_spectra, _ = context.state.tempfit.append_corrections_and_templates(
             context.state.tempfit_spectra, None,

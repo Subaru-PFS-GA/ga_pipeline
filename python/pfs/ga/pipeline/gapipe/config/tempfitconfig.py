@@ -51,6 +51,9 @@ class TempFitConfig(Config):
         # Observed magnitudes to use in fluxed template fitting
         self.photometry = photometry
 
+        # Broadband filter throughput cut-off to use when calculating synthetic magnitudes
+        self.filter_cutoff = 1e-3
+
         self.min_unmasked_pixels = 3000           # Only fit if there's enough non-masked pixels
 
         # Flags to treat as masked pixel, combined with logical or.
