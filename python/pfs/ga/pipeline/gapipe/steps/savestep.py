@@ -104,7 +104,7 @@ class SaveStep(PipelineStep):
 
         for p in params_all:
             method.append('gapipe')
-            frame.append('bary')
+            frame.append('helio')
             param.append(p)
             covarId.append(params_fit.index(p) if p in params_fit else 255)
             unit.append(units[p] if p in units else '')
