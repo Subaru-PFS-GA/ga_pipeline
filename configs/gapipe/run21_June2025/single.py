@@ -10,7 +10,7 @@ config = dict(
             # Additional plots of RVFit results
             'pfsGA-tempfit-best-full-{id}': dict(
                 plot_flux=True, plot_model=True,
-                normalize_cont=True),
+                normalize_cont=False),
             'pfsGA-tempfit-best-400nm-{id}': dict(
                 wlim=[385, 405],
                 plot_flux=True, plot_model=True,
@@ -24,7 +24,7 @@ config = dict(
             # Additional plots of Coadd results
             'pfsGA-coadd-best-full-{id}': dict(
                 plot_flux=True, plot_model=True,
-                normalize_cont=True),
+                normalize_cont=False),
             'pfsGA-coadd-best-400nm-{id}': dict(
                 wlim=[385, 405],
                 plot_flux=True, plot_model=True,
