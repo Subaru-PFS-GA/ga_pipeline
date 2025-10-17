@@ -363,9 +363,29 @@ class TempFitStep(PipelineStep):
 
         # Run the maximum likelihood fitting
         # TODO: add MCMC
-        context.state.tempfit_results = context.state.tempfit.run_ml(
+        context.state.tempfit_results, tempfit_state = context.state.tempfit.run_ml(
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes
+        )
+
+        # Calculate the asymptotic error of the individual parameters
+        context.state.tempfit_results, tempfit_state = context.state.tempfit.calculate_error_ml(
+            context.state.tempfit_spectra,
+            fluxes=context.state.tempfit_fluxes,
+            state=tempfit_state
+        )
+
+        # Calculate the covariance matrix of rv and the template parameters
+        context.state.tempfit_results, tempfit_state = context.state.tempfit.calculate_cov_ml(
+            context.state.tempfit_spectra,
+            fluxes=context.state.tempfit_fluxes,
+            state=tempfit_state
+        )
+
+        context.state.tempfit_results, tempfit_state = context.state.tempfit.finish_ml(
+            context.state.tempfit_spectra,
+            fluxes=context.state.tempfit_fluxes,
+            state=tempfit_state
         )
 
         context.state.tempfit_spectra, _ = context.state.tempfit.append_corrections_and_templates(
@@ -373,7 +393,7 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_results.rv_fit,
             context.state.tempfit_results.params_fit,
             context.state.tempfit_results.a_fit,
-            match='template',
+            match='template',                       # Pull flux to templates instead of pulling templates to observations
             apply_correction=False,
         )
 
