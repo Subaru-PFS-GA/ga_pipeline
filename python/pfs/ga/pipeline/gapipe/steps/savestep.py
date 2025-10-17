@@ -88,6 +88,7 @@ class SaveStep(PipelineStep):
         # TODO: what if RV is not fitted?
 
         params_fit = context.state.tempfit_results.params_free + [ 'v_los' ]
+        param_idx = context.state.tempfit_results.cov_params
         params_all = [ p for p in context.state.tempfit_results.params_fit ] + [ 'v_los' ]
         flags_all = {** { p: v for p, v in context.state.tempfit_results.params_flags.items() }, **{ 'v_los': context.state.tempfit_results.rv_flags }}
 
@@ -106,7 +107,7 @@ class SaveStep(PipelineStep):
             method.append('gapipe')
             frame.append('helio')
             param.append(p)
-            covarId.append(params_fit.index(p) if p in params_fit else 255)
+            covarId.append(param_idx.index(p) if p in param_idx else 255)
             unit.append(units[p] if p in units else '')
 
             # Parameter values
