@@ -363,29 +363,40 @@ class TempFitStep(PipelineStep):
 
         # Run the maximum likelihood fitting
         # TODO: add MCMC
-        context.state.tempfit_results, tempfit_state = context.state.tempfit.run_ml(
+        context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.run_ml(
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes
         )
 
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def calculate_error(self, context):
+
         # Calculate the asymptotic error of the individual parameters
-        context.state.tempfit_results, tempfit_state = context.state.tempfit.calculate_error_ml(
+        context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.calculate_error_ml(
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes,
-            state=tempfit_state
+            state=context.state.tempfit_state
         )
+
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def calculate_covariance(self, context):
 
         # Calculate the covariance matrix of rv and the template parameters
-        context.state.tempfit_results, tempfit_state = context.state.tempfit.calculate_cov_ml(
+        context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.calculate_cov_ml(
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes,
-            state=tempfit_state
+            state=context.state.tempfit_state
         )
 
-        context.state.tempfit_results, tempfit_state = context.state.tempfit.finish_ml(
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def finish(self, context):
+        context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.finish_ml(
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes,
-            state=tempfit_state
+            state=context.state.tempfit_state
         )
 
         context.state.tempfit_spectra, _ = context.state.tempfit.append_corrections_and_templates(

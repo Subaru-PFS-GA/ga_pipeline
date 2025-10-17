@@ -203,6 +203,21 @@ class GAPipeline(Pipeline):
                         'critical': True,
                     },
                     {
+                        'name': 'tempfit_error',
+                        'func': TempFitStep.calculate_error,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'tempfit_covariance',
+                        'func': TempFitStep.calculate_covariance,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'tempfit_finish',
+                        'func': TempFitStep.finish,
+                        'critical': True,
+                    },
+                    {
                         'name': 'tempfit_map_log_L',
                         'func': TempFitStep.map_log_L,
                         'critical': False,
