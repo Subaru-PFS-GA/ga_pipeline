@@ -10,12 +10,12 @@ class TestGAPipelineConfig(TestCase):
 
     def test_save(self):
         config = GAPipelineConfig()
-        config.save('./tmp/test/pfsGAConfig.yaml')
-        config.save('./tmp/test/pfsGAConfig.json')
+        config.save('./tmp/test/pfsStar.yaml')
+        config.save('./tmp/test/pfsStar.json')
 
     def test_load(self):
         config = GAPipelineConfig()
-        config.load('./data/test/pfsGAObject.yaml', ignore_collisions=True)
+        config.load('./data/test/pfsStar.yaml', ignore_collisions=True)
 
         self.assertIsInstance(config.target, GATargetConfig)
         self.assertIsInstance(config.target.identity, GAObjectIdentityConfig)

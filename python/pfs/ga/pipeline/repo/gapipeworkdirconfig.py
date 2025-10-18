@@ -41,7 +41,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
         ),
 
         # GAPipelineConfig files are stored in the workdir. These are yaml files
-        # names the same as the PfsGAObject files, but with a .yaml extension. We have
+        # names the same as the PfsStar files, but with a .yaml extension. We have
         # no corresponding class in the datamodel, but we can load them using the GAPipelineConfig class.
         GAPipelineConfig: SimpleNamespace(
             name = 'GAPipelineConfig',
@@ -52,40 +52,40 @@ GAPipeWorkdirConfig = SimpleNamespace(
                 pfsVisitHash = HexFilter(name='pfsVisitHash', format='{:016x}'),
             ),
             params_regex = [
-                re.compile(r'pfsGAObject-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(yaml)$'),
+                re.compile(r'pfsStar-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(yaml)$'),
             ],
-            dir_format = '$workdir/$rerundir/pfsGAObject/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
-            filename_format = 'pfsGAObject-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.yaml',
+            dir_format = '$workdir/$rerundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
+            filename_format = 'pfsStar-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.yaml',
             load = lambda identity, filename, dir:
                 GAPipelineConfig.from_file(path=os.path.join(dir, filename)),
             save = lambda config, identity, filename, dir:
                 config.save(filename),
         ),
 
-        PfsGAObject: SimpleNamespace(
-            name = PfsGen3FileSystemConfig.products[PfsGAObject].name,
-            params = PfsGen3FileSystemConfig.products[PfsGAObject].params,
-            identity = PfsGen3FileSystemConfig.products[PfsGAObject].identity,
-            load = PfsGen3FileSystemConfig.products[PfsGAObject].load,
-            save = PfsGen3FileSystemConfig.products[PfsGAObject].save,
+        PfsStar: SimpleNamespace(
+            name = PfsGen3FileSystemConfig.products[PfsStar].name,
+            params = PfsGen3FileSystemConfig.products[PfsStar].params,
+            identity = PfsGen3FileSystemConfig.products[PfsStar].identity,
+            load = PfsGen3FileSystemConfig.products[PfsStar].load,
+            save = PfsGen3FileSystemConfig.products[PfsStar].save,
             params_regex = [
-                re.compile(r'pfsGAObject-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits)$'),
+                re.compile(r'pfsStar-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits)$'),
             ],
-            dir_format = '$outdir/$rerundir/pfsGAObject/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
-            filename_format = 'pfsGAObject-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
+            dir_format = '$outdir/$rerundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
+            filename_format = 'pfsStar-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
         ),
 
-        PfsGACatalog: SimpleNamespace(
-            name = PfsGen3FileSystemConfig.products[PfsGACatalog].name,
-            params = PfsGen3FileSystemConfig.products[PfsGACatalog].params,
-            identity = PfsGen3FileSystemConfig.products[PfsGACatalog].identity,
-            load = PfsGen3FileSystemConfig.products[PfsGACatalog].load,
-            save = PfsGen3FileSystemConfig.products[PfsGACatalog].save,
+        PfsStarCatalog: SimpleNamespace(
+            name = PfsGen3FileSystemConfig.products[PfsStarCatalog].name,
+            params = PfsGen3FileSystemConfig.products[PfsStarCatalog].params,
+            identity = PfsGen3FileSystemConfig.products[PfsStarCatalog].identity,
+            load = PfsGen3FileSystemConfig.products[PfsStarCatalog].load,
+            save = PfsGen3FileSystemConfig.products[PfsStarCatalog].save,
             params_regex = [
-                re.compile(r'pfsGACatalog-(?P<catId>\d{5})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
+                re.compile(r'pfsStarCatalog-(?P<catId>\d{5})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
-            dir_format = '$outdir/$rerundir/pfsGACatalog/{catId}/{nVisit}-0x{pfsVisitHash}',
-            filename_format = 'pfsGACatalog-{catId}-{nVisit}-0x{pfsVisitHash}.fits',
+            dir_format = '$outdir/$rerundir/pfsStarCatalog/{catId}/{nVisit}-0x{pfsVisitHash}',
+            filename_format = 'pfsStarCatalog-{catId}-{nVisit}-0x{pfsVisitHash}.fits',
         ),
     }
 )

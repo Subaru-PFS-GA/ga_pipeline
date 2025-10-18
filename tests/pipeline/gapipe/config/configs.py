@@ -11,7 +11,7 @@ TEST_CONFIG_RUN21_JUNE2025_10092 = dict(
         ),
         observations = dict(
             visit = [ 123064, 123066, ],
-            arm = [ 'bmn', 'bmn' ],
+            arms = [ 'bmn', 'bmn' ],
             spectrograph = [ 1, 1 ],
             pfsDesignId = [ 8643551219043481049, 8643551219043481049 ],
             fiberId = [ 116, 116 ],

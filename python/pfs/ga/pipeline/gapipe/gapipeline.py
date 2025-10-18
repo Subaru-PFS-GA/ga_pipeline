@@ -29,7 +29,7 @@ class GAPipeline(Pipeline):
     the files will be loaded based on the configuration object.
 
     The pipeline processes all exposures of a single object at a time and produces a
-    PfsGAObject file which contains the measured parameters, their errors and full covariance
+    PfsStar file which contains the measured parameters, their errors and full covariance
     matrix as well as a co-added spectrum, a continuum-normalized co-added spectrum and a
     best fit continuum model.
 
@@ -81,7 +81,7 @@ class GAPipeline(Pipeline):
 
         self.required_product_types = None
 
-        self.output_product_type = PfsGAObject
+        self.output_product_type = PfsStar
         self.output_product = None
 
         self.snr = None                       # SNR calculator class for each arm
@@ -273,7 +273,7 @@ class GAPipeline(Pipeline):
                                            variables={ 'workdir': self.config.workdir })
 
     def get_product_outdir(self):
-        return self.__work_repo.format_dir(PfsGAObject,
+        return self.__work_repo.format_dir(PfsStar,
                                            self.config.target.identity,
                                            variables={ 'datadir': self.config.outdir })
 
@@ -636,7 +636,7 @@ class GAPipeline(Pipeline):
     def read_spectra(self, products, arms):
         # Extract spectra from the input products for each visit in a format
         # required by pfsspec. Also return observation metadata which will be
-        # required for the final output data product PfsGAObject.
+        # required for the final output data product PfsStar.
 
         reader = PfsSpectrumReader()
 

@@ -26,7 +26,7 @@ class SaveStep(PipelineStep):
 
         # Construct the flux table, this is an alternative representation of the spectrum
         shape = merged_spectrum.wave.shape
-        flux_table = GAFluxTable(
+        flux_table = StarFluxTable(
             merged_spectrum.wave,
             merged_spectrum.flux,
             merged_spectrum.flux_err,
@@ -44,12 +44,12 @@ class SaveStep(PipelineStep):
         velocity_corrections = self.__get_velocity_corrections(context.state.coadd_results.merged_spectrum.observations)
         abundances = self.__get_abundances(context)
         abundances_covar = None
-        notes = PfsGAObjectNotes()
+        notes = PfsStarNotes()
 
         # TODO: where to store the global flags like tempfit_flags?
         #       these are available in tempfit_results.flags
 
-        context.state.pfsGAObject = PfsGAObject(
+        context.state.pfsStar = PfsStar(
             merged_spectrum.target,
             merged_spectrum.observations,
             merged_spectrum.wave,
@@ -69,7 +69,7 @@ class SaveStep(PipelineStep):
             notes)
 
         # Save output FITS file
-        identity, filename = context.pipeline.save_output_product(context.state.pfsGAObject)
+        identity, filename = context.pipeline.save_output_product(context.state.pfsStar)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     

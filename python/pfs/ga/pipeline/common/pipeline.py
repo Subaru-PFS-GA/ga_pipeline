@@ -146,7 +146,7 @@ class Pipeline():
     
     def execute(self):
         """
-        Execute the pipeline steps sequentially and return the output PfsGAObject containing
+        Execute the pipeline steps sequentially and return the output PfsStar containing
         the inferred parameters and the co-added spectrum.
         """
 

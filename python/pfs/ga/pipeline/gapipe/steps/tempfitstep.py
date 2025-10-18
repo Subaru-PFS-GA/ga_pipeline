@@ -225,11 +225,12 @@ class TempFitStep(PipelineStep):
         # TODO: do we need to do some kind of mapping here between filter names?
 
         fluxes = defaultdict(dict)
-        for band, photometry in context.config.tempfit.photometry.items():
-            # TODO: handle the case when we only have magnitudes
-            fluxes[photometry.instrument][band] = (
-                photometry.flux,
-                photometry.flux_error)
+        if context.config.tempfit.photometry is not None:
+            for band, photometry in context.config.tempfit.photometry.items():
+                # TODO: handle the case when we only have magnitudes
+                fluxes[photometry.instrument][band] = (
+                    photometry.flux,
+                    photometry.flux_error)
 
         return fluxes
     

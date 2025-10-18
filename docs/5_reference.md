@@ -60,11 +60,11 @@ Instead of the current directory, the `gapipe-configure` writes its log and othe
 
 * **--rerundir** *rerundir*: directory relative to `datadir` that contains the output files, such as `PfsSingle` of a specifc rerun.
 
-* **--workdir** *workdir*: directory to write the config files and auxiliary output files to for each object, basically anything other than the pfsGAObject files. Log files and figures are written to the `workdir/{objId}/log` and `workdir/{objId}/fig`, respectively.
+* **--workdir** *workdir*: directory to write the config files and auxiliary output files to for each object, basically anything other than the pfsStar files. Log files and figures are written to the `workdir/{objId}/log` and `workdir/{objId}/fig`, respectively.
 
-* **--outdir** *outdir*: directory to write the output data files to. Directory naming follows the DRP standard of `{outdir}/pfsGAObject/{catId}/{tract}/{patch}/`
+* **--outdir** *outdir*: directory to write the output data files to. Directory naming follows the DRP standard of `{outdir}/pfsStar/{catId}/{tract}/{patch}/`
 
-Note that all directory names can contain Python-style format strings that are replaced by the catId, tract, patch, objId, nVisit or pfsVisitHash. For example, `--outdir /datascope/subaru/user/dobos/gapipe/rerun/run16/20240709/pfsGAObject/{catid:05d}/{tract:05d}/{patch}/` will create a directory structure that contains the catId, tract, and patch values.
+Note that all directory names can contain Python-style format strings that are replaced by the catId, tract, patch, objId, nVisit or pfsVisitHash. For example, `--outdir /datascope/subaru/user/dobos/gapipe/rerun/run16/20240709/pfsStar/{catid:05d}/{tract:05d}/{patch}/` will create a directory structure that contains the catId, tract, and patch values.
 
 The object ID filters, with the exception of `--patch` can be specified as a list of single values and ranges, the latter being two numerical values separated by a hyphen. Any of the object ID filters can be omitted.
 

@@ -124,7 +124,7 @@ class TempFitConfig(Config):
         #     'cont_per_exp': True,
         # }
 
-        self.extinction_model = 'ccm89'
+        self.extinction_model = 'default'
         self.extinction_model_args = {
             'R_V': 3.1,
         }

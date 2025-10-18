@@ -20,10 +20,10 @@ from ...setup_logger import logger
 
 class CatalogScript(PipelineScript):
     """
-    Create a PfsGACatalog from the GA pipeline results using the PfsGAObject files and
+    Create a PfsStarCatalog from the GA pipeline results using the PfsStar files and
     other parameters.
 
-    The script works by finding the relevant PfsGAObject files based on the specified
+    The script works by finding the relevant PfsStar files based on the specified
     filters and compiles a catalog from them.
     """
 
@@ -56,8 +56,8 @@ class CatalogScript(PipelineScript):
 
     def run(self):
         """
-        Find all the pfsGAObject or pfsConfig files that match the filters, look
-        up the corresponding PfsGAObject files and compile the final catalog.
+        Find all the pfsStar or pfsConfig files that match the filters, look
+        up the corresponding PfsStar files and compile the final catalog.
         """
 
         # Load the stellar parameters
@@ -98,7 +98,7 @@ class CatalogScript(PipelineScript):
         # A unique catalog ID that all objects must match
         catid = None
     
-        # Observations that are used to generate the pfsGAObject files
+        # Observations that are used to generate the pfsStar files
         visit = []
         arm = {}
         pfsDesignId = []
@@ -147,9 +147,9 @@ class CatalogScript(PipelineScript):
 
         q = 0
         for objid, id in identities.items():
-            obj, _, _ = self.__load_pfsGAObject(id)
+            obj, _, _ = self.__load_pfsStar(id)
             if obj is not None:
-                self.__validate_pfsGAObject(obj)
+                self.__validate_pfsStar(obj)
 
                 if catid is None:
                     catid = obj.target.identity['catId']
@@ -169,7 +169,7 @@ class CatalogScript(PipelineScript):
                     arm[v].add(obj.observations.arm[i])
 
                 # Find the object in the PfsConfig file to look up certain parameters that
-                # are not available in the PfsGAObject file
+                # are not available in the PfsStar file
                 config = configs[obj.observations.visit[0]]
                 idx = np.where(config.objId == objid)[0].item()
 
@@ -193,7 +193,7 @@ class CatalogScript(PipelineScript):
                 table.proposalId.append(config.proposalId[idx])
                 table.obCode.append(config.obCode[idx])
 
-                # Count how many times an arm's been used to process PfsGAObject
+                # Count how many times an arm's been used to process PfsStar
                 def count_arms(a):
                     return np.sum([a in arm for arm in obj.observations.arm])
                 
@@ -240,7 +240,7 @@ class CatalogScript(PipelineScript):
         
         # Format table
         table = { k: np.array(v) for k, v in table.__dict__.items()}
-        table = GACatalogTable(**table)
+        table = StarCatalogTable(**table)
 
         # Sort observations and append to the catalog
         observations = Observations(
@@ -254,11 +254,11 @@ class CatalogScript(PipelineScript):
             obsTime = np.array(obstime),
             expTime = np.array(exptime))
         
-        catalog = PfsGACatalog(catid, observations, table)
+        catalog = PfsStarCatalog(catid, observations, table)
 
         return catalog
 
-    def __load_pfsGAObject(self, identity):
+    def __load_pfsStar(self, identity):
         # Convert exposure identities into a single composite identity
         id = SimpleNamespace(
             catId = identity.catId[0],
@@ -273,14 +273,14 @@ class CatalogScript(PipelineScript):
         )
 
         try:
-            data = self.input_repo.load_product(PfsGAObject, identity=id)
+            data = self.input_repo.load_product(PfsStar, identity=id)
         except FileNotFoundError:
-            logger.error(f'PfsGAObject file for 0x{id.objId:016x} is missing, will be ignored.')
+            logger.error(f'PfsStar file for 0x{id.objId:016x} is missing, will be ignored.')
             data = None, None, None
 
         return data
 
-    def __validate_pfsGAObject(self, pfsGAObject):
+    def __validate_pfsStar(self, pfsStar):
         pass
 
         # TODO: make sure it doesn use any visits that are not listed

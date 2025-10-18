@@ -128,7 +128,7 @@ The pipeline can be executed on individual object or submitted as a batch job. T
 
 To execute the pipeline on a single object, use the `run` script and pass the path to the configuration file as an argument:
 
-    $ gapipe-run --config $GAPIPE_WORKDIR$/run21_June2025/pfsGAObject/10092/000000020000607f-028-0x53aa1227c7ab7463/pfsGAObject-10092-000000020000607f-028-0x53aa1227c7ab7463.yaml
+    $ gapipe-run --config $GAPIPE_WORKDIR$/run21_June2025/pfsStar/10092/000000020000607f-028-0x53aa1227c7ab7463/pfsStar-10092-000000020000607f-028-0x53aa1227c7ab7463.yaml
 
 The `run` script will execute the pipeline on the object specified in the configuration file. The output will be written to the `outdir` directory specified in the configuration file.
 
