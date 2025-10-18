@@ -169,6 +169,12 @@ git config --local filter.ipynb_stripout.clean "$(which python) $(git rev-parse 
 git config --local filter.ipynb_stripout.smudge cat
 git config --local filter.ipynb_stripout.required true
 
+# Configure linalg library parallelism
+
+export OMP_NUM_THREADS=4       # For OpenMP-based libraries
+export MKL_NUM_THREADS=4       # For Intel MKL
+export OPENBLAS_NUM_THREADS=4  # For OpenBLAS
+
 # Register entrypoint functions
 
 # Search and show information about PFS data products
