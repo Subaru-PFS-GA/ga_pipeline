@@ -26,15 +26,22 @@ class SaveStep(PipelineStep):
 
         # Construct the flux table, this is an alternative representation of the spectrum
         shape = merged_spectrum.wave.shape
+        
+        flux_model = merged_spectrum.flux_model if merged_spectrum.flux_model is not None else np.zeros(shape)
+        cont = merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+        norm_flux = merged_spectrum.flux / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+        norm_err = merged_spectrum.flux_err / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+        norm_model = merged_spectrum.flux_model / merged_spectrum.cont if (merged_spectrum.flux_model is not None and merged_spectrum.cont is not None) else np.zeros(shape)
+
         flux_table = StarFluxTable(
             merged_spectrum.wave,
             merged_spectrum.flux,
             merged_spectrum.flux_err,
-            merged_spectrum.flux_model if merged_spectrum.flux_model is not None else np.zeros(shape),
-            merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape),
-            np.zeros(shape),    # Placeholder for norm_flux,
-            np.zeros(shape),    # Placeholder for norm_error
-            np.zeros(shape),    # Placeholder for norm_model
+            flux_model,                 # Best-fit fluxed model
+            cont,                       # Model continuum
+            norm_flux,                  # Continuum-normalized flux
+            norm_err,                   # Error of continuum-normalized flux
+            norm_model,                 # Continuum-normalized model
             merged_spectrum.mask,
             flags
         )
@@ -44,6 +51,7 @@ class SaveStep(PipelineStep):
         velocity_corrections = self.__get_velocity_corrections(context.state.coadd_results.merged_spectrum.observations)
         abundances = self.__get_abundances(context)
         abundances_covar = None
+        measurement_flags = self.__get_measurement_flags(context)        
         notes = PfsStarNotes()
 
         # TODO: where to store the global flags like tempfit_flags?
@@ -66,6 +74,7 @@ class SaveStep(PipelineStep):
             abundances,
             stellar_params_covar,
             abundances_covar,
+            measurement_flags,
             notes)
 
         # Save output FITS file
@@ -104,7 +113,7 @@ class SaveStep(PipelineStep):
         status = []
 
         for p in params_all:
-            method.append('gapipe')
+            method.append('tempfit')
             frame.append('helio')
             param.append(p)
             covarId.append(param_idx.index(p) if p in param_idx else 255)
@@ -167,13 +176,6 @@ class SaveStep(PipelineStep):
     def __get_velocity_corrections(self, observations):
         # Assume observations are sorted by visit
 
-        # return VelocityCorrections(
-        #     visit=np.array([], dtype=int),
-        #     JD=np.array([], dtype=float),
-        #     helio=np.array([], dtype=float),
-        #     bary=np.array([], dtype=float),
-        # )
-
         # TODO: not obs time data in any of the headers!
         JD = [ 0.0 for v in observations.visit]
         helio = [ 0.0 for v in observations.visit]
@@ -196,4 +198,24 @@ class SaveStep(PipelineStep):
             valueErr = np.array([], dtype=np.float32),
             flag = np.array([], dtype=bool),
             status = np.array([], dtype=str),
+        )
+
+    def __get_measurement_flags(self, context):
+        # Measurement flags for each algorithm
+        method = []
+        flag = []
+        status = []
+
+        if context.config.run_tempfit:
+            tempfit_flags = context.state.tempfit_results.flags
+            method.append('tempfit')
+            flag.append(tempfit_flags != TempFitFlag.OK)
+            status.append(' '.join([ m.name for m in TempFitFlag if (m.value & tempfit_flags) != 0 ]))
+
+        # TODO: add abundance flags
+
+        return MeasurementFlags(
+            method=np.array(method, dtype=str),
+            flag=np.array(flag, dtype=bool),
+            status=np.array(status, dtype=str),
         )
