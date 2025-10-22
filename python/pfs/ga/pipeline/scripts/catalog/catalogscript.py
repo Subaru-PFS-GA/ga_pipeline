@@ -30,21 +30,18 @@ class CatalogScript(PipelineScript):
     def __init__(self):
         super().__init__()
 
-        self.__params = None                # Params file with stellar parameters etc.
-        self.__params_id = '__target_idx'   # ID column of the params file
+        self.__obs_logs = None                      # Observation log files
         self.__top = None                   # Stop after this many objects
 
     def _add_args(self):
-        self.add_arg('--params', type=str, help='Path to stellar parameters file')
-        self.add_arg('--params-id', type=str, help='ID column of the stellar parameters to use')
         self.add_arg('--top', type=int, help='Stop after this many objects')
+        self.add_arg('--obs-logs', type=str, nargs='*', help='Observation log files')
 
         super()._add_args()
 
     def _init_from_args(self, args):
-        self.__params = self.get_arg('params', args, self.__params)
-        self.__params_id = self.get_arg('params_id', args, self.__params_id)
         self.__top = self.get_arg('top', args, self.__top)
+        self.__obs_logs = self.get_arg('obs_logs', args, self.__obs_logs)
 
         super()._init_from_args(args)
 
@@ -60,18 +57,17 @@ class CatalogScript(PipelineScript):
         up the corresponding PfsStar files and compile the final catalog.
         """
 
-        # Load the stellar parameters
-        if self.__params is not None:
-            params = self._load_stellar_params_file(self.__params, self.__params_id)
+        # Load the observation logs
+        if self.__obs_logs is not None:
+            obs_log = self._load_obs_log_files(self.__obs_logs)
         else:
-            params = None
+            logger.warning('No observation log files specified, skipping loading obslog.')
+            obs_log = None
 
-        # Find all config files matching the command-line arguments.
-        pfs_configs = {}
-        filenames, ids = self.input_repo.find_product(PfsConfig)
-        for visit, fn in zip(ids.visit, filenames):
-            config, id, fn = self.input_repo.load_product(PfsConfig, filename=fn)
-            pfs_configs[id.visit] = config
+        # Find the objects matching the command-line arguments. Arguments
+        # are parsed by the repo object itself, so no need to pass them in here.
+        logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
+        pfs_configs = self.input_repo.load_pfsConfigs()
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
@@ -83,17 +79,14 @@ class CatalogScript(PipelineScript):
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
-        catalog = self.__create_catalog(pfs_configs, identities)
+        catalog = self.__create_catalog(identities, pfs_configs, obs_log)
         logger.info(f'Created catalog with {len(catalog.catalog)} objects.')
 
-        _, filename, _ = self.input_repo.get_data_path(catalog)
+        _, filename, _ = self.work_repo.get_data_path(catalog)
         logger.info(f'Saving catalog to `{filename}`...')
-        self.input_repo.save_product(catalog, filename=filename, create_dir=True)
+        self.work_repo.save_product(catalog, filename=filename, create_dir=True)
 
-        pass
-        
-
-    def __create_catalog(self, configs, identities):
+    def __create_catalog(self, identities, pfs_configs, obs_log):
 
         # A unique catalog ID that all objects must match
         catid = None
@@ -111,6 +104,7 @@ class CatalogScript(PipelineScript):
             gaiaId = [],
             ps1Id = [],
             hscId = [],
+            sdssId = [],
             miscId = [],
             ra = [],
             dec = [],
@@ -132,14 +126,32 @@ class CatalogScript(PipelineScript):
             expTimeEff_r = [],
             expTimeEff_n = [],
 
+            snr_b = [],
+            snr_m = [],
+            snr_r = [],
+            snr_n = [],
+
             v_los = [],
             v_losErr = [],
-            T_eff = [],
+            v_losStatus = [],
+            EBV = [],
+            EBVErr = [],
+            EBVStatus = [],
+            T_eff = [], 
             T_effErr = [],
+            T_effStatus = [],
             M_H = [],
             M_HErr = [],
+            M_HStatus = [],
+            a_M = [],
+            a_MErr = [],
+            a_MStatus = [],
+            C = [],
+            CErr = [],
+            CStatus = [],
             log_g = [],
             log_gErr = [],
+            log_gStatus = [],
 
             flag = [],
             status = [],
@@ -156,7 +168,7 @@ class CatalogScript(PipelineScript):
                 elif catid != obj.target.identity['catId']:
                     raise ValueError("All catIDs must match in a catalog.")
                 
-                # Keep track of visits, designs, arms and spectrographs, etc. used for each visit
+                # Keep track of visits, designs, arms and spectrographs, etc. used for this catalog
                 for i, v in enumerate(obj.observations.visit):
                     if v not in visit:
                         visit.append(obj.observations.visit[i])
@@ -168,9 +180,18 @@ class CatalogScript(PipelineScript):
                     
                     arm[v].add(obj.observations.arm[i])
 
+                # Calculate some metrics from the obs_log if available
+                eet = { a: 0.0 for a in ['b', 'm', 'r', 'n'] }
+                if obs_log is not None:
+                    for i, v in enumerate(obj.observations.visit):
+                        for a in eet:
+                            eet_arm = obs_log.loc[v, f'eet_{a}']
+                            if eet_arm is not None and np.isfinite(eet_arm):
+                                eet[a] += eet_arm
+
                 # Find the object in the PfsConfig file to look up certain parameters that
                 # are not available in the PfsStar file
-                config = configs[obj.observations.visit[0]]
+                config = pfs_configs[obj.observations.visit[0]]
                 idx = np.where(config.objId == objid)[0].item()
 
                 # Append the table columns
@@ -181,6 +202,7 @@ class CatalogScript(PipelineScript):
                 table.gaiaId.append(-1)
                 table.ps1Id.append(-1)
                 table.hscId.append(-1)
+                table.sdssId.append(-1)
                 table.miscId.append(-1)
 
                 table.ra.append(config.ra[idx])
@@ -197,38 +219,44 @@ class CatalogScript(PipelineScript):
                 def count_arms(a):
                     return np.sum([a in arm for arm in obj.observations.arm])
                 
-                table.nVisit_b.append(count_arms('b'))
-                table.nVisit_m.append(count_arms('m'))
-                table.nVisit_r.append(count_arms('r'))
-                table.nVisit_n.append(count_arms('n'))
+                for a, nVisit in zip(
+                    ['b', 'm', 'r', 'n'],
+                    [table.nVisit_b, table.nVisit_m, table.nVisit_r, table.nVisit_n]
+                ):
+                    nVisit.append(count_arms(a))
 
-                table.expTimeEff_b.append(-1)
-                table.expTimeEff_m.append(-1)
-                table.expTimeEff_r.append(-1)
-                table.expTimeEff_n.append(-1)
+                for a, expTimeEff in zip(
+                    ['b', 'm', 'r', 'n'],
+                    [table.expTimeEff_b, table.expTimeEff_m, table.expTimeEff_r, table.expTimeEff_n]
+                ):
+                    expTimeEff.append(eet[a])
 
-                # TODO: add measured SNR of coadd
+                for a, snr_arm in zip(
+                    ['b', 'm', 'r', 'n'],
+                    [table.snr_b, table.snr_m, table.snr_r, table.snr_n]
+                ):
+                    snr_idx = np.where(np.array(obj.stellarParams.param) == f'snr_{a}')[0]
+                    if snr_idx.size == 1:
+                        snr_arm.append(obj.stellarParams.value[snr_idx[0]])
+                    else:
+                        snr_arm.append(np.nan)
 
-                for i in range(len(obj.stellarParams)):
-                    method = obj.stellarParams.method[i]
-                    param =  obj.stellarParams.param[i]
-                    value = obj.stellarParams.value[i]
-                    error = obj.stellarParams.valueErr[i]
-                    
-                    # Data model allows for different algorithms so use output of the default
-                    if method == 'ga1dpipe':
-                        if param == 'v_los':
-                            table.v_los.append(value)
-                            table.v_losErr.append(error)
-                        elif param == 'T_eff':
-                            table.T_eff.append(value)
-                            table.T_effErr.append(error)
-                        elif param == 'M_H':
-                            table.M_H.append(value)
-                            table.M_HErr.append(error)
-                        elif param == 'log_g':
-                            table.log_g.append(value)
-                            table.log_gErr.append(error)
+                for param, value, error, status in zip(
+                    ['v_los', 'ebv', 'T_eff', 'M_H', 'a_M', 'C', 'log_g'],
+                    [table.v_los, table.EBV, table.T_eff, table.M_H, table.a_M, table.C, table.log_g],
+                    [table.v_losErr, table.EBVErr, table.T_effErr, table.M_HErr, table.a_MErr, table.CErr, table.log_gErr],
+                    [table.v_losStatus, table.EBVStatus, table.T_effStatus, table.M_HStatus, table.a_MStatus, table.CStatus, table.log_gStatus],
+                ):
+                    param_idx = np.where((np.array(obj.stellarParams.param) == param) &
+                                         (np.array(obj.stellarParams.method) == 'gapipe'))[0]
+                    if param_idx.size == 1:
+                        value.append(obj.stellarParams.value[param_idx[0]])
+                        error.append(obj.stellarParams.valueErr[param_idx[0]])
+                        status.append(obj.stellarParams.status[param_idx[0]])
+                    else:
+                        value.append(np.nan)
+                        error.append(np.nan)
+                        status.append('')
 
                 table.flag.append(False)
                 table.status.append('')
@@ -273,12 +301,15 @@ class CatalogScript(PipelineScript):
         )
 
         try:
-            data = self.input_repo.load_product(PfsStar, identity=id)
+            data, id, filename = self.work_repo.load_product(
+                PfsStar,
+                identity=id,
+                variables = { 'datadir': self.config.outdir })
         except FileNotFoundError:
             logger.error(f'PfsStar file for 0x{id.objId:016x} is missing, will be ignored.')
-            data = None, None, None
+            data, id, filename = None, None, None
 
-        return data
+        return data, id, filename
 
     def __validate_pfsStar(self, pfsStar):
         pass
