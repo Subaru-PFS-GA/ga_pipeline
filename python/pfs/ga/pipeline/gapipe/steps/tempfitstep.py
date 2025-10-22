@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from collections import defaultdict
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
@@ -76,6 +77,26 @@ class TempFitStep(PipelineStep):
         spectra = context.pipeline.read_spectra(
             context.state.required_product_types,
             context.state.tempfit_arms)
+
+        # Update metadata from the config
+        for i, visit in enumerate(context.config.target.observations.visit):
+            for arm in spectra:
+                if visit in spectra[arm]:
+                    # Assume spectrum is a single exposure
+                    spec = spectra[arm][visit]
+
+                    # pfsspec attributes
+                    spec.obs_time = datetime.fromisoformat(context.config.target.observations.obsTime[i])
+                    spec.exp_time = context.config.target.observations.expTime[i]
+                    spec.seeing = context.config.target.observations.seeing[i]
+
+                    # datamodel attributes
+                    spec.observations.obsTime = [ context.config.target.observations.obsTime[i] ]
+                    spec.observations.expTime = [ context.config.target.observations.expTime[i] ]
+
+                    # TODO: these cannot be set directly
+                    # spec.identity.obsTime = spec.obs_time
+                    # spec.identity.expTime = spec.exp_time
 
         # Calculate the signal to noise for each exposure
         for arm in spectra:
