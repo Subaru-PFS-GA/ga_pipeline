@@ -199,6 +199,11 @@ class GAPipeline(Pipeline):
                         'critical': True,
                     },
                     {
+                        'name': 'tempfit_guess',
+                        'func': TempFitStep.guess,
+                        'critical': True,
+                    },
+                    {
                         'name': 'tempfit_run',
                         'func': TempFitStep.run,
                         'critical': True,
@@ -672,17 +677,23 @@ class GAPipeline(Pipeline):
                     spec = spectra[arm][visit]
 
                     # pfsspec attributes
-                    spec.obs_time = datetime.fromisoformat(observations.obsTime[i])
-                    spec.exp_time = observations.expTime[i]
-                    spec.seeing = observations.seeing[i]
+                    if observations is not None:
+                        if observations.obsTime is not None:
+                            spec.obs_time = datetime.fromisoformat(observations.obsTime[i])
+                        if observations.expTime is not None:
+                            spec.exp_time = observations.expTime[i]
+                        if observations.seeing is not None:
+                            spec.seeing = observations.seeing[i]
 
-                    # datamodel attributes
-                    spec.observations.obsTime = [ observations.obsTime[i] ]
-                    spec.observations.expTime = [ observations.expTime[i] ]
+                        # datamodel attributes
+                        if observations.obsTime is not None:
+                            spec.observations.obsTime = [ observations.obsTime[i] ]
+                        if observations.expTime is not None:
+                            spec.observations.expTime = [ observations.expTime[i] ]
 
-                    # TODO: these cannot be set directly
-                    # spec.identity.obsTime = spec.obs_time
-                    # spec.identity.expTime = spec.exp_time
+                        # TODO: these cannot be set directly
+                        # spec.identity.obsTime = spec.obs_time
+                        # spec.identity.expTime = spec.exp_time
 
                     count += 1
 

@@ -367,17 +367,26 @@ class TempFitStep(PipelineStep):
     
     #endregion
     #region Run
+
+    def guess(self, context):
+        # Generate the initial state for the fitting and guess the unknown parameters
+        context.state.tempfit_state = context.state.tempfit.init_state(
+            context.state.tempfit_spectra,
+            fluxes=context.state.tempfit_fluxes)
+
+        context.state.tempfit_state, _, _ = context.state.tempfit.guess_ml(
+            context.state.tempfit_state)
+
+        if context.state.tempfit_state.rv_guess is not None:
+            context.state.tempfit_state.rv_0 = context.state.tempfit_state.rv_guess
+        if context.state.tempfit_state.params_guess is not None:
+            context.state.tempfit_state.params_0 = context.state.tempfit_state.params_guess
     
     def run(self, context):
-        # Determine the normalization factor to be used to keep continuum coefficients unity
-        context.state.tempfit.spec_norm, context.state.tempfit.temp_norm = context.state.tempfit.get_normalization(context.state.tempfit_spectra)
-
         # Run the maximum likelihood fitting
         # TODO: add MCMC
         context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.run_ml(
-            context.state.tempfit_spectra,
-            fluxes=context.state.tempfit_fluxes
-        )
+            context.state.tempfit_state)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
