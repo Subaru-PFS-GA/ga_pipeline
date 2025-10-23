@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from types import SimpleNamespace
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
@@ -660,3 +661,61 @@ class GAPipeline(Pipeline):
         logger.info(f'Extracted {read_count} and skipped {skipped_count} spectra.')
 
         return spectra
+
+    def update_spectra_metadata(self, spectra, observations):
+        # Update metadata from the config, which is generated based on the obs log
+        count = 0
+        for i, visit in enumerate(observations.visit):
+            for arm in spectra:
+                if visit in spectra[arm]:
+                    # Assume spectrum is a single exposure
+                    spec = spectra[arm][visit]
+
+                    # pfsspec attributes
+                    spec.obs_time = datetime.fromisoformat(observations.obsTime[i])
+                    spec.exp_time = observations.expTime[i]
+                    spec.seeing = observations.seeing[i]
+
+                    # datamodel attributes
+                    spec.observations.obsTime = [ observations.obsTime[i] ]
+                    spec.observations.expTime = [ observations.expTime[i] ]
+
+                    # TODO: these cannot be set directly
+                    # spec.identity.obsTime = spec.obs_time
+                    # spec.identity.expTime = spec.exp_time
+
+                    count += 1
+
+        if count > 0:
+            logger.info(f'Updated metadata for {count} spectra based on the configuration file.')
+
+        return spectra
+
+    def calculate_snr(self, spectra, arms, snr):
+        """
+        Calculate the signal to noise ratio for each spectrum in each arm.
+
+        Parameters
+        ----------
+        spectra: :obj:`dict`
+            Dictionary of spectra indexed by arm and visit
+        arms: :obj:`dict`
+            Dictionary of arm configurations
+        snr: :obj:`dict`
+            Dictionary of SNR calculator objects indexed by arm
+        """
+
+        count = 0
+        mean_snr = 0.0
+
+         # Calculate the signal to noise for each exposure
+        for arm in spectra:
+            for visit, spec in spectra[arm].items():
+                mask_bits = spec.get_mask_bits(arms[arm]['snr']['mask_flags'])
+                spec.calculate_snr(snr[arm], mask_bits=mask_bits)
+
+                count += 1
+                mean_snr += spec.snr
+
+        if count > 0:
+            logger.info(f'Calculated SNR for {count} spectra with mean SNR={mean_snr/count:.2f}.')

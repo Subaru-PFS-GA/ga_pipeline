@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from collections import defaultdict
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
@@ -25,7 +24,7 @@ class TempFitStep(PipelineStep):
     def init(self, context):
 
         if not context.config.run_tempfit:
-            logger.info('RV fitting is disabled, skipping step.')
+            logger.info('Template and RV fitting is disabled, skipping step.')
             return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=True)
 
         # Find the set of available arms in the available files
@@ -37,6 +36,7 @@ class TempFitStep(PipelineStep):
 
             if issubclass(t, (PfsFiberArray, PfsFiberArraySet, PfsTargetSpectra)):
                 avail_arms = avail_arms.union(context.pipeline.get_avail_arms(t))
+        logger.info(f'Available arms for TempFit: {sorted(avail_arms)}')
 
         # Verify that all arms required in the config are available
         context.state.tempfit_arms = set()
@@ -48,6 +48,7 @@ class TempFitStep(PipelineStep):
                 logger.warning(message)
             else:
                 context.state.tempfit_arms.add(arm)
+        logger.info(f'Using arms for TempFit: {sorted(context.state.tempfit_arms)}')
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
@@ -68,7 +69,7 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_grids)
 
         # Load the filter curves to fit extinction, if needed
-        context.state.tempfit_synthmag_filters, context.state.tempfit_synthmag_grids = self.__tempfile_load_filters(context)
+        context.state.tempfit_synthmag_filters, context.state.tempfit_synthmag_grids = self.__tempfit_load_filters(context)
         
         # Initialize the TempFit object
         context.state.tempfit, context.state.tempfit_trace = self.__tempfit_init(context)
@@ -78,32 +79,17 @@ class TempFitStep(PipelineStep):
             context.state.required_product_types,
             context.state.tempfit_arms)
 
-        # Update metadata from the config
-        for i, visit in enumerate(context.config.target.observations.visit):
-            for arm in spectra:
-                if visit in spectra[arm]:
-                    # Assume spectrum is a single exposure
-                    spec = spectra[arm][visit]
-
-                    # pfsspec attributes
-                    spec.obs_time = datetime.fromisoformat(context.config.target.observations.obsTime[i])
-                    spec.exp_time = context.config.target.observations.expTime[i]
-                    spec.seeing = context.config.target.observations.seeing[i]
-
-                    # datamodel attributes
-                    spec.observations.obsTime = [ context.config.target.observations.obsTime[i] ]
-                    spec.observations.expTime = [ context.config.target.observations.expTime[i] ]
-
-                    # TODO: these cannot be set directly
-                    # spec.identity.obsTime = spec.obs_time
-                    # spec.identity.expTime = spec.exp_time
+        # Update the spectra metadata from the pipeline
+        context.pipeline.update_spectra_metadata(
+            spectra,
+            context.config.target.observations)
 
         # Calculate the signal to noise for each exposure
-        for arm in spectra:
-            for visit, spec in spectra[arm].items():
-                mask_bits = spec.get_mask_bits(context.config.arms[arm]['snr']['mask_flags'])
-                spec.calculate_snr(context.state.snr[arm], mask_bits=mask_bits)
-        
+        context.pipeline.calculate_snr(
+            spectra,
+            context.config.arms,
+            context.state.snr)
+                
         # Collect spectra in a format that can be passed to TempFit, i.e
         # handle missing spectra, fully masked spectra, etc.
         context.state.tempfit_spectra = self.__tempfit_collect_spectra(
@@ -309,7 +295,7 @@ class TempFitStep(PipelineStep):
 
         return psfs
 
-    def __tempfile_load_filters(self, context):
+    def __tempfit_load_filters(self, context):
 
         filters = defaultdict(dict)
         if context.config.tempfit.photometry is not None:
@@ -365,6 +351,9 @@ class TempFitStep(PipelineStep):
                         mask_flags = s.mask_flags
                     elif mask_flags != s.mask_flags:
                         logger.warning('Mask flags are not the same for all spectra.')
+
+        # TODO: verify metadata
+        # TODO: warn about low SNR spectra
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
