@@ -375,12 +375,15 @@ class TempFitStep(PipelineStep):
             fluxes=context.state.tempfit_fluxes)
 
         context.state.tempfit_state, _, _ = context.state.tempfit.guess_ml(
-            context.state.tempfit_state)
+            context.state.tempfit_state,
+            method='max')
 
         if context.state.tempfit_state.rv_guess is not None:
             context.state.tempfit_state.rv_0 = context.state.tempfit_state.rv_guess
         if context.state.tempfit_state.params_guess is not None:
             context.state.tempfit_state.params_0 = context.state.tempfit_state.params_guess
+
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     
     def run(self, context):
         # Run the maximum likelihood fitting
