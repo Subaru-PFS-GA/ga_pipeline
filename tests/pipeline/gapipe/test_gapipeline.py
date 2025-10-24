@@ -83,6 +83,7 @@ class TestGAPipeline(TestCase):
         TempFitStep().load(context)
         TempFitStep().validate_data(context)
         TempFitStep().preprocess(context)
+        TempFitStep().guess(context)
         TempFitStep().run(context)
         TempFitStep().calculate_error(context)
         TempFitStep().calculate_covariance(context)
