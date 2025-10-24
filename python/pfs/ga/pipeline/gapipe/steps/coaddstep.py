@@ -98,6 +98,10 @@ class CoaddStep(PipelineStep):
         # Evaluate the best fit model, continuum, etc that might be interesting
         tempfit = context.state.tempfit
         tempfit.reset()
+
+        state = tempfit.init_state(
+            stacked_spectra,
+            fluxes=context.state.tempfit_fluxes)
         
         # Append the flux correction model to the coadded spectra
 
@@ -105,9 +109,10 @@ class CoaddStep(PipelineStep):
         #       used for tempfit, unless the models are initialized for
         #       the new arms as well
 
-        tempfit.init_correction_models(stacked_spectra, force=True)
-        tempfit.init_extinction_curves(stacked_spectra, force=True)
+        tempfit.init_correction_models(state.pp_spec, force=True)
+        tempfit.init_extinction_curves(state.pp_spec, force=True)
 
+        # Append the flux correction model to the coadded spectra
         stacked_spectra, _ = tempfit.append_corrections_and_templates(
             stacked_spectra, None,
             context.state.tempfit_results.rv_fit,

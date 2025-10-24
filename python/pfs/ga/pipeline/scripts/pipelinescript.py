@@ -7,6 +7,7 @@ from dateutil import parser as dateparser
 
 from pfs.ga.common.scripts import Script
 from pfs.ga.common.config import ConfigJSONEncoder
+from pfs.ga.pfsspec.core import Trace
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
 from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo
@@ -39,9 +40,16 @@ class PipelineScript(Script):
             ),
         }
 
+        self.__plot_level = None
+
         self.__config = self._create_config()
         self.__input_repo = self._create_input_repo()
         self.__work_repo = self._create_work_repo()
+
+    def __get_plot_level(self):
+        return self.__plot_level
+
+    plot_level = property(__get_plot_level)
 
     def __get_products(self):
         return self.__products
@@ -64,11 +72,24 @@ class PipelineScript(Script):
     work_repo = property(__get_work_repo)
 
     def _add_args(self):
+        self.add_arg('--plot-level', type=str, choices=['NONE', 'INFO', 'DEBUG', 'TRACE'], help='Plot level for tracing')
+
         self.__input_repo.add_args(self, ignore_duplicates=True)
         self.__work_repo.add_args(self, ignore_duplicates=True)
         super()._add_args()
 
     def _init_from_args(self, args):
+
+        self.__plot_level = self.get_arg('plot_level', args, self.__plot_level)
+        if self.__plot_level is not None:
+            level_map = {
+                'NONE': Trace.PLOT_LEVEL_NONE,
+                'INFO': Trace.PLOT_LEVEL_INFO,
+                'DEBUG': Trace.PLOT_LEVEL_DEBUG,
+                'TRACE': Trace.PLOT_LEVEL_TRACE
+            }
+            self.__plot_level = level_map[self.__plot_level]
+
         # Load the configuration
         if self.is_arg('config', args):
             config_files = self.get_arg('config', args)

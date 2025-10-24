@@ -115,6 +115,9 @@ class TempFitStep(PipelineStep):
         Initialize the RV fit object.
         """
 
+        # NOTE: we do not specify a mask bit here, as the mask is already applied when
+        #       collecting the spectra.
+
         # Initialize the trace that will be used for logging and plotting
         if context.trace is not None:
             trace = ModelGridTempFitTrace(id=context.id)
@@ -378,10 +381,22 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_state,
             method='max')
 
+        # Update the initial parameters to the best guess
         if context.state.tempfit_state.rv_guess is not None:
             context.state.tempfit_state.rv_0 = context.state.tempfit_state.rv_guess
         if context.state.tempfit_state.params_guess is not None:
             context.state.tempfit_state.params_0 = context.state.tempfit_state.params_guess
+
+        # Limit the rv range around the best guess
+        # TODO: bring out this parameter to config
+        if context.state.tempfit_state.rv_guess is not None:
+            rv_min = context.state.tempfit_state.rv_guess - 50
+            rv_max = context.state.tempfit_state.rv_guess + 50
+            if context.state.tempfit_state.rv_bounds is not None and context.state.tempfit_state.rv_bounds[0] is not None:
+                rv_min = max(rv_min, context.state.tempfit_state.rv_bounds[0])
+            if context.state.tempfit_state.rv_bounds is not None and context.state.tempfit_state.rv_bounds[1] is not None:
+                rv_max = min(rv_max, context.state.tempfit_state.rv_bounds[1])
+            context.state.tempfit_state.rv_bounds = (rv_min, rv_max)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
     

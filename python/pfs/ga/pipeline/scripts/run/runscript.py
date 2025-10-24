@@ -150,6 +150,8 @@ class RunScript(PipelineScript, Batch, Progress):
         # Update the trace object used for logging and plotting
         self.__trace.reset()
         self.__trace.init_from_args(self, config.trace_args)
+        if self.plot_level is not None:
+            self.__trace.plot_level = self.plot_level
         self.__trace.update(figdir=logdir, logdir=logdir, id=id)
 
         # Reconfigure logging according to the configuration
