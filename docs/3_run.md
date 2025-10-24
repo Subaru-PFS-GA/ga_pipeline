@@ -28,7 +28,7 @@ Once the environment is initialized, a set of commands starting with `gapipe-` a
 For the sake of simplicity, we define a few environmental varibles that are used in the examples of the following sections. Some of these read the observation logs available in the `spt_ssp_observation` repository. The IDs refer to valid data in the March, 2025 observing run.
 
     $ CATID="10092"
-    $ OBJID="0x6000030bf"
+    $ OBJID="0x600000d9d"
     $ OBSLOGS="spt_ssp_observation/runs/2025-03/obslog/*.csv"
     $ VISIT="123317"
     $ VISITS="$(cat $OBSLOGS | grep SSP_GA | cut -d ',' -f 1)"
@@ -128,7 +128,7 @@ The pipeline can be executed on individual object or submitted as a batch job. T
 
 To execute the pipeline on a single object, use the `run` script and pass the path to the configuration file as an argument:
 
-    $ gapipe-run --config $GAPIPE_WORKDIR$/run21_June2025/pfsStar/10092/000000020000607f-028-0x53aa1227c7ab7463/pfsStar-10092-000000020000607f-028-0x53aa1227c7ab7463.yaml
+    $ gapipe-run --config $GAPIPE_WORKDIR/run21_June2025/pfsStar/10092/0000000600000d9d-031-0x7270e4b76e8cc231/pfsStar-10092-0000000600000d9d-031-0x7270e4b76e8cc231.yaml
 
 The `run` script will execute the pipeline on the object specified in the configuration file. The output will be written to the `outdir` directory specified in the configuration file.
 
@@ -148,7 +148,9 @@ See Section 4.2 for a description of these arguments.
 
     $ gapipe-run --catid $CATID --visit $VISITS --batch slurm --partition v100 --cpus 4 --mem 16G --top 100 --progress
 
-# 3.6 Collecting the results
+# 3.6 Cataloging the results
+
+    $ gapipe-catalog --obs-log $OBSLOGS --objid 0x600000000-0x6FFFFFFFF
 
 # 3.7 Additional command-line arguments
 
