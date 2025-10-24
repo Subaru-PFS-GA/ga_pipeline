@@ -177,6 +177,13 @@ export OPENBLAS_NUM_THREADS=4  # For OpenBLAS
 
 # Register entrypoint functions
 
+# Import pfsspec-related data products such as synthetic stellar grids
+function pfsspec-import() {
+    set -o noglob
+    `realpath ./bin/wrap` "-m pfs.ga.pfsspec.core.scripts.import_" "$@"
+    set +o noglob
+}
+
 # Search and show information about PFS data products
 function gapipe-repo() {
     `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.repo.reposcript" "$@"
