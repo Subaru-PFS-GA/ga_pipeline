@@ -20,10 +20,15 @@ dependencies:
 - astroquery
 - specutils
 - ipykernel
+- ipywidgets
+- ipython
+- ipython_genutils
 - debugpy
 - git
 - gitpython
 - pip
+- pip:
+  - extinction
 - nbparameterise
 - commentjson
 - deprecated

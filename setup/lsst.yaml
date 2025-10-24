@@ -14,3 +14,10 @@ dependencies:
 - commentjson
 - deprecated
 - numdifftools
+- ipykernel
+- ipywidgets
+- ipython
+- ipython_genutils
+- pip
+- pip:
+  - extinction
