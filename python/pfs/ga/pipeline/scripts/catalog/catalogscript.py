@@ -248,7 +248,7 @@ class CatalogScript(PipelineScript):
                     [table.v_losStatus, table.EBVStatus, table.T_effStatus, table.M_HStatus, table.a_MStatus, table.CStatus, table.log_gStatus],
                 ):
                     param_idx = np.where((np.array(obj.stellarParams.param) == param) &
-                                         (np.array(obj.stellarParams.method) == 'gapipe'))[0]
+                                         (np.array(obj.stellarParams.method) == 'tempfit'))[0]
                     if param_idx.size == 1:
                         value.append(obj.stellarParams.value[param_idx[0]])
                         error.append(obj.stellarParams.valueErr[param_idx[0]])
@@ -258,8 +258,15 @@ class CatalogScript(PipelineScript):
                         error.append(np.nan)
                         status.append('')
 
-                table.flag.append(False)
-                table.status.append('')
+                # Status value of tempfit
+                # TODO: add different flags for tempfit, chemfit and coadd
+                flags_index = np.where(obj.measurementFlags.method == 'tempfit')[0]
+                if flags_index.size == 1:
+                    table.flag.append(obj.measurementFlags.flag[flags_index[0]])
+                    table.status.append(obj.measurementFlags.status[flags_index[0]])
+                else:
+                    table.flag.append(False)
+                    table.status.append('')
 
             q += 1
             if self.__top is not None and q >= self.__top:
