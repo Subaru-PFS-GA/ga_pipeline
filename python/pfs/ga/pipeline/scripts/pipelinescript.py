@@ -177,6 +177,38 @@ class PipelineScript(Script):
         self.__work_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__work_repo.init_from_args(self)
 
+    def _update_repo_directories(self, config):
+        """
+        Ensure the precedence of the configuration settings
+        """
+        
+        #   1. Command-line arguments
+        #   2. Configuration file
+        #   3. Default values
+
+        # Override configuration with command-line arguments
+        if self.is_arg('workdir'):
+            config.workdir = self.get_arg('workdir')
+        if self.is_arg('outdir'):
+            config.outdir = self.get_arg('outdir')
+        if self.is_arg('datadir'):
+            config.datadir = self.get_arg('datadir')
+        if self.is_arg('rerundir'):
+            config.rerundir = self.get_arg('rerundir')
+
+        # Override data store connector with configuration values
+        for repo in [self.__input_repo, self.__work_repo]:
+            if config.workdir is not None:
+                repo.set_variable('workdir', config.workdir)
+            if config.outdir is not None:
+                repo.set_variable('outdir', config.outdir)
+            # if config.datadir is not None:
+            #     repo.set_variable('datadir', config.datadir)
+            if config.rerundir is not None:
+                repo.set_variable('rerundir', config.rerundir)
+            if config.rerun is not None:
+                repo.set_variable('rerun', config.rerun)
+
     def _set_log_file_to_workdir(self):
         # Override logging directory to use the same as the pipeline workdir
         logfile = os.path.basename(self.log_file)

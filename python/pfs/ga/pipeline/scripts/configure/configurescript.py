@@ -82,6 +82,9 @@ class ConfigureScript(PipelineScript, Progress):
         files = ' '.join(self.config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
 
+        # Update the repo directories based on the config and the command-line arguments
+        self._update_repo_directories(self.config)
+
         # Load the observation logs
         if self.__obs_logs is not None:
             obs_log = self._load_obs_log_files(self.__obs_logs)

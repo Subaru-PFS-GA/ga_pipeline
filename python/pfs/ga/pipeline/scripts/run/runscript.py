@@ -134,7 +134,7 @@ class RunScript(PipelineScript, Batch, Progress):
         # Load the configuration
         config = GAPipelineConfig()
         config.load(config_file, ignore_collisions=True)
-        self._update_directories(config)
+        self._update_repo_directories(config)
 
         # Generate a string ID for the object being processed
         id = str(config.target.identity)
@@ -176,37 +176,6 @@ class RunScript(PipelineScript, Batch, Progress):
         self.stop_logging()
         self.pop_log_settings()
         self.start_logging()
-
-    def _update_directories(self, config):
-        """
-        Ensure the precedence of the configuration settings
-        """
-        
-        #   1. Command-line arguments
-        #   2. Configuration file
-        #   3. Default values
-
-        # Override configuration with command-line arguments
-        if self.is_arg('workdir'):
-            config.workdir = self.get_arg('workdir')
-        if self.is_arg('outdir'):
-            config.outdir = self.get_arg('outdir')
-        if self.is_arg('datadir'):
-            config.datadir = self.get_arg('datadir')
-        if self.is_arg('rerundir'):
-            config.rerundir = self.get_arg('rerundir')
-
-        # Override data store connector with configuration values
-        if config.workdir is not None:
-            self.input_repo.set_variable('workdir', config.workdir)
-        if config.outdir is not None:
-            self.input_repo.set_variable('outdir', config.outdir)
-        if config.datadir is not None:
-            self.input_repo.set_variable('datadir', config.datadir)
-        if config.rerundir is not None:
-            self.input_repo.set_variable('rerundir', config.rerundir)
-        if config.rerun is not None:
-            self.input_repo.set_variable('rerun', config.rerun)
 
 def main():
     script = RunScript()
