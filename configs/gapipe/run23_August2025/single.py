@@ -3,8 +3,8 @@ from pfs.ga.pfsspec.core import Trace
 config = dict(
     workdir = '/datascope/subaru/user/dobos/gapipe/work',
     outdir = '/datascope/subaru/user/dobos/gapipe/out',
-    rerun = 'run21_June2025',
-    rerundir = 'run21_June2025',
+    rerun = 'run23_August2025',
+    rerundir = 'run23_August2025',
     ignore_missing_files = True,
     trace_args = dict(
         plot_level = Trace.PLOT_LEVEL_INFO,
