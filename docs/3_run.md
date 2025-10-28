@@ -59,7 +59,7 @@ See the reference section for a complete list of command-line arguments.
 
 In order to generate config files with parameter priors that depend on the photometric stellar parameters, known velocities, etc, use the `--stellar-params` and `--obs-params` options to specify the files containing the stellar parameters and observational parameters, respectively. For example:
 
-    $ gapipe-configure --config ./configs/gapipe/$RERUN/single.py --objid $OBJID --visit $VISITS --stellar-params stellar_params.csv --obs-params obs_params.csv
+    $ gapipe-configure --config ./configs/gapipe/$RERUN/single.py --objid $OBJID --visit $VISITS --obs-logs $OBSLOGS --stellar-params stellar_params.csv --obs-params obs_params.csv
 
 TBW: write about the format of the stellar parameters and observational parameters files.
 
