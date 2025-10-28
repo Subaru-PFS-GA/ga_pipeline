@@ -180,11 +180,25 @@ On the Science Platform, you can find the list of the directories, referring  to
 
     $ export BUTLER_COLLECTIONS="run21_June2025"
 
+Get the list of visits from the observation logs
+
+    $ VISITS="$(cat spt_ssp_observation/runs/2025-03/obslog/*.csv | grep SSP_GA | cut -d ',' -f 1)"
+    $ echo $VISITS
+
+The SSP runs, with 2d processing versions are, so far:
+
+```
+<run>_<2d_processing_version>   <spt_ssp_observation>
+run21_June2025                  runs/2025-03/obslog/*.csv
+run22_July2025                  runs/2025-05/obslog/*.csv
+run23_August2025                runs/2025-06/obslog/*.csv
+```
+
 Test the configuration by activating GAPIPE and running `gapipe-repo`:
 
     $ cd $GAPIPE_ROOT
     $ source ./bin/init
-    $ gapipe-repo find-product PfsConfig --visit 123317 --format path
+    $ gapipe-repo find-product PfsConfig --visit $VISITS --format path
 
 This should return the local path to the PfsConfig file for the given visit. To get the list of all PfsConfig files, you can run:
 
@@ -201,43 +215,70 @@ If you want to limit the visits to a particular sub-project, use the observation
     $ VISITS="$(cat spt_ssp_observation/runs/2025-03/obslog/*.csv | grep SSP_GA | cut -d ',' -f 1)"
     $ echo $VISITS
 
-Note the discrepancy here! We are getting the list of visits from run 2025-03 (which is run 21) but the data was reprocessed by the 2d pipeline in June, 2025 so it is `run21_June2025`.
+Note the convention here! We are getting the list of visits from run 2025-03, which is run 21, but the data was reprocessed by the 2d pipeline in June, 2025 so it is `run21_June2025`.
+
+You can specify more than one collection separated by a colon in the `BUTLER_COLLECTIONS` environment variable:
+
+    $ export BUTLER_COLLECTIONS="run21_June2025:run22_July2025"
 
 Then run `gapipe-repo` to find the PfsConfig files for these visits and save the list to a file:
 
-    $ gapipe-repo find-product PfsConfig --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/2d/||g" > run21_June2025_GA_PfsConfig.txt
+    $ gapipe-repo find-product PfsConfig --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsConfig.txt
 
 Remember to use the full path to the repository in the above command.
 
 Once the list is generated, you can download the PfsConfig files using `wget`:
 
-    $ wget -i run21_June2025_GA_PfsConfig.txt --header="Authorization: Bearer $PFSSP_TOKEN" --base https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/ -P $GAPIPE_DATADIR/2d/ --no-host-directories --cut-dirs=5 -x
+    $ wget -i run21_June2025_GA_PfsConfig.txt --header="Authorization: Bearer $PFSSP_TOKEN" --base https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/ -P $GAPIPE_DATADIR/ --no-host-directories --cut-dirs=5 -x
 
-### 2.4.4 Downloading the PfsCalibrated files
-
-PfsCalibrated files can be downloaded similarly to PfsConfig files. First, generate a list of PfsCalibrated files for the visits you are interested in:
-
-    $ gapipe-repo find-product PfsCalibrated --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/2d/||g" > run21_June2025_GA_PfsCalibrated.txt
-
-Then download the files using `wget`:
-
-    $ wget -i run21_June2025_GA_PfsCalibrated.txt --header="Authorization: Bearer $PFSSP_TOKEN" --base https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/ -P $GAPIPE_DATADIR/2d/ --no-host-directories --cut-dirs=5 -x
-
-Remember that these files are large and the data volume can easily be hundreds of gigabytes! You probably want to start the download in a screen session or submit it to a job queue.
-
-
-### 2.4.5. Finding the data files for a specific object
+### 2.4.4 Find individual objects
 
 If the PfsConfig files are available locally, we can use them to filter the observation data files for specific objects. Please note that the objIds usually differ from GAIA and HSC object ids to avoid conflicts.
 
 TBW: Write about how the figure out the object IDs from the targeting feather files.
 
+To get the list of objects that were observed during a specific visit, run the following command:
+
+    $ gapipe-repo find-object --visit 123317
+
 To get the list of visits that contain a specific object, run the following command:
 
-    $ gapipe-repo find-object --visit 123424
+    $ gapipe-repo find-object --visit $VISITS --objid 0x0000000600002fec
 
-To get the list of visits during which a particular object was observed, run:
+In the last query, it is necessary to provide the list of visits to limit the search space to the filed that have been downloaded locally, otherwise the command will try to search all the PfsConfig files in the Butler collections defined in the `BUTLER_COLLECTIONS` environment variable.
 
-    $ gapipe-repo find-object --objid 0x0000000600002fec
+Note, that queries like these are slow because they require reading the PfsConfig files and filtering the objects by their objId.
 
-Note, that queries like these are relatively slow because they require reading the PfsConfig files and filtering the objects by their objId.
+### 2.4.5 Downloading the PfsCalibrated files
+
+PfsCalibrated files can be downloaded similarly to PfsConfig files. First, generate a list of PfsCalibrated files for the visits you are interested in:
+
+    $ gapipe-repo find-product PfsCalibrated --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsCalibrated.txt
+
+Then download the files using `wget`:
+
+    $ wget -i run21_June2025_GA_PfsCalibrated.txt --header="Authorization: Bearer $PFSSP_TOKEN" --base https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/ -P $GAPIPE_DATADIR/ --no-host-directories --cut-dirs=5 -x
+
+Remember that these files are large and the data volume can easily be hundreds of gigabytes! You probably want to start the download in a screen session or submit it to a job queue.
+
+### 2.4.6 Extracting PfsSingle files from PfsCalibrated
+
+Once the PfsCalibrated files are downloaded, you can extract the individual PfsSingle files using the `gapipe-repo extract-product` command. For example, to extract all PfsSingle files for a specific visit and catId, run:
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 123317 --catid 10092
+
+The output directory is set by the `GAPIPE_WORKDIR` environment variable. By default, it is set to `$GAPIPE_ROOT/workdir`. Alternatively, you can specify the work directory using the `--workdir` command-line option. Make sure that there is enough space in the output directory to store the extracted files.
+
+To extract all science targets for multiple visits, regardless of catId, run:
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --targettype SCIENCE
+
+Similarly, you can extract FLUXSTD targets by setting `--targettype FLUXSTD`.
+
+To get some progress information during the extraction, use the `--log-level DEBUG` option or try `--progress`.
+
+Since extracting files can take a long time and some network file systems work better with parallel jobs, you can submit the extraction as a batch job to SLURM:
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --targettype SCIENCE --batch slurm --partition v100 --cpus 2 --memory 8G
+
+This will schedule a separate SLURM job for each visit to extract the PfsSingle files.
