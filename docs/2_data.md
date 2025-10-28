@@ -261,24 +261,86 @@ Then download the files using `wget`:
 
 Remember that these files are large and the data volume can easily be hundreds of gigabytes! You probably want to start the download in a screen session or submit it to a job queue.
 
-### 2.4.6 Extracting PfsSingle files from PfsCalibrated
+## 2.5 Searching the data repository
 
-Once the PfsCalibrated files are downloaded, you can extract the individual PfsSingle files using the `gapipe-repo extract-product` command. For example, to extract all PfsSingle files for a specific visit and catId, run:
+GAPIPE provides the `gapipe-repo` command-line tool to search the data repository for objects and visits. This tool can either use Butler or search the file system directly, depending on the configuration. Before configuring and executing the pipeline, it is recommended to test the data repository access by running the `gapipe-repo` command first.
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 123317 --catid 10092
+The following command locates the PfsCalibrated file for a given visit or list of visits:
 
-The output directory is set by the `GAPIPE_WORKDIR` environment variable. By default, it is set to `$GAPIPE_ROOT/workdir`. Alternatively, you can specify the work directory using the `--workdir` command-line option. Make sure that there is enough space in the output directory to store the extracted files.
+    $ gapipe-repo find-product PfsCalibrated --visit $VISIT --format path
 
-To extract all science targets for multiple visits, regardless of catId, run:
+where `$VISIT` is the visit ID or a list of visit IDs. You can get the list of visits from the `obslog` files, for example:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --targettype SCIENCE
+    $ VISITS="$(cat spt_ssp_observation/runs/2025-03/obslog/*.csv | grep SSP_GA | cut -d ',' -f 1)"
+
+The `--format path` option specifies that the output should be the file path of the PfsCalibrated file.
+
+To get the available information on a specific object, you can use the `find-object` command:
+
+    $ gapipe-repo find-object --visit $VISIT --objid $OBJID
+
+Specify the `--format` option to get the output in a specific format, such as `table`, `json`, or `path`. The default format is `table`.
+
+## 2.6 Output directories
+
+GAPIPE uses two output directories (and many subdirectories withing them) to store the temporary and final results of the processing:
+
+* **Work directory**: The `workdir` is used to store temporary files during the processing of each object. It is specified in the configuration file and can be overridden from the command-line. The default value is `$GAPIPE_WORKDIR` and it can be overriden from the configuration template (see below) or the `--workdir` command-line argument.
+
+* **Output directory**: The `outdir` is used to store the final results of the processing, such as the processed spectra and the final catalog files. It is specified in the configuration file and can be overridden from the command-line. The default value is `$GAPIPE_OUTDIR` and it can be overridden from the configuration template (see below) or the `--outdir` command-line argument.
+
+* **Rerun directory**: This directory refers to the Butler collections. Since GAPIPE doesn't currently use Butler for output data, a directory is created for each 2dpipe rerun under `workdir` and `outdir`. Note, that the rerun directory is not currently figured out from the Butler collections, so it must be specified manually in the configuration file or from the command-line using the `--rerundir` argument.
+
+## 2.7 Extracting single-object data products from container files
+
+GAPIPE processes spectra on a per-object basis whereas the 2D pipeline works on a per-exposure basis and stores the results in large container files. To speed up data access by the batch system, it might be useful to extract the single-object data products from the container files before running the pipeline. This can be done using the `gapipe-repo` command-line tool. Below are a few examples.
+
+Note, that it is not necessary to extract the single-object data products from the container files before running the pipeline, but it can speed up the processing and reduce memory use.
+
+Once the PfsCalibrated files are downloaded, you can extract the individual PfsSingle files using the `gapipe-repo extract-product` command. This should be done by 2dpipe processing runs, so let's define a few variables first:
+
+    $ OBSRUN="2025-05"
+    $ RERUN="run22_July2025"
+    $ BUTLER_COLLECTIONS="$RERUN"
+    $ VISITS="$(cat spt_ssp_observation/runs/$OBSRUN/obslog/*.csv | grep SSP_GA | cut -d ',' -f 1)"
+
+To extract all PfsSingle files for a specific visit and catId, run:
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 125950 --catid 10092 --rerundir $RERUN --log-level DEBUG
+
+Extract all the PfsSingle files from PfsCalibrated for a given list of visits and a catalog ID by running.
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID
+
+This command will write the PfsSingle files to the `workdir/rerundir` directory specified in the configuration file. The list of objects can further be filtered by target type, spectrograph arm, obcode, etc. For example, to extract only the PfsSingle files for science targets, you can run:
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --targettype SCIENCE --rerundir $RERUN
 
 Similarly, you can extract FLUXSTD targets by setting `--targettype FLUXSTD`.
 
+PfsSingle files for all visits of a single objects can be extracted by running:
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --objid "$OBJID" --rerundir $RERUN
+
 To get some progress information during the extraction, use the `--log-level DEBUG` option or try `--progress`.
 
-Since extracting files can take a long time and some network file systems work better with parallel jobs, you can submit the extraction as a batch job to SLURM:
+Please note that extracting files for a large number of objects and visits can take a long time and consume a lot of disk space.
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --targettype SCIENCE --batch slurm --partition v100 --cpus 2 --memory 8G
+### 2.7.1 Batch processing
 
-This will schedule a separate SLURM job for each visit to extract the PfsSingle files.
+Extracting lots of PfsSingle files can take a long time, especially when the number of visits is large. To parallelize the process, you can schedule a batch job for each visit to extract the PfsSingle files from PfsCalibrated. This can be done by using the `--batch` option with the `gapipe-repo extract-product` command.
+
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --rerundir $RERUN --batch slurm --partition v100 --cpus 2 --memory 8G
+
+Here the `--batch slurm` option specifies that the extraction should be run as a batch job on the SLURM scheduler, and the `--partition` option specifies the SLURM partition to use. The `gapipe-repo` command will generate a batch script for each visit and submit it to the SLURM scheduler.
+
+TBW: Other batch systems are to be implemented.
+
+
+
+
+
+
+
+
+
