@@ -91,12 +91,8 @@ See Section 4.2 for a description of these arguments.
 
 # 3.5 Cataloging the results
 
-    $ gapipe-catalog --obs-log $OBSLOGS --objid 0x600000000-0x6FFFFFFFF
+To generate a catalog from the pfsStar files, run the `gapipe-catalog` command. For example, to generate a catalog for all objects with `objid` in the range `0x600000000` to `0x6FFFFFFFF`, run:
 
-# 3.6 Additional command-line arguments
+    $ gapipe-catalog --rerundir $RERUN --visit $VISITS --obs-log $OBSLOGS --objid 0x600000000-0x6FFFFFFFF
 
-* **--debug**: Enable debug mode. The scripts are executed within a `debugpy` context.
-
-* **--profile**: Enable profiling. The scripts are executed within a `cProfile` context.
-
-* **--log-level** *level*: Set the log level. The default is `INFO` but can be set to `TRACE`, `DEBUG`, `WARNING`, `ERROR`, or `CRITICAL`.
+This will read all pfsStar files that match the search filters and create a catalog file named `pfsStarCatalog-*.fits` in the output directory.

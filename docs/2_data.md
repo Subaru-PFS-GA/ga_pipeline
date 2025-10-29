@@ -188,10 +188,20 @@ Get the list of visits from the observation logs
 The SSP runs, with 2d processing versions are, so far:
 
 ```
-<run>_<2d_processing_version>   <spt_ssp_observation>
-run21_June2025                  runs/2025-03/obslog/*.csv
-run22_July2025                  runs/2025-05/obslog/*.csv
-run23_August2025                runs/2025-06/obslog/*.csv
+<obs_run>   <run>_<2d_processing_version>   <spt_ssp_observation>
+2025-03     run21_June2025                  runs/2025-03/obslog/*.csv
+2025-05     run22_July2025                  runs/2025-05/obslog/*.csv
+2025-06     run23_August2025                runs/2025-06/obslog/*.csv
+```
+
+ObjID ranges for each run. These are defined in `ga_targeting`, in `python/pfs/ga/targeting/targets/ids.py`. You can also search for `ID_PREFIX` in all caps.
+
+```
+<obs_run>   <id_prefix>              <target>
+2025-03     0x0200000000             Draco dSph
+            0x0600000000             Ursa Minor dSph
+2025-05     0x1000000000             MW Outer disk l=90 b=28
+2025-06     0x7000000000             MW Outer disk l=90 b=16
 ```
 
 Test the configuration by activating GAPIPE and running `gapipe-repo`:
@@ -281,7 +291,11 @@ To get the available information on a specific object, you can use the `find-obj
 
 Specify the `--format` option to get the output in a specific format, such as `table`, `json`, or `path`. The default format is `table`.
 
-## 2.6 Output directories
+## 2.6 Workdir and output data organization
+
+GAPIPE doesn't currently use Butler for output data management. Instead, it uses two directories on the file system to store the temporary and final results of the processing. The directory structure and file naming roughly follows what was used for the PFS data before upgrading to Butler gen3.
+
+### 2.6.1 Output directories
 
 GAPIPE uses two output directories (and many subdirectories withing them) to store the temporary and final results of the processing:
 
@@ -290,6 +304,14 @@ GAPIPE uses two output directories (and many subdirectories withing them) to sto
 * **Output directory**: The `outdir` is used to store the final results of the processing, such as the processed spectra and the final catalog files. It is specified in the configuration file and can be overridden from the command-line. The default value is `$GAPIPE_OUTDIR` and it can be overridden from the configuration template (see below) or the `--outdir` command-line argument.
 
 * **Rerun directory**: This directory refers to the Butler collections. Since GAPIPE doesn't currently use Butler for output data, a directory is created for each 2dpipe rerun under `workdir` and `outdir`. Note, that the rerun directory is not currently figured out from the Butler collections, so it must be specified manually in the configuration file or from the command-line using the `--rerundir` argument.
+
+### 2.6.2 GAPIPE file names
+
+Examples:
+
+```
+run21_June2025/pfsStarCatalog/10092/051-0x310d8290f6dc2641/pfsStarCatalog-10092-051-0x310d8290f6dc2641.fits
+```
 
 ## 2.7 Extracting single-object data products from container files
 
