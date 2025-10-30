@@ -1,32 +1,23 @@
 from types import SimpleNamespace
 
-from ...common import PipelineConfig
+from .repoconfig import RepoConfig
 from .gatargetconfig import GATargetConfig
 from .tempfitconfig import TempFitConfig
 from .chemfitconfig import ChemfitConfig
 from .coaddconfig import CoaddConfig
 
-class GAPipelineConfig(PipelineConfig):
+class GAPipelineConfig(RepoConfig):
     """
     Galactic Archeology Spectrum Processing Pipeline configuration.
     """
 
     def __init__(self,
-                 rerun: str = None,
                  target: GATargetConfig = GATargetConfig(),
                  tempfit: TempFitConfig = TempFitConfig(),
                  coadd: CoaddConfig = CoaddConfig(),
                  chemfit: ChemfitConfig = ChemfitConfig()):
 
         super().__init__()
-        
-        self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory
-        self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
-        self.rerundir = self._get_env('GAPIPE_RERUNDIR')      # Path to rerun data, absolute or relative to `datadir`
-        self.outdir = self._get_env('GAPIPE_OUTDIR')          # Pipeline output directory
-        self.rerun = self._get_env('GAPIPE_RERUN')            # Rerun name, used in file names
-
-        self.ignore_missing_files = False                     # Ignore missing data files
 
         # GA target object configuration
         self.target = target

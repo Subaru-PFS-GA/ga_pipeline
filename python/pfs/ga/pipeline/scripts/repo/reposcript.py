@@ -13,6 +13,7 @@ from pfs.ga.common.scripts import Batch, Progress
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
 from ..pipelinescript import PipelineScript
+from ...gapipe.config import RepoConfig
 from ...common import PipelineError
 
 from ...setup_logger import logger
@@ -90,10 +91,16 @@ class RepoScript(PipelineScript, Batch, Progress):
         Progress._init_from_args(self, args)
         Batch._init_from_args(self, args)
 
+    def _create_config(self):
+        return RepoConfig()
+
     def prepare(self):
         return PipelineScript.prepare(self)
     
     def run(self):
+
+        self._update_repo_directories(self.config)
+
         if self.is_batch():
             submit = self.__commands[self.__command].submit
             if submit is None:
@@ -175,7 +182,9 @@ class RepoScript(PipelineScript, Batch, Progress):
                     if self.input_repo.match_object_filters(subid):
                         _, filename = self.work_repo.save_product(
                             subprod, identity=subid,
-                            variables={'datadir': self.config.workdir})
+                            variables={
+                                'datadir': self.config.workdir
+                            })
 
             if self.top is not None and i >= self.top:
                 logger.info(f'Stop after processing {self.top} objects.')
@@ -196,6 +205,11 @@ class RepoScript(PipelineScript, Batch, Progress):
                     command += f' {args}'
 
             # TODO: Add other command-line arguments
+            command += ' --log-to-console'
+
+            for a in ['workdir', 'outdir', 'datadir', 'rerun', 'rerundir']:
+                if self.is_arg(a, args):
+                    command += f' --{a} {self.get_arg(a, args)}'
             
             self._submit_job(command, fn)
 

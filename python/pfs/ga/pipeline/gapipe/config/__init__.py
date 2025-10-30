@@ -1,3 +1,4 @@
+from .repoconfig import RepoConfig
 from .gapipelineconfig import GAPipelineConfig
 from .gatargetconfig import GATargetConfig
 from .gaobjectidentityconfig import GAObjectIdentityConfig
