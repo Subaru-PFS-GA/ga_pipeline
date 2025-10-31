@@ -281,7 +281,10 @@ class TempFitStep(PipelineStep):
         
         psfs = {}
         for arm in arms:
-            fn = context.config.tempfit.psf_path.format(arm=arm)
+            if isinstance(context.config.tempfit.psf_path, dict):
+                fn = context.config.tempfit.psf_path[arm].format(arm=arm)
+            else:
+                fn = context.config.tempfit.psf_path.format(arm=arm)
             gauss_psf = GaussPsf()
             gauss_psf.load(fn)
 
