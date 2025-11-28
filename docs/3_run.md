@@ -31,7 +31,7 @@ For the sake of simplicity, we define a few environmental varibles that are used
     $ RERUN="run21_June2025"
     $ BUTLER_COLLECTIONS="$RERUN"
     $ CATID="10092"
-    $ OBJID="0x600000d9d"
+    $ OBJID="0x000000060000361c"
     $ OBSLOGS="spt_ssp_observation/runs/$OBSRUN/obslog/*.csv"
     $ VISITS="$(cat $OBSLOGS | grep SSP_GA | cut -d ',' -f 1)"
 

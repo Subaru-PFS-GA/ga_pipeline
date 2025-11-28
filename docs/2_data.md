@@ -202,6 +202,8 @@ ObjID ranges for each run. These are defined in `ga_targeting`, in `python/pfs/g
             0x0600000000             Ursa Minor dSph
 2025-05     0x1000000000             MW Outer disk l=90 b=28
 2025-06     0x7000000000             MW Outer disk l=90 b=16
+            0x0200000000             Draco dSph
+            0x0600000000             Ursa Minor dSph
 ```
 
 Test the configuration by activating GAPIPE and running `gapipe-repo`:
