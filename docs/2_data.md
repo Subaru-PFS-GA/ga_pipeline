@@ -188,22 +188,41 @@ Get the list of visits from the observation logs
 The SSP runs, with 2d processing versions are, so far:
 
 ```
-<obs_run>   <run>_<2d_processing_version>   <spt_ssp_observation>
-2025-03     run21_June2025                  runs/2025-03/obslog/*.csv
-2025-05     run22_July2025                  runs/2025-05/obslog/*.csv
-2025-06     run23_August2025                runs/2025-06/obslog/*.csv
+<proposal>  <obs_date>    <2d_processing_version>         <spt_ssp_observation>             <comments>
+S25A-OT02   2025-03       run21_June2025                  runs/2025-03/obslog/*.csv
+            2025-05       run22_July2025                  runs/2025-05/obslog/*.csv
+            2025-06       run23_July2025                                                    preview 
+            2025-06       run23_August2025                runs/2025-06/obslog/*.csv
+            2025-0[3-6]   S25A_November2025               runs/2025-0[3-6]/obslog/*.csv     all runs
+S25B-OT02   2025-09       run24_November2025              runs/2025-09/obslog/*.csv
+            2025-11       run25_November2025              runs/2025-11/obslog/*.csv
+            2026-01
 ```
 
 ObjID ranges for each run. These are defined in `ga_targeting`, in `python/pfs/ga/targeting/targets/ids.py`. You can also search for `ID_PREFIX` in all caps.
 
+You can figure out the field observed during a run by running
+
+    $ cd spt_ssp_observation
+    $ ./scripts/sum_exp_time.py ./runs/2025-11/obslog/*.csv --name-pattern 'SSP_GA*'
+
 ```
-<obs_run>   <id_prefix>              <target>
-2025-03     0x0200000000             Draco dSph
-            0x0600000000             Ursa Minor dSph
-2025-05     0x1000000000             MW Outer disk l=90 b=28
-2025-06     0x7000000000             MW Outer disk l=90 b=16
-            0x0200000000             Draco dSph
-            0x0600000000             Ursa Minor dSph
+<proposal> <obs_date>  <id_prefix>              <target>
+S25A-OT02  2025-03     0x0200000000             Draco dSph
+                       0x0600000000             Ursa Minor dSph
+           2025-05     0x1000000000             MW Outer disk l=90 b=28
+           2025-06     0x7000000000             MW Outer disk l=90 b=16
+                       0x0200000000             Draco dSph
+                       0x0600000000             Ursa Minor dSph
+ 
+S25B-OT02  2025-09     0x100000100000000        M31 E0
+                       0x100000200000000        M31 W0
+                       0x100000300000000        M31 GSS0
+                       0x100000400000000        M31 NWS0
+           2025-11     0x100000100000000        M31 E0
+                       0x50000000000            outerdisk_l180_b16
+                       0x51000000000            outerdisk_l180_b17
+           2026-01     0x0700000000             Sextans dSph
 ```
 
 Test the configuration by activating GAPIPE and running `gapipe-repo`:
