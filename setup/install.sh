@@ -20,12 +20,12 @@ GAPIPE_CONDA_DIR="./stack/conda"                # Conda installation directory, 
 GAPIPE_CONDA_ENV="gapipe"                       # Conda environment name
 GAPIPE_CONDA_ENV_FILE="gapipe.yaml"             # Conda environment file
 GAPIPE_LSST=1                                   # 1 for installing on the LSST stack
-LSST_VERSION="w.2025.23"                        # LSST version to install, if GAPIPE_LSST is set to 1
+LSST_VERSION="w.2025.52"                        # LSST version to install, if GAPIPE_LSST is set to 1
 LSST_DIR="./stack"                              # LSST installation directory, relative to GAPIPE_DIR
 LSST_CONDA_DIR="./conda"                        # LSST conda installation directory, relative to LSST_DIR
 LSST_CONDA_ENV=""                               # LSST conda environment name, if GAPIPE_LSST is set to 1
 LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file
-PFS_PIPE2D_VERSION="w.2025.23"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
+PFS_PIPE2D_VERSION="w.2025.52"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
 PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
 
 # Observation data locations
@@ -542,6 +542,11 @@ function get_lsst_conda_env() {
         lsst_version=$(curl -ksS \
             "https://eups.lsst.codes/stack/src/tags/${lsst_version}.list" \
             | grep '^#CONDA_ENV=' | cut -d= -f2)
+        
+        if [[ -z "$lsst_version" ]]; then
+            log_error "Failed to retrieve LSST conda environment name. Check if the version is valid."
+            exit 1
+        fi
         LSST_CONDA_ENV="lsst-scipipe-${lsst_version}"
     fi
 
