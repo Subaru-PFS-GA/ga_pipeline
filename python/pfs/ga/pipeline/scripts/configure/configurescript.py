@@ -120,6 +120,14 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Create the iterator that we will loop over to generate the pipeline configuration files.
         pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_log, obs_params, stellar_params)
+
+        logger.info(f'Ready to generate {len(identities)} configuration files for the pipeline.')
+
+        if not self.yes:
+            answer = input(f'Proceed to generate {len(identities)} configuration files? [y/N]: ')
+            if answer.lower() != 'y':
+                logger.info('Aborting configuration file generation.')
+                return
         
         # Generate the configuration file for each target
         q = 0
@@ -263,7 +271,7 @@ class ConfigureScript(PipelineScript, Progress):
 
     def __create_pipeline_config(self, objid, identity, ext='.yaml'):
         """
-        Initialze a pipeline configuration object based on the template and the target.
+        Initialize a pipeline configuration object based on the template and the target.
         """
 
         # TODO: should we make a deep copy here?

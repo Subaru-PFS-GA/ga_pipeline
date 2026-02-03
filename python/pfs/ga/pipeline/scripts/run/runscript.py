@@ -85,6 +85,12 @@ class RunScript(PipelineScript, Batch, Progress):
 
         logger.info(f'Found {len(config_files)} config files matching the filters. Scheduling for batch submission.')
 
+        if not self.yes:
+            answer = input(f'Proceed to submit {len(config_files)} jobs to the batch system? [y/N]: ')
+            if answer.lower() != 'y':
+                logger.info('Aborting batch submission.')
+                return
+
         # Submit a job for each config file
         for i, config_file in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
             item = os.path.splitext(os.path.basename(config_file))[0]
