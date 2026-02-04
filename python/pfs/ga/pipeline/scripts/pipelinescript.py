@@ -1,6 +1,7 @@
 import os
 from glob import glob
 from types import SimpleNamespace
+import numpy as np
 import pandas as pd
 from copy import deepcopy
 from dateutil import parser as dateparser
@@ -38,6 +39,9 @@ class PipelineScript(Script):
             PfsMerged: SimpleNamespace(
                 print = [ self.__print_pfsMerged ]
             ),
+            PfsStar: SimpleNamespace(
+                print = [ self.__print_pfsStar]
+            )
         }
 
         self.__plot_level = None
@@ -336,7 +340,7 @@ class PipelineScript(Script):
                 v = ' '.join(f'{x:016x}' for x in d[key][s])
                 print(f'  {key}: {v}')
             else:
-                v = ' '.join(str(x) for x in d[key][s])
+                v = ' '.join(str(x) for x in np.array(d[key])[s])
                 print(f'  {key}: {v}')
 
     def __print_pfsDesign(self, filename):
@@ -403,3 +407,13 @@ class PipelineScript(Script):
             self.__print_pfsConfig(filename=filename)
         except Exception as e:
             raise e
+
+    def __print_pfsStar(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=())
