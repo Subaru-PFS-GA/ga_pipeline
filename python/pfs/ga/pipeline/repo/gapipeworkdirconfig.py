@@ -69,7 +69,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             load = PfsGen3FileSystemConfig.products[PfsStar].load,
             save = PfsGen3FileSystemConfig.products[PfsStar].save,
             params_regex = [
-                re.compile(r'pfsStar-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits)$'),
+                re.compile(r'pfsStar-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
             dir_format = '$outdir/$rerundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsStar-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
