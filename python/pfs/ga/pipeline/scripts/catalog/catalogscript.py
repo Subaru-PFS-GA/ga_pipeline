@@ -187,6 +187,9 @@ class CatalogScript(PipelineScript):
                 eet = { a: 0.0 for a in ['b', 'm', 'r', 'n'] }
                 if obs_log is not None:
                     for i, v in enumerate(obj.observations.visit):
+                        if v not in obs_log.index:
+                            logger.error(f"Visit number {v} is not available in the observation log.")
+
                         for a in eet:
                             eet_arm = obs_log.loc[v, f'eet_{a}']
                             if eet_arm is not None and np.isfinite(eet_arm):
