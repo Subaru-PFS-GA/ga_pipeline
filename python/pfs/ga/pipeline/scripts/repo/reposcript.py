@@ -278,14 +278,28 @@ class RepoScript(PipelineScript, Batch, Progress):
             # Split filename into path, basename and extension
             path, basename = os.path.split(self.__filename)
             name, ext = os.path.splitext(basename)
-            product_type = self.input_repo.parse_product_type(re.split('[-_]', name)[0])
 
-            if product_type in self.products:
-                product, identity, filename = self.input_repo.load_product(product_type, filename=self.__filename)
-            else:
+            # Figure out what repo has the product
+            found = False
+            for repo in [self.input_repo, self.work_repo]:
+                product_type = self.input_repo.parse_product_type(re.split('[-_]', name)[0])
+                if repo.has_product(product_type):
+                    product, identity, filename = repo.load_product(product_type, filename=self.__filename,
+                                                                    skip_locate=True)
+                    found = True
+                    break
+
+            if not found:
                 raise NotImplementedError(f'File type not recognized: {basename}')
         elif self.__product is not None:
-            product, identity, filename = self.input_repo.load_product(self.__product)
+            found = False
+            for repo in [self.input_repo, self.work_repo]:
+                if repo.has_product(self.__product):
+                    product, identity, filename = repo.load_product(self.__product)
+                    found = True
+                    break
+            if not found:
+                raise NotImplementedError(f'Product type not found in any repo: {self.__product}')
         else:
             raise ValueError('No input file or product type provided')
 
