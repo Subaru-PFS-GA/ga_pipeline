@@ -19,6 +19,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
         'outdir': '$GAPIPE_OUTDIR',
         'datadir': '$GAPIPE_DATADIR',
         'rerundir': '$GAPIPE_RERUNDIR',
+        'garundir': '$GAPIPE_GARUNDIR',
     },
     products = {
         # PfsSingle files are extracted from the pfsCalibrated files
@@ -54,7 +55,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsStar-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(yaml)$'),
             ],
-            dir_format = '$workdir/$rerundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
+            dir_format = '$workdir/$garundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsStar-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.yaml',
             load = lambda identity, filename, dir:
                 GAPipelineConfig.from_file(path=os.path.join(dir, filename)),
@@ -71,7 +72,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsStar-(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
-            dir_format = '$outdir/$rerundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
+            dir_format = '$outdir/$garundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsStar-{catId}-{objId}-{nVisit}-0x{pfsVisitHash}.fits',
         ),
 
@@ -84,7 +85,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsStarCatalog-(?P<catId>\d{5})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})\.(fits|fits\.gz)$'),
             ],
-            dir_format = '$outdir/$rerundir/pfsStarCatalog/{catId}/{nVisit}-0x{pfsVisitHash}',
+            dir_format = '$outdir/$garundir/pfsStarCatalog/{catId}/{nVisit}-0x{pfsVisitHash}',
             filename_format = 'pfsStarCatalog-{catId}-{nVisit}-0x{pfsVisitHash}.fits',
         ),
     }
