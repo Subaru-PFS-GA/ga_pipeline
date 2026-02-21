@@ -146,12 +146,17 @@ class ConfigureScript(PipelineScript, Progress):
                 # Update seeing and exptime from obs_log. Obstime is taken from
                 # pfsConfig which is more accurate since the obslog only has the
                 # time of the start of the command, not the start of the exposure.
+                obstime = []
                 exptime = []
                 seeing = []
                 for visit in identity.visit:
+                    # Override obstime from the obs log because
+                    # times from pfsConfig are not accurate enough
+                    obstime.append(obs_log.loc[visit, 'issued_at'].isoformat())
                     exptime.append(obs_log.loc[visit, 'avg_exptime'])
                     seeing.append(obs_log.loc[visit, 'seeing_median'])
 
+                identity.obstime = np.array(obstime, dtype=str)
                 identity.exptime = np.array(exptime, dtype=float)
                 identity.seeing = np.array(seeing, dtype=float)
             else:
