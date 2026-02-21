@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from dateutil import parser as dateparser
 
 from pfs.ga.common.scripts import Script
@@ -263,10 +264,17 @@ class PipelineScript(Script):
                 # df['pfs_design_id'] = df['pfs_design_id'].map(lambda x: f'0x{int(x, 16):016x}')
                 df['issued_at'] = df['issued_at'].map(lambda x: dateparser.parse(x))
 
+                # Convert from HST to UTC
+                tz = timedelta(hours=-10)
+                df['issued_at'] = df['issued_at'].map(lambda x: x - tz)
+
                 if obs_log is None:
                     obs_log = df
                 else:
                     obs_log = pd.concat([obs_log, df], ignore_index=True)
+
+        # Remove duplicates
+        obs_log.drop_duplicates(subset=['visit_id'], inplace=True, keep='first')
 
         # Index by visit_id
         obs_log.set_index('visit_id', inplace=True)
