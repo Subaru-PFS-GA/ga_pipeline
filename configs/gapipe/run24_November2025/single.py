@@ -1,10 +1,13 @@
 from pfs.ga.pfsspec.core import Trace
 
+GAPIPE_ROOT = '/scratch/aszalay1/dobos/pfs/gapipe'
+RERUN = 'run24_November2025'
+
 config = dict(
-    workdir = '/scratch/aszalay1/dobos/pfs/gapipe/work',
-    outdir = '/scratch/aszalay1/dobos/pfs/gapipe/out',
-    rerun = 'run24_November2025',
-    rerundir = 'run24_November2025',
+    workdir = f'{GAPIPE_ROOT}/work',
+    outdir = f'{GAPIPE_ROOT}/out',
+    rerun = RERUN,
+    rerundir = RERUN,
     ignore_missing_files = True,
     trace_args = dict(
         plot_level = Trace.PLOT_LEVEL_INFO,
@@ -41,7 +44,7 @@ config = dict(
         fit_arms = [ 'b', 'r', 'm' ],
         require_all_arms = False,
         
-        model_grid_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/pfsspec/models/stellar/grid/gk2025/gk2025_binned_compressed/spectra.h5',
+        model_grid_path = f'{GAPIPE_ROOT}/data/pfsspec/models/stellar/grid/gk2025/gk2025_binned_compressed/spectra.h5',
         model_grid_mmap = False,
         model_grid_preload = False,
         # model_grid_path = {
@@ -55,36 +58,36 @@ config = dict(
             'g_ps1': dict(
                 instrument = 'ps1',
                 filter_name = 'g_ps1',
-                filter_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/ps1/filters/PAN-STARRS_PS1.g.dat',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.g.dat',
             ),
             'r_ps1': dict(
                 instrument = 'ps1',
                 filter_name = 'r_ps1',
-                filter_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/ps1/filters/PAN-STARRS_PS1.r.dat',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.r.dat',
             ),
             'i_ps1': dict(
                 instrument = 'ps1',
                 filter_name = 'i_ps1',
-                filter_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/ps1/filters/PAN-STARRS_PS1.i.dat',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.i.dat',
             ),
             'g_hsc': dict(
                 instrument = 'hsc',
                 filter_name = 'g_hsc',
-                filter_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/hsc/filters/HSC-g.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-g.txt',
             ),
             'i_hsc': dict(
                 instrument = 'hsc',
                 filter_name = ['i_hsc', 'i_old_hsc'],
-                filter_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/hsc/filters/HSC-i.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i.txt',
             ),
             'i2_hsc': dict(
                 instrument = 'hsc',
                 filter_name = ['i2_hsc'],
-                filter_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/hsc/filters/HSC-i2.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i2.txt',
             ),
         },
         
-        psf_path = '/scratch/aszalay1/dobos/pfs/gapipe/data/instruments/pfs/psf/import/{arm}.real/gauss.h5',
+        psf_path = f'{GAPIPE_ROOT}/data/instruments/pfs/psf/import/{{arm}}.real/gauss.h5',
         mask_flags = [
             'BAD',
             # 'BAD_FIBERTRACE',
