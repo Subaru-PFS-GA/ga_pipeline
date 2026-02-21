@@ -119,6 +119,8 @@ class CatalogScript(PipelineScript):
             proposalId = [],
             obCode = [],
 
+            fiberId = [],
+
             nVisit_b = [],
             nVisit_m = [],
             nVisit_r = [],
@@ -183,6 +185,18 @@ class CatalogScript(PipelineScript):
                     
                     arm[v].add(obj.observations.arm[i])
 
+                
+                # Collect the fiberId from each visit. Only set these IDs
+                # if they are the same across all visits, otherwise set to -1.
+                fiberid = []
+                for i, v in enumerate(obj.observations.visit):
+                    fiberid.append(obj.observations.fiberId[i])
+                
+                if len(np.unique(np.array(fiberid))) == 1:
+                    fiberid = fiberid[0]
+                else:
+                    fiberid = -1
+
                 # Calculate some metrics from the obs_log if available
                 eet = { a: 0.0 for a in ['b', 'm', 'r', 'n'] }
                 if obs_log is not None:
@@ -220,6 +234,8 @@ class CatalogScript(PipelineScript):
                 table.targetType.append(config.targetType[idx])
                 table.proposalId.append(config.proposalId[idx])
                 table.obCode.append(config.obCode[idx])
+
+                table.fiberId.append(fiberid)
 
                 # Count how many times an arm's been used to process PfsStar
                 def count_arms(a):
