@@ -12,6 +12,7 @@ export OBSLOGDIR="/home/dobos/project/Subaru-PFS/spt_ssp_observation"
 declare -a PROPOSAL
 declare -a RERUN
 declare -a OBSLOGS
+declare -a ASSIGNMENTS
 declare -a VISITS
 declare -a CATID
 declare -a OBJID
@@ -24,6 +25,10 @@ echo "Number of configuration entries: ${#PROPOSAL[@]}"
 # Get the list of unique obs logs from the configuration file to use for catalog generation
 UNIQUE_OBSLOGS="$(for log in "${OBSLOGS[*]}"; do echo "$log"; done | sort -u | tr '\n' ' ')"
 # echo $UNIQUE_OBSLOGS
+
+# Get the list of unique assignments
+UNIQUE_ASSIGNMENTS="$(for assignment in "${ASSIGNMENTS[*]}"; do echo "$assignment"; done | sort -u | tr '\n' ' ')"
+# echo $UNIQUE_ASSIGNMENTS
 
 # Get the list of unique visits
 UNIQUE_VISITS="$(for visit in ${VISITS[*]}; do echo $visit; done | sort -u | tr '\n' ' ')"
@@ -68,21 +73,23 @@ for i in "${!PROPOSAL[@]}"; do
     #     --catid ${CATID[$i]} \
     #     --objid ${OBJID[$i]}
 
-    # Schedule the pipeline run for the stars of the given field
-    gapipe-run \
-        --yes \
-        --visit ${VISITS[$i]} \
-        --catid ${CATID[$i]} \
-        --objid ${OBJID[$i]} \
-        --batch slurm --partition cpu --cpus 4 --mem 12G
+    # # Schedule the pipeline run for the stars of the given field
+    # gapipe-run \
+    #     --yes \
+    #     --visit ${VISITS[$i]} \
+    #     --catid ${CATID[$i]} \
+    #     --objid ${OBJID[$i]} \
+    #     --batch slurm --partition cpu --cpus 4 --mem 12G
 
 done
 
-# # Generate the catalog for the given field for each catId
-# for catid in ${UNIQUE_CATIDS[*]}; do
-#     echo "Generating catalog for catID $catid"
-#     gapipe-catalog \
-#         --obs-log ${UNIQUE_OBSLOGS[*]} \
-#         --visit ${UNIQUE_VISITS[*]} \
-#         --catid $catid
-# done
+# Generate the catalog for the given field for each catId
+for catid in ${UNIQUE_CATIDS[*]}; do
+    echo "Generating catalog for catID $catid"
+    gapipe-catalog \
+        --obs-log ${UNIQUE_OBSLOGS[*]} \
+        --assignments ${UNIQUE_ASSIGNMENTS[*]} \
+        --visit ${UNIQUE_VISITS[*]} \
+        --include-missing-objects \
+        --catid $catid
+done
