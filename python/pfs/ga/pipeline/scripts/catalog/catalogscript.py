@@ -31,11 +31,14 @@ class CatalogScript(PipelineScript):
         super().__init__()
 
         self.__obs_logs = None                      # Observation log files
-        self.__top = None                   # Stop after this many objects
+        self.__top = None                           # Stop after this many objects
+        self.__assignments = None                   # Fiber assignments file
+        self.__include_missing_objects = False      # Include missing objects in the catalog
 
     def _add_args(self):
         self.add_arg('--top', type=int, help='Stop after this many objects')
         self.add_arg('--obs-logs', type=str, nargs='*', help='Observation log files')
+        self.add_arg('--assignments', type=str, nargs='*', help='Fiber assignments file')
         self.add_arg('--include-missing-objects', action='store_true', help='Include missing objects in the catalog')
 
         super()._add_args()
@@ -43,6 +46,7 @@ class CatalogScript(PipelineScript):
     def _init_from_args(self, args):
         self.__top = self.get_arg('top', args, self.__top)
         self.__obs_logs = self.get_arg('obs_logs', args, self.__obs_logs)
+        self.__assignments = self.get_arg('assignments', args, self.__assignments)
         self.__include_missing_objects = self.get_arg('include_missing_objects', args, False)
 
         super()._init_from_args(args)
@@ -66,6 +70,13 @@ class CatalogScript(PipelineScript):
             logger.warning('No observation log files specified, skipping loading obslog.')
             obs_log = None
 
+        # Load fiber assignments file
+        if self.__assignments is not None:
+            assignments = self.__load_assignment_files(self.__assignments)
+        else:
+            logger.warning('No fiber assignments file specified, skipping loading assignments.')
+            assignments = None
+
         # Update the repo directories based on the config and the command-line arguments
         self._update_repo_directories(self.config)
 
@@ -84,12 +95,37 @@ class CatalogScript(PipelineScript):
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
-        catalog = self.__create_catalog(identities, pfs_configs, obs_log)
+        catalog = self.__create_catalog(identities, pfs_configs, obs_log, assignments)
         logger.info(f'Created catalog with {len(catalog.catalog)} objects.')
 
         _, filename, _ = self.work_repo.get_data_path(catalog)
         logger.info(f'Saving catalog to `{filename}`...')
         self.work_repo.save_product(catalog, filename=filename, create_dir=True)
+
+    def __load_assignment_files(self, assignment_files):
+        assignments = None
+        for path in assignment_files if isinstance(assignment_files, list) else [assignment_files]:
+            for file in glob(path):
+                if not os.path.exists(file):
+                    logger.error(f'Fiber assignments file `{file}` does not exist.')
+                    raise FileNotFoundError(f'Fiber assignments file `{file}` does not exist.')
+                else:
+                    logger.info(f'Loading assignments file `{file}`.')
+        
+                    df = pd.read_feather(file)
+
+                    if assignments is None:
+                        assignments = df
+                    else:
+                        assignments = pd.concat([assignments, df])
+
+        # Remove all duplicate rows
+        assignments = assignments.drop_duplicates(
+            # subset=['__target_idx', 'stage', 'pointing_idx', 'visit_idx'],
+            subset=['obcode'],
+            keep='last')
+
+        return assignments
 
     def __create_catalog_table(self):
         table = SimpleNamespace(
@@ -158,7 +194,7 @@ class CatalogScript(PipelineScript):
 
         return table
 
-    def __create_catalog(self, identities, pfs_configs, obs_log):
+    def __create_catalog(self, identities, pfs_configs, obs_log, assignments):
 
         # A unique catalog ID that all objects must match
         catid = None
@@ -190,9 +226,13 @@ class CatalogScript(PipelineScript):
                 elif catid != obj.target.identity['catId']:
                     raise ValueError("All catIDs must match in a catalog.")
 
-                self.__append_pfsStar(table, objid, obj, visit, arm, pfsDesignId, obstime, exptime, pfs_configs, obs_log)
+                self.__append_pfsStar(
+                    table, objid, obj, visit, arm, pfsDesignId, obstime, exptime,
+                    pfs_configs, assignments, obs_log)
             elif self.__include_missing_objects:
-                self.__append_missing_object(table, objid, visit, arm, pfsDesignId, obstime, exptime, pfs_configs, obs_log)
+                self.__append_missing_object(
+                    table, objid, visit, arm, pfsDesignId, obstime, exptime,
+                    pfs_configs, assignments, obs_log)
         
         # Format table
         table = { k: np.array(v) for k, v in table.__dict__.items()}
@@ -245,7 +285,29 @@ class CatalogScript(PipelineScript):
         # TODO: make sure it doesn use any visits that are not listed
         #       by the filter
 
-    def __append_pfsStar(self, table, objid, obj, visit, arm, pfsDesignId, obstime, exptime, pfs_configs, obs_log):        
+    def __find_matching_assignment(self, assignments, obcode):
+        # Match with the assignments by obCode
+        if assignments is not None:
+            assignments_idx = assignments['obcode'] == obcode
+            if np.sum(assignments_idx) == 0:
+                logger.warning(f'No matching assignment found for obCode {obcode}.')
+            elif np.sum(assignments_idx) > 1:
+                logger.warning(f'Multiple matching assignments found for obCode {obcode}, taking the one with the highest stage.')
+        else:
+            assignments_idx = None
+
+        return assignments_idx
+
+    def __append_pfsStar(self, table, objid, obj, visit, arm, pfsDesignId, obstime, exptime,
+                         pfs_configs, assignments, obs_log):
+
+        # Find the object in the PfsConfig file to look up certain parameters that
+        # are not available in the PfsStar file
+        config = pfs_configs[obj.observations.visit[0]]
+        config_idx = np.where(config.objId == objid)[0].item()
+
+        assignments_idx = self.__find_matching_assignment(assignments, config.obCode[config_idx])
+
         # Keep track of visits, designs, arms and spectrographs, etc. used for this catalog
         for i, v in enumerate(obj.observations.visit):
             if v not in visit:
@@ -278,10 +340,8 @@ class CatalogScript(PipelineScript):
                     if eet_arm is not None and np.isfinite(eet_arm):
                         eet[a] += eet_arm
 
-        # Find the object in the PfsConfig file to look up certain parameters that
-        # are not available in the PfsStar file
-        config = pfs_configs[obj.observations.visit[0]]
-        idx = np.where(config.objId == objid)[0].item()
+        # Get the full identity
+        id = obj.getIdentity()
 
         # Append the table columns
         table.catId.append(obj.target.identity['catId'])
@@ -294,22 +354,26 @@ class CatalogScript(PipelineScript):
         table.sdssId.append(-1)
         table.miscId.append(-1)
 
-        table.ra.append(config.ra[idx])
-        table.dec.append(config.dec[idx])
-        table.epoch.append(config.epoch[idx])
-        table.pmRa.append(config.pmRa[idx])
-        table.pmDec.append(config.pmDec[idx])
-        table.parallax.append(config.parallax[idx])
-        table.targetType.append(config.targetType[idx])
-        table.targetPriority.append(-1)
-        table.proposalId.append(config.proposalId[idx])
-        table.obCode.append(config.obCode[idx])
+        table.ra.append(config.ra[config_idx])
+        table.dec.append(config.dec[config_idx])
+        table.epoch.append(config.epoch[config_idx])
+        table.pmRa.append(config.pmRa[config_idx])
+        table.pmDec.append(config.pmDec[config_idx])
+        table.parallax.append(config.parallax[config_idx])
+        table.targetType.append(config.targetType[config_idx])
+        
+        if assignments is not None and np.sum(assignments_idx) == 1:
+            table.targetPriority.append(assignments.loc[assignments_idx, 'priority'].item())
+        else:
+            table.targetPriority.append(-1)
+
+        table.proposalId.append(config.proposalId[config_idx])
+        table.obCode.append(config.obCode[config_idx])
 
         table.fiberId.append(fiberid)
 
         # These are used to generate the file name for PfsStar, include these in the catalog
         # to allow finding the corresponding files more easily
-        id = obj.getIdentity()
         table.nVisit.append(id['nVisit'])
         table.pfsVisitHash.append(id['pfsVisitHash'])
 
@@ -366,7 +430,8 @@ class CatalogScript(PipelineScript):
             table.flag.append(False)
             table.status.append('')
 
-    def __append_missing_object(self, table, objid, visit, arm, pfsDesignId, obstime, exptime, pfs_configs, obs_log):
+    def __append_missing_object(self, table, objid, visit, arm, pfsDesignId, obstime, exptime,
+                                pfs_configs, assignments, obs_log):
         # Collect missing object info from the PfsConfig files and obs_log if available,
         # and append to the catalog with NaN values for the parameters that would have been
         # derived from the PfsStar file.
@@ -376,28 +441,35 @@ class CatalogScript(PipelineScript):
         fiberid = []
         last_visit = None
         for visit, config in pfs_configs.items():
-            idx = np.where(config.objId == objid)[0]
-            if len(idx) == 0:
+            config_idx = np.where(config.objId == objid)[0]
+            if len(config_idx) == 0:
                 # objId not in the config file
                 continue
-            elif len(idx) == 1:
+            elif len(config_idx) == 1:
                 # objId found in the config file, append the fiberId
-                fiberid.append(config.fiberId[idx].item())
+                fiberid.append(config.fiberId[config_idx].item())
                 last_visit = visit
             else:
                 raise NotImplementedError()
+
+        if last_visit is None:
+            raise ValueError(f'Object with objId {objid} not found in any PfsConfig file, cannot append missing object.')
             
         if len(np.unique(np.array(fiberid))) == 1:
             fiberid = fiberid[0]
         else:
             fiberid = -1
 
+        # Find the object in the PfsConfig file to look up certain parameters that
+        # are not available in the PfsStar file
         config = pfs_configs[last_visit]
-        idx = np.where(config.objId == objid)[0].item()
+        config_idx = np.where(config.objId == objid)[0].item()
+
+        assignments_idx = self.__find_matching_assignment(assignments, config.obCode[config_idx])
 
         # Append the table columns
-        table.catId.append(config.catId[idx])
-        table.objId.append(config.objId[idx])
+        table.catId.append(config.catId[config_idx])
+        table.objId.append(config.objId[config_idx])
 
         # TODO: sort out these IDs, might need to load them from a params file
         table.gaiaId.append(-1)
@@ -406,16 +478,21 @@ class CatalogScript(PipelineScript):
         table.sdssId.append(-1)
         table.miscId.append(-1)
 
-        table.ra.append(config.ra[idx])
-        table.dec.append(config.dec[idx])
-        table.epoch.append(config.epoch[idx])
-        table.pmRa.append(config.pmRa[idx])
-        table.pmDec.append(config.pmDec[idx])
-        table.parallax.append(config.parallax[idx])
-        table.targetType.append(config.targetType[idx])
-        table.targetPriority.append(-1)
-        table.proposalId.append(config.proposalId[idx])
-        table.obCode.append(config.obCode[idx])
+        table.ra.append(config.ra[config_idx])
+        table.dec.append(config.dec[config_idx])
+        table.epoch.append(config.epoch[config_idx])
+        table.pmRa.append(config.pmRa[config_idx])
+        table.pmDec.append(config.pmDec[config_idx])
+        table.parallax.append(config.parallax[config_idx])
+        table.targetType.append(config.targetType[config_idx])
+
+        if assignments is not None and np.sum(assignments_idx) == 1:
+            table.targetPriority.append(assignments.loc[assignments_idx, 'priority'].item())
+        else:
+            table.targetPriority.append(-1)
+
+        table.proposalId.append(config.proposalId[config_idx])
+        table.obCode.append(config.obCode[config_idx])
 
         table.fiberId.append(fiberid)
         table.nVisit.append(-1)
