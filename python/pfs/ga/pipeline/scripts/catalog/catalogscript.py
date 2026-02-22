@@ -131,11 +131,6 @@ class CatalogScript(PipelineScript):
         table = SimpleNamespace(
             catId = [],
             objId = [],
-            gaiaId = [],
-            ps1Id = [],
-            hscId = [],
-            sdssId = [],
-            miscId = [],
             ra = [],
             dec = [],
             epoch = [],
@@ -347,13 +342,6 @@ class CatalogScript(PipelineScript):
         table.catId.append(obj.target.identity['catId'])
         table.objId.append(obj.target.identity['objId'])
 
-        # TODO: sort out these IDs, might need to load them from a params file
-        table.gaiaId.append(-1)
-        table.ps1Id.append(-1)
-        table.hscId.append(-1)
-        table.sdssId.append(-1)
-        table.miscId.append(-1)
-
         table.ra.append(config.ra[config_idx])
         table.dec.append(config.dec[config_idx])
         table.epoch.append(config.epoch[config_idx])
@@ -470,13 +458,6 @@ class CatalogScript(PipelineScript):
         # Append the table columns
         table.catId.append(config.catId[config_idx])
         table.objId.append(config.objId[config_idx])
-
-        # TODO: sort out these IDs, might need to load them from a params file
-        table.gaiaId.append(-1)
-        table.ps1Id.append(-1)
-        table.hscId.append(-1)
-        table.sdssId.append(-1)
-        table.miscId.append(-1)
 
         table.ra.append(config.ra[config_idx])
         table.dec.append(config.dec[config_idx])
