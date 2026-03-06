@@ -20,6 +20,9 @@ declare -a OBJID
 CONFIGFILE=$1
 source $CONFIGFILE
 
+# EXTRAPARAMS="--debug"
+EXTRAPARAMS=""
+
 echo "Number of configuration entries: ${#PROPOSAL[@]}"
 
 # Get the list of unique obs logs from the configuration file to use for catalog generation
@@ -91,5 +94,5 @@ for catid in ${UNIQUE_CATIDS[*]}; do
         --assignments ${UNIQUE_ASSIGNMENTS[*]} \
         --visit ${UNIQUE_VISITS[*]} \
         --include-missing-objects \
-        --catid $catid
+        --catid $catid ${EXTRAPARAMS}
 done
