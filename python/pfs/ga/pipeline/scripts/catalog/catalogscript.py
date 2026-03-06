@@ -143,6 +143,7 @@ class CatalogScript(PipelineScript):
             obCode = [],
 
             fiberId = [],
+            spectrograph = [],
             nVisit = [],
             pfsVisitHash = [],
 
@@ -183,8 +184,8 @@ class CatalogScript(PipelineScript):
             log_gErr = [],
             log_gStatus = [],
 
-            flag = [],
-            status = [],
+            tempfitflag = [],
+            tempfitstatus = [],
         )
 
         return table
@@ -293,6 +294,22 @@ class CatalogScript(PipelineScript):
 
         return assignments_idx
 
+    def __get_unique_fiber_id(self, obj):
+        # Collect the fiberId from each visit. Only set these IDs
+        # if they are the same across all visits, otherwise set to -1.
+        fiberid = np.array(obj.observations.fiberId)
+        if len(np.unique(fiberid)) == 1:
+            return fiberid[0]
+        else:
+            return -1
+
+    def __get_unique_spectrograph(self, obj):
+        spectrograph = np.array(obj.observations.spectrograph)
+        if len(np.unique(spectrograph)) == 1:
+            return spectrograph[0]
+        else:
+            return -1
+
     def __append_pfsStar(self, table, objid, obj, visit, arm, pfsDesignId, obstime, exptime,
                          pfs_configs, assignments, obs_log):
 
@@ -315,13 +332,8 @@ class CatalogScript(PipelineScript):
             
             arm[v].add(obj.observations.arm[i])
 
-        # Collect the fiberId from each visit. Only set these IDs
-        # if they are the same across all visits, otherwise set to -1.
-        fiberid = np.array(obj.observations.fiberId)                
-        if len(np.unique(fiberid)) == 1:
-            fiberid = fiberid[0]
-        else:
-            fiberid = -1
+        fiberid = self.__get_unique_fiber_id(obj)
+        spectrograph = self.__get_unique_spectrograph(obj)
 
         # Calculate some metrics from the obs_log if available
         eet = { a: 0.0 for a in ['b', 'm', 'r', 'n'] }
@@ -359,6 +371,7 @@ class CatalogScript(PipelineScript):
         table.obCode.append(config.obCode[config_idx])
 
         table.fiberId.append(fiberid)
+        table.spectrograph.append(spectrograph)
 
         # These are used to generate the file name for PfsStar, include these in the catalog
         # to allow finding the corresponding files more easily
@@ -412,11 +425,11 @@ class CatalogScript(PipelineScript):
         # TODO: add different flags for tempfit, chemfit and coadd
         flags_index = np.where(obj.measurementFlags.method == 'tempfit')[0]
         if flags_index.size == 1:
-            table.flag.append(obj.measurementFlags.flag[flags_index[0]])
-            table.status.append(obj.measurementFlags.status[flags_index[0]])
+            table.tempfitflag.append(obj.measurementFlags.flag[flags_index[0]])
+            table.tempfitstatus.append(obj.measurementFlags.status[flags_index[0]])
         else:
-            table.flag.append(False)
-            table.status.append('')
+            table.tempfitflag.append(False)
+            table.tempfitstatus.append('')
 
     def __append_missing_object(self, table, objid, visit, arm, pfsDesignId, obstime, exptime,
                                 pfs_configs, assignments, obs_log):
@@ -427,6 +440,7 @@ class CatalogScript(PipelineScript):
         # Collect the fiberId from each visit. Only set these IDs
         # if they are the same across all visits, otherwise set to -1.
         fiberid = []
+        spectrograph = []
         last_visit = None
         for visit, config in pfs_configs.items():
             config_idx = np.where(config.objId == objid)[0]
@@ -436,6 +450,7 @@ class CatalogScript(PipelineScript):
             elif len(config_idx) == 1:
                 # objId found in the config file, append the fiberId
                 fiberid.append(config.fiberId[config_idx].item())
+                spectrograph.append(config.spectrograph[config_idx].item())
                 last_visit = visit
             else:
                 raise NotImplementedError()
@@ -447,6 +462,11 @@ class CatalogScript(PipelineScript):
             fiberid = fiberid[0]
         else:
             fiberid = -1
+
+        if len(np.unique(np.array(spectrograph))) == 1:
+            spectrograph = spectrograph[0]
+        else:
+            spectrograph = -1
 
         # Find the object in the PfsConfig file to look up certain parameters that
         # are not available in the PfsStar file
@@ -476,6 +496,7 @@ class CatalogScript(PipelineScript):
         table.obCode.append(config.obCode[config_idx])
 
         table.fiberId.append(fiberid)
+        table.spectrograph.append(spectrograph)
         table.nVisit.append(-1)
         table.pfsVisitHash.append(-1)
 
@@ -509,8 +530,8 @@ class CatalogScript(PipelineScript):
             status.append('')
 
         # Status value of tempfit
-        table.flag.append(True)
-        table.status.append(TempFitFlag.NODATA.name)
+        table.tempfitflag.append(True)
+        table.tempfitstatus.append(TempFitFlag.NODATA.name)
 
 def main():
     script = CatalogScript()
