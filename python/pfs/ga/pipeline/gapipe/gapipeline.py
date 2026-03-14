@@ -62,7 +62,7 @@ class GAPipeline(Pipeline):
 
         # TODO: id and trace should be moved to the state object entirely
         # TODO: also move everything config related because that cannot be set on
-        #       the pipeline level is the pipeline is stateless
+        #       the pipeline level if the pipeline is stateless
         
         super().__init__(script=script, config=config, trace=trace)
 
@@ -96,6 +96,10 @@ class GAPipeline(Pipeline):
 
     def update(self, script=None, config=None, repo=None, trace=None, id=None):
         super().update(script=script, config=config, trace=trace)
+
+        # TODO: id and trace should be moved to the state object entirely
+        # TODO: also move everything config related because that cannot be set on
+        #       the pipeline level if the pipeline is stateless
 
         self.__input_repo = repo if repo is not None else self.__input_repo
         self.__id = id if id is not None else self.__id
@@ -134,6 +138,10 @@ class GAPipeline(Pipeline):
         """
         Instantiate a state object that will be passed to each step of the pipeline.
         """
+
+        # TODO: id and trace should be moved to the state object entirely
+        # TODO: also move everything config related because that cannot be set on
+        #       the pipeline level if the pipeline is stateless
 
         return GAPipelineState()
     
