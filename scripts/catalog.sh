@@ -1,25 +1,32 @@
-OBSRUN="2025-03"
-RERUN="run21_June2025"
-OBSLOGS="../Subaru-PFS/spt_ssp_observation/runs/$OBSRUN/obslog/*.csv"
-VISITS="$(cat $OBSLOGS | grep SSP_GA | cut -d ',' -f 1)"
+#!/bin/bash
 
-gapipe-catalog --rerundir $RERUN --visit $VISITS --obs-log $OBSLOGS --objid 0x200000000-0x2FFFFFFFF
-gapipe-catalog --rerundir $RERUN --visit $VISITS --obs-log $OBSLOGS --objid 0x600000000-0x6FFFFFFFF
+# Generate catalogs from pfsStar files
 
-###
+# Source the configuration file which sets the environment variables
+# for the catalog generation
+CONFIGFILE=$1
+source $CONFIGFILE
 
-OBSRUN="2025-05"
-RERUN="run22_July2025"
-OBSLOGS="../Subaru-PFS/spt_ssp_observation/runs/$OBSRUN/obslog/*.csv"
-VISITS="$(cat $OBSLOGS | grep SSP_GA | cut -d ',' -f 1)"
+export DATADIR="/scratch/aszalay1/dobos/pfs"
+export OBSLOGDIR="/home/dobos/project/Subaru-PFS/spt_ssp_observation"
 
-gapipe-catalog --rerundir $RERUN --visit $VISITS --obs-log $OBSLOGS --objid 0x1000000000-0x1FFFFFFFFF
+export GAPIPE_RERUNDIR="$RERUN"
+export GAPIPE_RERUN="$RERUN"
+export GAPIPE_GARUN="$GARUN"
 
-###
+# Read and parse the obs logs to get the list of visits for the given OBSDATE
+export OBSLOGS="$OBSLOGDIR/runs/$OBSDATE/obslog/*.csv"
+export VISITS="$(cat $OBSLOGS | grep SSP_GA | cut -d ',' -f 1)"
 
-OBSRUN="2025-06"
-RERUN="run23_August2025"
-OBSLOGS="../Subaru-PFS/spt_ssp_observation/runs/$OBSRUN/obslog/*.csv"
-VISITS="$(cat $OBSLOGS | grep SSP_GA | cut -d ',' -f 1)"
+echo "The following visits are available in the obs log:"
+echo $VISITS
 
-gapipe-catalog --rerundir $RERUN --visit $VISITS --obs-log $OBSLOGS --objid 0x7000000000-0x7FFFFFFFFF
+# Run the catalog generation command with the specified parameters
+gapipe-catalog \
+    --rerundir $RERUN \
+    --visit $VISITS \
+    --obs-log $OBSLOGS \
+    --catid $CATID \
+    --catname $CATNAME \
+    --objid $OBJID \
+    --debug

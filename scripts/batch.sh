@@ -9,43 +9,46 @@ export DATADIR="/scratch/aszalay1/dobos/pfs"
 export OBSLOGDIR="/home/dobos/project/Subaru-PFS/spt_ssp_observation"
 
 # Configure gapipe for a given run and field
+declare -a GARUN
 declare -a PROPOSAL
 declare -a RERUN
+declare -a PIPECONFIG
 declare -a OBSLOGS
 declare -a ASSIGNMENTS
 declare -a VISITS
 declare -a CATID
 declare -a OBJID
 
+# Batch config from a shell script
 CONFIGFILE=$1
 source $CONFIGFILE
 
+# Pipeline config name. Path is generated from RERUN and PIPECONFIG.
+PIPECONFIG=$2
+
 # EXTRAPARAMS="--debug"
+# EXTRAPARAMS="--top 10 --debug"
 EXTRAPARAMS=""
 
+function unique_array() {
+    local array=("$@")
+    local unique_array=()
+    local item
+    for item in "${array[@]}"; do
+        if [[ ! " ${unique_array[*]} " =~ " ${item} " ]]; then
+            unique_array+=("$item")
+        fi
+    done
+    echo "${unique_array[@]}"
+}
+
 echo "Number of configuration entries: ${#PROPOSAL[@]}"
-
-# Get the list of unique obs logs from the configuration file to use for catalog generation
-UNIQUE_OBSLOGS="$(for log in "${OBSLOGS[*]}"; do echo "$log"; done | sort -u | tr '\n' ' ')"
-# echo $UNIQUE_OBSLOGS
-
-# Get the list of unique assignments
-UNIQUE_ASSIGNMENTS="$(for assignment in "${ASSIGNMENTS[*]}"; do echo "$assignment"; done | sort -u | tr '\n' ' ')"
-# echo $UNIQUE_ASSIGNMENTS
-
-# Get the list of unique visits
-UNIQUE_VISITS="$(for visit in ${VISITS[*]}; do echo $visit; done | sort -u | tr '\n' ' ')"
-# echo $UNIQUE_VISITS
-
-# Get the list of unique CATIDs
-UNIQUE_CATIDS="$(for catid in ${CATID[*]}; do echo $catid; done | sort -u | tr '\n' ' ')"
-# echo $UNIQUE_CATIDS
 
 # Iterate over the configuration entries and run the gapipe-config script for
 # each catalog entry.
 for i in "${!PROPOSAL[@]}"; do
     echo "Configuring gapipe for entry $i:"
-    echo "  GARUN: ${GARUN}"
+    echo "  GARUN: ${GARUN[$i]}"
     echo "  PROPOSAL: ${PROPOSAL[$i]}"
     echo "  RERUN: ${RERUN[$i]}"
     echo "  VISITS: ${VISITS[$i]}"
@@ -58,7 +61,7 @@ for i in "${!PROPOSAL[@]}"; do
     export BUTLER_COLLECTIONS="${RERUN[$i]}"
     export GAPIPE_RERUNDIR="${RERUN[$i]}"
     export GAPIPE_RERUN="${RERUN[$i]}"
-    export GAPIPE_GARUNDIR="${GARUN}"
+    export GAPIPE_GARUNDIR="${GARUN[$i]}_${PIPECONFIG}"
 
 #     echo "The following collections are available in the butler repo:"
 #     python <<EOF
@@ -67,10 +70,16 @@ for i in "${!PROPOSAL[@]}"; do
 # print(butler.registry.queryCollections())
 # EOF
 
-    # Generate the configuration files for a given field
+    # Get the list of unique values for each of the configuration parameters
+    UNIQUE_OBSLOGS=$(unique_array "${OBSLOGS[$i]}")
+    UNIQUE_ASSIGNMENTS=$(unique_array "${ASSIGNMENTS[$i]}")
+    UNIQUE_VISITS=$(unique_array "${VISITS[$i]}")
+    UNIQUE_CATIDS=$(unique_array "${CATID[$i]}")
+
+    # # Generate the configuration files for a given field
     # gapipe-configure \
-    #     --config ./configs/gapipe/${RERUN[$i]}/single.py \
-    #     --yes \
+    #     --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
+    #     --yes ${EXTRAPARAMS} \
     #     --visit ${VISITS[$i]} \
     #     --obs-logs ${OBSLOGS[$i]} \
     #     --catid ${CATID[$i]} \
@@ -78,21 +87,21 @@ for i in "${!PROPOSAL[@]}"; do
 
     # # Schedule the pipeline run for the stars of the given field
     # gapipe-run \
-    #     --yes \
+    #     --yes ${EXTRAPARAMS} \
     #     --visit ${VISITS[$i]} \
     #     --catid ${CATID[$i]} \
     #     --objid ${OBJID[$i]} \
     #     --batch slurm --partition cpu --cpus 4 --mem 12G
 
-done
+    # Generate the catalog for the given field for each catId
+    for catid in ${UNIQUE_CATIDS[*]}; do
+        echo "Generating catalog for catID $catid"
+        gapipe-catalog \
+            --obs-log ${UNIQUE_OBSLOGS[*]} \
+            --assignments ${UNIQUE_ASSIGNMENTS[*]} \
+            --visit ${UNIQUE_VISITS[*]} \
+            --include-missing-objects \
+            --catid $catid ${EXTRAPARAMS}
+    done
 
-# Generate the catalog for the given field for each catId
-for catid in ${UNIQUE_CATIDS[*]}; do
-    echo "Generating catalog for catID $catid"
-    gapipe-catalog \
-        --obs-log ${UNIQUE_OBSLOGS[*]} \
-        --assignments ${UNIQUE_ASSIGNMENTS[*]} \
-        --visit ${UNIQUE_VISITS[*]} \
-        --include-missing-objects \
-        --catid $catid ${EXTRAPARAMS}
 done
