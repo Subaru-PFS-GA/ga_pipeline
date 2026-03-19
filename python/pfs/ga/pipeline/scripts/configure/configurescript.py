@@ -434,7 +434,7 @@ class ConfigureScript(PipelineScript, Progress):
         else:
             # Science targets always have a valid obcode
             mask = (target_list['obcode'] == obcode) & (target_list['__target_idx'] == (objid & 0xFFFFFFFF))
-            
+
         primary_target = np.where(mask)[0].item()
         target_idx = target_list.loc[primary_target, '__target_idx']
         primary_ra = target_list.loc[primary_target, 'RA']
@@ -468,6 +468,12 @@ class ConfigureScript(PipelineScript, Progress):
     def __update_magnitdes_from_target_list(self, objid, pipeline_config, target_list, idx):
         # Check if any magnitudes with filter curves are defined in the config template
         # and if so, try to match them to the filters available in pfsConfig
+
+        # TODO: the targets lists actually should have the magnitudes, not just the fluxes,
+        #       but earlier netflow runs don't keep track of the column they're stored in and
+        #       it's not straighforward to match the filter names, so for now we just look for
+        #       fluxes in the target list.
+
         if pipeline_config.tempfit.photometry is not None:
             for fn, mag in pipeline_config.tempfit.photometry.items():
                 if mag.filter_name is None:
