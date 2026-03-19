@@ -78,6 +78,14 @@ class PipelineScript(Script):
         self.__work_repo.add_args(self, ignore_duplicates=True)
         super()._add_args()
 
+    def _init_from_args_pre_logging(self, args):
+        super()._init_from_args_pre_logging(args)
+
+        # TODO: repo variables are not updated based on the command-line arguments yet
+        #       because of this, the log file will go to the default location which
+        #       is determined by the environment variables instead of any config files or
+        #       command-line arguments. This needs to be fixed.
+
     def _init_from_args(self, args):
 
         self.__plot_level = self.get_arg('plot_level', args, self.__plot_level)
@@ -111,6 +119,9 @@ class PipelineScript(Script):
         # then from the command-line arguments
         self._init_input_repo()
         self._init_work_repo()
+
+        # Update the repo directories based on the config and the command-line arguments
+        self._update_repo_directories(self.__config)
 
         super()._init_from_args(args)
 
