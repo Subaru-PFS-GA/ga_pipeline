@@ -239,12 +239,34 @@ class TempFitStep(PipelineStep):
         # TODO: do we need to do some kind of mapping here between filter names?
 
         fluxes = defaultdict(dict)
-        if context.config.tempfit.photometry is not None:
-            for band, photometry in context.config.tempfit.photometry.items():
-                # TODO: handle the case when we only have magnitudes
-                fluxes[photometry.instrument][band] = (
-                    photometry.flux,
-                    photometry.flux_error)
+
+        # Skip is no photometry is configured
+        if context.config.tempfit.photometry is None:
+            return fluxes
+
+        # Group the filters by priority and find the smallest priority value where at
+        # least two fluxes are available.
+        filters_by_priority = defaultdict(dict)
+        for filter, photometry in context.config.tempfit.photometry.items():
+            if photometry.flux is not None and photometry.flux_error is not None:
+                filters_by_priority[photometry.priority][filter] = photometry
+
+        # Find the highest priority with at least 2 fluxes available
+        selected_priority = None
+        for priority in sorted(filters_by_priority.keys()):
+            if len(filters_by_priority[priority]) >= 2:
+                selected_priority = priority
+                break
+
+        if selected_priority is None:
+            logger.warning('Not enough photometric fluxes available to fit extinction, skipping photometry.')
+            return fluxes
+
+        for filter, photometry in filters_by_priority[selected_priority].items():
+            # TODO: handle the case when we only have magnitudes
+            fluxes[photometry.instrument][filter] = (
+                photometry.flux,
+                photometry.flux_error)
 
         return fluxes
     
