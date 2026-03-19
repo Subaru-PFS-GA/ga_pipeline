@@ -1,8 +1,10 @@
 import os
 from glob import glob
 from types import SimpleNamespace
+import numpy as np
 import pandas as pd
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from dateutil import parser as dateparser
 
 from pfs.ga.common.scripts import Script
@@ -38,6 +40,9 @@ class PipelineScript(Script):
             PfsMerged: SimpleNamespace(
                 print = [ self.__print_pfsMerged ]
             ),
+            PfsStar: SimpleNamespace(
+                print = [ self.__print_pfsStar]
+            )
         }
 
         self.__plot_level = None
@@ -270,10 +275,17 @@ class PipelineScript(Script):
                 # df['pfs_design_id'] = df['pfs_design_id'].map(lambda x: f'0x{int(x, 16):016x}')
                 df['issued_at'] = df['issued_at'].map(lambda x: dateparser.parse(x))
 
+                # Convert from HST to UTC
+                tz = timedelta(hours=-10)
+                df['issued_at'] = df['issued_at'].map(lambda x: x - tz)
+
                 if obs_log is None:
                     obs_log = df
                 else:
                     obs_log = pd.concat([obs_log, df], ignore_index=True)
+
+        # Remove duplicates
+        obs_log.drop_duplicates(subset=['visit_id'], inplace=True, keep='first')
 
         # Index by visit_id
         obs_log.set_index('visit_id', inplace=True)
@@ -347,7 +359,7 @@ class PipelineScript(Script):
                 v = ' '.join(f'{x:016x}' for x in d[key][s])
                 print(f'  {key}: {v}')
             else:
-                v = ' '.join(str(x) for x in d[key][s])
+                v = ' '.join(str(x) for x in np.array(d[key])[s])
                 print(f'  {key}: {v}')
 
     def __print_pfsDesign(self, filename):
@@ -414,3 +426,13 @@ class PipelineScript(Script):
             self.__print_pfsConfig(filename=filename)
         except Exception as e:
             raise e
+
+    def __print_pfsStar(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=())

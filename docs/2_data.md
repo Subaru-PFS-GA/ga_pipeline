@@ -207,22 +207,25 @@ You can figure out the field observed during a run by running
     $ ./scripts/sum_exp_time.py ./runs/2025-11/obslog/*.csv --name-pattern 'SSP_GA*'
 
 ```
-<proposal> <obs_date>  <id_prefix>              <target>
-S25A-OT02  2025-03     0x0200000000             Draco dSph
-                       0x0600000000             Ursa Minor dSph
-           2025-05     0x1000000000             MW Outer disk l=90 b=28
-           2025-06     0x7000000000             MW Outer disk l=90 b=16
-                       0x0200000000             Draco dSph
-                       0x0600000000             Ursa Minor dSph
+<proposal> <obs_date>         <id_prefix>              <target>
+S25A-OT02  2025-03     run21  0x0200000000             Draco dSph
+                              0x0600000000             Ursa Minor dSph
+           2025-05     run22  0x1000000000             MW Outer disk l=90 b=28
+                              0x2000000000             MW Outer disk l=90 b=29
+                                                       ** cross-calibration fields
+           2025-06     run23  0x7000000000             MW Outer disk l=90 b=16
+                              0x3000000000             MW Outer disk l=90 b=-28
+                              0x0200000000             Draco dSph
+                              0x0600000000             Ursa Minor dSph
  
-S25B-OT02  2025-09     0x100000100000000        M31 E0
-                       0x100000200000000        M31 W0
-                       0x100000300000000        M31 GSS0
-                       0x100000400000000        M31 NWS0
-           2025-11     0x100000100000000        M31 E0
-                       0x50000000000            outerdisk_l180_b16
-                       0x51000000000            outerdisk_l180_b17
-           2026-01     0x0700000000             Sextans dSph
+S25B-OT02  2025-09     run24  0x100000100000000        M31 E0
+                              0x100000200000000        M31 W0
+                              0x100000300000000        M31 GSS0
+                              0x100000400000000        M31 NWS0
+           2025-11     run25  0x100000100000000        M31 E0
+                              0x50000000000            MW outerdisk_l180_b16
+                              0x51000000000            MW outerdisk_l180_b17
+           2026-01     run26  0x0700000000             Sextans dSph
 ```
 
 Test the configuration by activating GAPIPE and running `gapipe-repo`:

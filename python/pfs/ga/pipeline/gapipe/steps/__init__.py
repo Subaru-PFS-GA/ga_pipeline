@@ -1,7 +1,6 @@
 from .validatestep import ValidateStep
 from .initstep import InitStep
 from .loadstep import LoadStep
-from .vcorrstep import VCorrStep
 from .tempfitstep import TempFitStep
 from .coaddstep import CoaddStep
 from .chemfitstep import ChemFitStep

@@ -1,8 +1,10 @@
 from typing import Dict, List
 
 from pfs.ga.common.config import Config
+from pfs.ga.pipeline.gapipe.config.vcorrconfig import VCorrConfig
 
 from .photometryconfig import PhotometryConfig
+from .vcorrconfig import VCorrConfig
 
 class TempFitConfig(Config):
     """
@@ -24,8 +26,18 @@ class TempFitConfig(Config):
         Preload the model grid into memory. Requires large memory.
     psf_path: str
         Path to the line spread function files. Use {arm} for wildcard.
+    photometry: dict
+        Dictionary of photometry configurations for each band.
+    fit_photometry: bool
+        Fit the photometry in addition to the spectra.
+    filter_cutoff: float
+        Broadband filter throughput cut-off to use when calculating synthetic magnitudes.
+    mask_flags: list of str
+        List of flags to treat as masked pixels. Combined with logical or.
     min_unmasked_pixels: int
         Minimum number of unmasked pixels required to run the fitting.
+    vcorr: VCorrConfig
+        Velocity correction configuration.
     correction_model: str
         Correction model to use. Either 'fluxcorr' or 'contnorm'.
     extinction_model: str
@@ -35,6 +47,7 @@ class TempFitConfig(Config):
     def __init__(
             self,
             photometry: Dict[str, PhotometryConfig] = None,
+            vcorr: VCorrConfig = VCorrConfig(),
         ):
 
         # TempFIT global parameters
@@ -103,6 +116,9 @@ class TempFitConfig(Config):
 
         self.wave_include = None
         self.wave_exclude = None
+
+        # Velocity correction configuration
+        self.vcorr = vcorr
 
         # Correction model to use, either 'fluxcorr' or 'contnorm'. Use 'fluxcorr' for
         # flux correcting the fluxed stellar templates and 'contnorm' to continuum-normalize the

@@ -183,23 +183,28 @@ function pfsspec-import() {
     `realpath ./bin/wrap` "-m pfs.ga.pfsspec.core.scripts.import_" "$@"
     set +o noglob
 }
+export -f pfsspec-import
 
 # Search and show information about PFS data products
 function gapipe-repo() {
     `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.repo.reposcript" "$@"
 }
+export -f gapipe-repo
 
 # Configure GA 1D pipeline tasks for a list of data products
 function gapipe-configure() {
     `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.configure.configurescript" "$@"
 }
+export -f gapipe-configure
 
 # Run the GA 1D pipeline on a single task
 function gapipe-run() {
     `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.run.runscript" "$@"
 }
+export -f gapipe-run
 
 # Compile a GA catalog from a GA pipeline run
 function gapipe-catalog() {
     `realpath ./bin/wrap` "-m pfs.ga.pipeline.scripts.catalog.catalogscript" "$@"
 }
+export -f gapipe-catalog

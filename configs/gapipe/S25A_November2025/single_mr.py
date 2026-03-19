@@ -1,7 +1,7 @@
 from pfs.ga.pfsspec.core import Trace
 
 GAPIPE_ROOT = '/scratch/aszalay1/dobos/pfs/gapipe'
-RERUN = 'run24_November2025'
+RERUN = 'S25A_November2025'
 
 config = dict(
     workdir = f'{GAPIPE_ROOT}/work',
@@ -41,7 +41,7 @@ config = dict(
         }
     ),
     tempfit = dict(
-        fit_arms = [ 'b', 'r', 'm' ],
+        fit_arms = [ 'm' ],
         require_all_arms = False,
         
         model_grid_path = f'{GAPIPE_ROOT}/data/pfsspec/models/stellar/grid/gk2025/gk2025_binned_compressed/spectra.h5',
@@ -75,6 +75,16 @@ config = dict(
                 filter_name = 'g_hsc',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-g.txt',
             ),
+            'r_hsc': dict(
+                instrument = 'hsc',
+                filter_name = ['r_hsc', 'r_old_hsc'],
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-r.txt',
+            ),
+            'r2_hsc': dict(
+                instrument = 'hsc',
+                filter_name = 'r2_hsc',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-r2.txt',
+            ),
             'i_hsc': dict(
                 instrument = 'hsc',
                 filter_name = ['i_hsc', 'i_old_hsc'],
@@ -82,10 +92,15 @@ config = dict(
             ),
             'i2_hsc': dict(
                 instrument = 'hsc',
-                filter_name = ['i2_hsc'],
+                filter_name = 'i2_hsc',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i2.txt',
             ),
         },
+
+        vcorr = dict(
+            from_frame = 'observed',
+            to_frame = 'heliocentric',
+        ),
         
         psf_path = f'{GAPIPE_ROOT}/data/instruments/pfs/psf/import/{{arm}}.real/gauss.h5',
         mask_flags = [
@@ -152,11 +167,14 @@ config = dict(
             amplitude_per_exp = True,
 
             M_H = [ -5.0, 0.5 ],
-            M_H_dist = [ "normal", -1.5, 0.5 ],
+            M_H_dist = [ "normal", -1.5, 1.0 ],
             T_eff = [ 3500, 8000 ],
             T_eff_dist = [ "normal", 5500, 500 ],
             log_g = [ 0.0, 5.0 ],
-            log_g_dist = [ "normal", 2.5, 2.0 ],
+            # log_g_dist = [ "normal", 3.5, 1.0 ],
+
+            rv = [ -750, 750 ],
+            rv_step = 20,
 
             ebv = [0.005, 0.015],
             ebv_dist = [ "normal", 0.01, 0.005 ],
@@ -177,7 +195,7 @@ config = dict(
         )
     ),
     coadd = dict(
-        coadd_arms = [ 'b', 'm', 'r' ],
+        coadd_arms = [ 'm' ],
         trace_args = dict(
             plot_level = Trace.PLOT_LEVEL_INFO,
         ),

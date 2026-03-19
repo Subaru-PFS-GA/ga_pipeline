@@ -21,32 +21,6 @@ class GAPipelineConfig(RepoConfig):
 
         # GA target object configuration
         self.target = target
-
-        # TODO: need to get the photometry and priors from somewhere
-
-        # GA pipeline configuration
-
-        # Arm definitions with defaults
-
-        # These values are safe only when the M arm is used
-        # self.arms = { 
-        #     'b': dict(
-        #         wave = [ 3500, 6600 ],
-        #         pix_per_res = 3,
-        #     ),
-        #     'r': dict(
-        #         wave = [ 6600, 9300 ],
-        #         pix_per_res = 3,
-        #     ),
-        #     'm': dict(
-        #         wave = [ 6900, 9000 ],
-        #         pix_per_res = 4,
-        #     ),
-        #     'n': dict(
-        #         wave = [ 9300, 12600 ],
-        #         pix_per_res = 3,
-        #     ),
-        # }
         
         # These values ignore the overlap between arms when the R arm is used
         # TODO: convert these into ArmConfig classes?
@@ -171,10 +145,6 @@ class GAPipelineConfig(RepoConfig):
 
         # TODO
         self.ref_mag = 'hsc_g'                  # Reference magnitude
-
-        # TODO
-        # Type of velocity corrections, 'barycentric' or 'heliocentric' or 'none'
-        self.v_corr = 'barycentric'
         
         self.tempfit = tempfit
         self.run_tempfit = True

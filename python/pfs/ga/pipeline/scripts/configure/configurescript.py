@@ -120,6 +120,14 @@ class ConfigureScript(PipelineScript, Progress):
 
         # Create the iterator that we will loop over to generate the pipeline configuration files.
         pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_log, obs_params, stellar_params)
+
+        logger.info(f'Ready to generate {len(identities)} configuration files for the pipeline.')
+
+        if not self.yes:
+            answer = input(f'Proceed to generate {len(identities)} configuration files? [y/N]: ')
+            if answer.lower() != 'y':
+                logger.info('Aborting configuration file generation.')
+                return
         
         # Generate the configuration file for each target
         q = 0
@@ -138,12 +146,17 @@ class ConfigureScript(PipelineScript, Progress):
                 # Update seeing and exptime from obs_log. Obstime is taken from
                 # pfsConfig which is more accurate since the obslog only has the
                 # time of the start of the command, not the start of the exposure.
+                obstime = []
                 exptime = []
                 seeing = []
                 for visit in identity.visit:
+                    # Override obstime from the obs log because
+                    # times from pfsConfig are not accurate enough
+                    obstime.append(obs_log.loc[visit, 'issued_at'].isoformat())
                     exptime.append(obs_log.loc[visit, 'avg_exptime'])
                     seeing.append(obs_log.loc[visit, 'seeing_median'])
 
+                identity.obstime = np.array(obstime, dtype=str)
                 identity.exptime = np.array(exptime, dtype=float)
                 identity.seeing = np.array(seeing, dtype=float)
             else:
@@ -205,7 +218,9 @@ class ConfigureScript(PipelineScript, Progress):
                 obsTime = id.obstime[visit_mask],
                 expTime = id.exptime[visit_mask],
                 seeing = id.seeing[visit_mask],
-            )
+            ),
+            ra = id.ra[0],
+            dec = id.dec[0]
         )
 
         return target
@@ -263,7 +278,7 @@ class ConfigureScript(PipelineScript, Progress):
 
     def __create_pipeline_config(self, objid, identity, ext='.yaml'):
         """
-        Initialze a pipeline configuration object based on the template and the target.
+        Initialize a pipeline configuration object based on the template and the target.
         """
 
         # TODO: should we make a deep copy here?
@@ -314,6 +329,9 @@ class ConfigureScript(PipelineScript, Progress):
         # to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
         # to the fluxes available in the pfsConfig file, set the values and the errors.
+
+        # TODO: we could use additional photometry from the original target lists, not
+        #       just from the PfsConfig files
 
         # TODO: this takes the very first pfsConfig file, should we do something smarter?
         pfs_config = pfs_configs[pipeline_config.target.observations.visit[0]]

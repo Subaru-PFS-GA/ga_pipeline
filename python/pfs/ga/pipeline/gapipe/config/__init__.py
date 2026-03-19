@@ -6,3 +6,4 @@ from .gaobjectobservationsconfig import GAObjectObservationsConfig
 from .tempfitconfig import TempFitConfig
 from .chemfitconfig import ChemfitConfig
 from .coaddconfig import CoaddConfig
+from .vcorrconfig import VCorrConfig

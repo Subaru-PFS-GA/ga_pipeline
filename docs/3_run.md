@@ -96,3 +96,7 @@ To generate a catalog from the pfsStar files, run the `gapipe-catalog` command. 
     $ gapipe-catalog --rerundir $RERUN --visit $VISITS --obs-log $OBSLOGS --objid 0x600000000-0x6FFFFFFFF
 
 This will read all pfsStar files that match the search filters and create a catalog file named `pfsStarCatalog-*.fits` in the output directory.
+
+# 3.6 Automating the pipeline execution
+
+It is advised to automate the pipeline execution with a script, rather than executing the commands manually. An example script is provided in `./script/batch.sh` which demonstrates how to define the settings for individual processing of the fields, configure the pipeline, submit the batch jobs and generate the catalog.
