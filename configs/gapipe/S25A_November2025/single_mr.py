@@ -123,10 +123,10 @@ config = dict(
             ),
         },
 
-        vcorr = dict(
-            from_frame = 'observed',
-            to_frame = 'heliocentric',
-        ),
+        # vcorr = dict(
+        #     from_frame = 'observed',
+        #     to_frame = 'heliocentric',
+        # ),
         
         psf_path = f'{GAPIPE_ROOT}/data/instruments/pfs/psf/import/{{arm}}.real/gauss.h5',
         mask_flags = [
@@ -195,22 +195,23 @@ config = dict(
             M_H = [ -5.0, 0.5 ],
             M_H_dist = [ "normal", -1.5, 1.0 ],
             T_eff = [ 3500, 8000 ],
-            T_eff_dist = [ "normal", 5500, 500 ],
+            T_eff_dist = [ "normal", 5500, 1000 ],
+            
             log_g = [ 0.0, 5.0 ],
-            # log_g_dist = [ "normal", 3.5, 1.0 ],
+            log_g_dist = [ "normal", 1.5, 2.5 ],
 
             rv = [ -750, 750 ],
             rv_step = 20,
 
-            ebv = [0.005, 0.015],
-            ebv_dist = [ "normal", 0.01, 0.005 ],
+            ebv = [0.000, 0.015],
+            ebv_dist = [ "normal", 0.01, 0.01 ],
 
             # Roman's grid
-            # a_M = 0.0,
+            a_M = 0.0,
             C = 0.0,
             
-            a_M = [ -1.2, 0.8 ],
-            a_M_dist = [ "normal", 0.0, 0.5 ],
+            # a_M = [ -1.2, 0.8 ],
+            # a_M_dist = [ "normal", 0.0, 0.5 ],
             # C = [ -0.2, 0.2 ],
 
             # PHOENIX grid
