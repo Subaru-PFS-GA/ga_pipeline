@@ -359,7 +359,7 @@ class CatalogScript(PipelineScript):
                 assignments_idx = (assignments['targetid'] == (objid & 0xFFFFFFFF))
             else:
                 # This is a science target, we also match by obcode
-                assignments_idx = (assignments['obcode'] == obcode) & (assignments['targetid'] == (objid & 0xFFFFFFFF))
+                assignments_idx = (assignments['obcode'] == obcode) # & (assignments['__target_idx'] == (objid & 0xFFFFFFFF))
             
             if np.sum(assignments_idx) == 0:
                 logger.warning(f'No matching assignment found for obCode {obcode}.')
