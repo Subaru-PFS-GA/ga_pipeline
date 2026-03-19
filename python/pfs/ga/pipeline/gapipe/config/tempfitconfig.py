@@ -152,11 +152,11 @@ class TempFitConfig(Config):
             'amplitude_per_exp': True,
 
             "M_H": [ -2.5, 0.0 ],
-            "M_H_dist": [ "normal", -1.5, 0.5 ],
+            # "M_H_dist": [ "normal", -1.5, 0.5 ],
             "T_eff": [ 4000, 6000 ],
-            "T_eff_dist": [ "normal", 5500, 50 ],
+            # "T_eff_dist": [ "normal", 5500, 50 ],
             "log_g": [ 1.5, 5.5 ],
-            "log_g_dist": [ "normal", 3.5, 1.0 ],
+            # "log_g_dist": [ "normal", 3.5, 1.0 ],
             "a_M": 0.0,
 
             "ebv": [0.03, 0.06],
