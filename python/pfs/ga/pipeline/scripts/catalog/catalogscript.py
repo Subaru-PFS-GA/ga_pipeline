@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from datetime import datetime
 import numpy as np
 import pandas as pd
+import astropy.io.fits
 
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
@@ -124,7 +125,7 @@ class CatalogScript(PipelineScript):
 
         return assignments
 
-    def __create_catalog_table(self):
+    def __init_catalog_table(self):
         table = SimpleNamespace(
             catId = [],
             objId = [],
@@ -188,7 +189,38 @@ class CatalogScript(PipelineScript):
         return table
 
     def __create_catalog(self, identities, pfs_configs, obs_log, assignments):
+        table, catid, visit, arm, pfsDesignId, obstime, exptime = \
+            self.__create_catalog_table(identities, pfs_configs, obs_log, assignments)
 
+        # Format table
+        table = { k: np.array(v) for k, v in table.__dict__.items()}
+        
+        # Sanitize a few columns that might have invalid values for FITS format
+        table['targetPriority'][pd.isna(table['targetPriority'])] = -1
+        table['targetPriority'] = np.astype(table['targetPriority'], np.int32)
+        
+        # Create the catalog table
+        table = StarCatalogTable(**table)
+
+        # Sort observations and append to the catalog
+        observations = Observations(
+            visit = np.array(visit),
+            pfsDesignId = np.array(pfsDesignId),
+            arm = np.array([sort_arms(''.join(arm[v])) for v in visit]),
+            spectrograph = np.full(len(visit), -1),
+            fiberId = np.full(len(visit), -1),
+            pfiNominal = np.full((len(visit), 2), np.nan),
+            pfiCenter = np.full((len(visit), 2), np.nan),
+            obsTime = np.array(obstime),
+            expTime = np.array(exptime))
+        
+        catalog = PfsStarCatalog(catid, observations, table)
+
+        self.__verify_catalog(catalog)
+
+        return catalog
+
+    def __create_catalog_table(self, identities, pfs_configs, obs_log, assignments):
         # A unique catalog ID that all objects must match
         catid = None
     
@@ -199,8 +231,8 @@ class CatalogScript(PipelineScript):
         obstime = []
         exptime = []
 
-        # Final catalog table
-        table = self.__create_catalog_table()
+        # Initialize the empty catalog table
+        table = self.__init_catalog_table()
 
         q = 0
         for objid, id in identities.items():
@@ -227,25 +259,66 @@ class CatalogScript(PipelineScript):
                     table, objid, visit, arm, pfsDesignId, obstime, exptime,
                     pfs_configs, assignments, obs_log)
         
-        # Format table
-        table = { k: np.array(v) for k, v in table.__dict__.items()}
-        table = StarCatalogTable(**table)
+        return table, catid, visit, arm, pfsDesignId, obstime, exptime
 
-        # Sort observations and append to the catalog
-        observations = Observations(
-            visit = np.array(visit),
-            pfsDesignId = np.array(pfsDesignId),
-            arm = np.array([sort_arms(''.join(arm[v])) for v in visit]),
-            spectrograph = np.full(len(visit), -1),
-            fiberId = np.full(len(visit), -1),
-            pfiNominal = np.full((len(visit), 2), np.nan),
-            pfiCenter = np.full((len(visit), 2), np.nan),
-            obsTime = np.array(obstime),
-            expTime = np.array(exptime))
-        
-        catalog = PfsStarCatalog(catid, observations, table)
+    def __verify_catalog(self, catalog):
+        """
+        Verify that the catalog can be saved as a FITS file by checking that the data types of the columns
+        are compatible with the FITS format.
 
-        return catalog
+        Code copied from PfsTable.writeHdu
+        """
+
+        format = {
+            int: "K",
+            float: "D",
+            np.int32: "J",
+            np.float32: "E",
+            bool: "L",
+            np.uint8: "B",
+            np.int16: "I",
+            np.int64: "K",
+            np.float64: "D",
+        }
+
+        def getFormat(name: str, dtype: type) -> str:
+            """Determine suitable FITS column format
+
+            This is a simple mapping except for string types.
+
+            Parameters
+            ----------
+            name : `str`
+                Column name, so we can get the data if we need to inspect it.
+            dtype : `type`
+                Data type.
+
+            Returns
+            -------
+            format : `str`
+                FITS column format string.
+            """
+            if issubclass(dtype, str):
+                array = getattr(catalog.catalog, name)
+                unique = np.unique(array)
+                if unique.size == 1:
+                    size = len(unique[0])
+                    if size == 0:
+                        return "PA()"
+                    return f"{size}A"
+                return f"PA()"
+            return format[dtype]
+
+                # Verify the data types
+        for col in catalog.catalog.schema:
+            try:
+                astropy.io.fits.Column(
+                    name=col.name,
+                    format=getFormat(col.name, col.dtype),
+                    array=getattr(catalog.catalog, col.name),
+                )
+            except Exception as ex:
+                raise Exception(f"Column {col.name} with dtype {col.dtype} is not compatible with FITS format: {ex}")
 
     def __load_pfsStar(self, identity):
         # Convert exposure identities into a single composite identity
@@ -278,10 +351,16 @@ class CatalogScript(PipelineScript):
         # TODO: make sure it doesn use any visits that are not listed
         #       by the filter
 
-    def __find_matching_assignment(self, assignments, obcode):
-        # Match with the assignments by obCode
+    def __find_matching_assignment(self, assignments, obcode, objid):
+        # Match with the assignments by obCode and objId
         if assignments is not None:
-            assignments_idx = assignments['obcode'] == obcode
+            if obcode == 'N/A':
+                # This is a calibration target with a missing obCode
+                assignments_idx = (assignments['targetid'] == (objid & 0xFFFFFFFF))
+            else:
+                # This is a science target, we also match by obcode
+                assignments_idx = (assignments['obcode'] == obcode) & (assignments['targetid'] == (objid & 0xFFFFFFFF))
+            
             if np.sum(assignments_idx) == 0:
                 logger.warning(f'No matching assignment found for obCode {obcode}.')
             elif np.sum(assignments_idx) > 1:
@@ -315,7 +394,9 @@ class CatalogScript(PipelineScript):
         config = pfs_configs[obj.observations.visit[0]]
         config_idx = np.where(config.objId == objid)[0].item()
 
-        assignments_idx = self.__find_matching_assignment(assignments, config.obCode[config_idx])
+        obcode = config.obCode[config_idx]
+        objid = config.objId[config_idx]
+        assignments_idx = self.__find_matching_assignment(assignments, obcode, objid)
 
         # Keep track of visits, designs, arms and spectrographs, etc. used for this catalog
         for i, v in enumerate(obj.observations.visit):
@@ -470,7 +551,9 @@ class CatalogScript(PipelineScript):
         config = pfs_configs[last_visit]
         config_idx = np.where(config.objId == objid)[0].item()
 
-        assignments_idx = self.__find_matching_assignment(assignments, config.obCode[config_idx])
+        obcode = config.obCode[config_idx]
+        objid = config.objId[config_idx]
+        assignments_idx = self.__find_matching_assignment(assignments, obcode, objid)
 
         # Append the table columns
         table.catId.append(config.catId[config_idx])
