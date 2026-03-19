@@ -77,9 +77,6 @@ class CatalogScript(PipelineScript):
             logger.warning('No fiber assignments file specified, skipping loading assignments.')
             assignments = None
 
-        # Update the repo directories based on the config and the command-line arguments
-        self._update_repo_directories(self.config)
-
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')

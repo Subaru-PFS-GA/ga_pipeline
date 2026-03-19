@@ -98,9 +98,6 @@ class RepoScript(PipelineScript, Batch, Progress):
         return PipelineScript.prepare(self)
     
     def run(self):
-
-        self._update_repo_directories(self.config)
-
         if self.is_batch():
             submit = self.__commands[self.__command].submit
             if submit is None:
