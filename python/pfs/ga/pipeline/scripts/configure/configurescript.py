@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from datetime import datetime
 from collections import defaultdict
 import numpy as np
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
@@ -44,6 +46,7 @@ class ConfigureScript(PipelineScript, Progress):
         self.__obs_params_visit = 'visit'           # Visit ID column of the observation parameters
         self.__stellar_params = None                # Params file with stellar parameters to derive the priors from
         self.__stellar_params_id = '__target_idx'   # ID column of the params file
+        self.__target_lists = None                  # Target list files to look up the target properties from
 
     def _add_args(self):
         self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
@@ -53,6 +56,7 @@ class ConfigureScript(PipelineScript, Progress):
         self.add_arg('--obs-params-visit', type=str, help='Visit ID column of the observation parameters to use')
         self.add_arg('--stellar-params', type=str, help='Path to stellar parameters file')
         self.add_arg('--stellar-params-id', type=str, help='ID column of the stellar parameters to use')
+        self.add_arg('--target-lists', type=str, nargs='*', help='Target list files to look up the target properties from')
 
         PipelineScript._add_args(self)
         Progress._add_args(self)
@@ -64,6 +68,7 @@ class ConfigureScript(PipelineScript, Progress):
         self.__obs_params_visit = self.get_arg('obs_params_visit', args, self.__obs_params_visit)
         self.__stellar_params = self.get_arg('stellar_params', args, self.__stellar_params)
         self.__stellar_params_id = self.get_arg('stellar_params_id', args, self.__stellar_params_id)
+        self.__target_lists = self.get_arg('target_lists', args, self.__target_lists)
 
         PipelineScript._init_from_args(self, args)
         Progress._init_from_args(self, args)
@@ -101,6 +106,12 @@ class ConfigureScript(PipelineScript, Progress):
         else:
             stellar_params = None
 
+        # Load the target lists
+        if self.__target_lists is not None:
+            target_list = self._load_target_list_files(self.__target_lists)
+        else:
+            target_list = None
+
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
@@ -116,7 +127,7 @@ class ConfigureScript(PipelineScript, Progress):
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
         # Create the iterator that we will loop over to generate the pipeline configuration files.
-        pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_log, obs_params, stellar_params)
+        pipeline_configs = self.__create_pipeline_configs(identities, pfs_configs, obs_log, obs_params, stellar_params, target_list)
 
         logger.info(f'Ready to generate {len(identities)} configuration files for the pipeline.')
 
@@ -136,30 +147,10 @@ class ConfigureScript(PipelineScript, Progress):
                 logger.warning(f'Stopping after {q} objects.')
                 break
 
-    def __create_pipeline_configs(self, identities, pfs_configs, obs_log=None, obs_params=None, stellar_params=None):
+    def __create_pipeline_configs(self, identities, pfs_configs, obs_log=None, obs_params=None, stellar_params=None, target_list=None):
         for objid, identity in identities.items():
-            # Update the identity from the observation log if available
-            if obs_log is not None:
-                # Update seeing and exptime from obs_log. Obstime is taken from
-                # pfsConfig which is more accurate since the obslog only has the
-                # time of the start of the command, not the start of the exposure.
-                obstime = []
-                exptime = []
-                seeing = []
-                for visit in identity.visit:
-                    # Override obstime from the obs log because
-                    # times from pfsConfig are not accurate enough
-                    obstime.append(obs_log.loc[visit, 'issued_at'].isoformat())
-                    exptime.append(obs_log.loc[visit, 'avg_exptime'])
-                    seeing.append(obs_log.loc[visit, 'seeing_median'])
-
-                identity.obstime = np.array(obstime, dtype=str)
-                identity.exptime = np.array(exptime, dtype=float)
-                identity.seeing = np.array(seeing, dtype=float)
-            else:
-                # exptime is part of pfsConfig, but it might be all None
-                identity.exptime = np.array([np.nan] * len(identity.visit), dtype=float)
-                identity.seeing = np.array([np.nan] * len(identity.visit), dtype=float)
+            # Update the identity from the observation log
+            self.__update_identity_from_obs_log(identity, obs_log)
 
             # Get target identity and list of observations to be included
             target = self.__create_target_config(objid, identity)
@@ -173,13 +164,36 @@ class ConfigureScript(PipelineScript, Progress):
             pipeline_config, filename = self.__create_pipeline_config(objid, target.identity)
             pipeline_config.target = target
 
-            # Look up the stellar parameters in the params file and configure
-            # template fitting
-            self.__configure_tempfit(objid, pipeline_config, pfs_configs, obs_params, stellar_params)
+            # Look up the stellar parameters in the params file and configure template fitting
+            self.__configure_tempfit(objid, pipeline_config, pfs_configs, obs_params, stellar_params, target_list)
 
             # TODO: add further steps
 
             yield objid, pipeline_config, filename
+
+    def __update_identity_from_obs_log(self, identity, obs_log):
+        # Update the identity from the observation log if available
+        if obs_log is not None:
+            # Update seeing and exptime from obs_log. Obstime is taken from
+            # pfsConfig which is more accurate since the obslog only has the
+            # time of the start of the command, not the start of the exposure.
+            obstime = []
+            exptime = []
+            seeing = []
+            for visit in identity.visit:
+                # Override obstime from the obs log because
+                # times from pfsConfig are not accurate enough
+                obstime.append(obs_log.loc[visit, 'issued_at'].isoformat())
+                exptime.append(obs_log.loc[visit, 'avg_exptime'])
+                seeing.append(obs_log.loc[visit, 'seeing_median'])
+
+            identity.obstime = np.array(obstime, dtype=str)
+            identity.exptime = np.array(exptime, dtype=float)
+            identity.seeing = np.array(seeing, dtype=float)
+        else:
+            # exptime is part of pfsConfig, but it might be all None
+            identity.exptime = np.array([np.nan] * len(identity.visit), dtype=float)
+            identity.seeing = np.array([np.nan] * len(identity.visit), dtype=float)
 
     def __create_target_config(self, objid, id):
         """
@@ -304,11 +318,16 @@ class ConfigureScript(PipelineScript, Progress):
 
         return config, filename
 
-    def __configure_tempfit(self, objid, pipeline_config, pfs_configs, obs_params, stellar_params):
-        # TODO: replace this with obs_log?
+    def __configure_tempfit(self, objid, pipeline_config, pfs_configs, obs_params, stellar_params, target_list):
+        
+        # Update temp fit configuration based on the obs parameters
         self.__configure_tempfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
 
+        # Update magnitudes and fluxed from the pfsConfig files
         self.__configure_tempfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
+
+        # Update magnitudes and fluxes from the target list files
+        self.__configure_tempfit_magnitudes_target_list(objid, pipeline_config, pfs_configs, target_list)
 
         if stellar_params is None:
             pass
@@ -318,6 +337,14 @@ class ConfigureScript(PipelineScript, Progress):
             self.__configure_tempfit_magnitudes_stellar_params(objid, pipeline_config, stellar_params)
             self.__configure_tempfit_stellar_param_priors(objid, pipeline_config, pfs_configs, stellar_params)
 
+        # Only keep photometry that is available in pfsConfig, obs_params or target_list
+        photometry = {}
+        for k, v in pipeline_config.tempfit.photometry.items():
+            if v.flux is not None:
+                photometry[k] = v
+
+        pipeline_config.tempfit.photometry = photometry
+
     def __configure_tempfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
         pass
 
@@ -326,9 +353,6 @@ class ConfigureScript(PipelineScript, Progress):
         # to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
         # to the fluxes available in the pfsConfig file, set the values and the errors.
-
-        # TODO: we could use additional photometry from the original target lists, not
-        #       just from the PfsConfig files
 
         # TODO: this takes the very first pfsConfig file, should we do something smarter?
         pfs_config = pfs_configs[pipeline_config.target.observations.visit[0]]
@@ -381,15 +405,103 @@ class ConfigureScript(PipelineScript, Progress):
                         if not flux_found:
                             logger.warning(f'No fluxes found in pfsConfig for object 0x{objid:x}, filter {filter_name}, skipping setting magnitude.')
 
-        # Only keep photometry that is available in pfsConfig or obs_params
-        photometry = {}
-        for k, v in pipeline_config.tempfit.photometry.items():
-            if v.flux is not None:
-                photometry[k] = v
-
         # TODO: verify if magnitudes are consistent because some fluxes in PfsConfig are wrong
 
-        pipeline_config.tempfit.photometry = photometry
+
+    def __configure_tempfit_magnitudes_target_list(self, objid, pipeline_config, pfs_configs, target_list):
+        # Look up fluxes in the target list files and set the photometric fluxes to constrain template fitting
+        # The configuration template has a list of magnitudes that can be used. Match these
+        # to the fluxes available in the template list, set the values and the errors.
+
+        # The object can be present multiple times in the target list because we cross-match each input catalog
+        # and store each match in the target list. However, only the primary occurance of the target will have
+        # an obcode associated with. Yet, the values in the column __target_idx should match. We can use all
+        # entries in the target list to load fluxes and magnitudes.
+
+        # Some early runs of netflow used a cross-match radius too large, so we need to verify if duplicate
+        # entries in the target list are actually duplicates or if they are wrong matches.
+
+        # First, find the unique matching target based on obcode. For this, we need to look up the obcode from
+        # the pfsConfig file.
+        pfs_config = pfs_configs[pipeline_config.target.observations.visit[0]]
+        idx = np.where(pfs_config.objId == objid)[0].item()
+        obcode = pfs_config.obCode[idx]
+        objid = pfs_config.objId[idx]
+
+        if obcode == 'N/A':
+            # This is probably a calibration target
+            mask = (target_list['targetid'] == objid)
+        else:
+            # Science targets always have a valid obcode
+            mask = (target_list['obcode'] == obcode) & (target_list['__target_idx'] == (objid & 0xFFFFFFFF))
+            
+        primary_target = np.where(mask)[0].item()
+        target_idx = target_list.loc[primary_target, '__target_idx']
+        primary_ra = target_list.loc[primary_target, 'RA']
+        primary_dec = target_list.loc[primary_target, 'Dec']
+
+        # Find other targets with matching __target_idx
+        secondary_targets = np.where(target_list['__target_idx'] == target_idx)[0]
+        for secondary_target in secondary_targets:
+            # Skip primary target because we will use it to override other targets
+            if secondary_target == primary_target:
+                continue
+
+            # Calculate the separation between the primary and secondary target
+            # and skip if they are too far apart because they are likely wrong matches
+            secondary_ra = target_list.loc[secondary_target, 'RA']
+            secondary_dec = target_list.loc[secondary_target, 'Dec']
+
+            primary_coord = SkyCoord(ra=primary_ra * u.deg, dec=primary_dec * u.deg)
+            secondary_coord = SkyCoord(ra=secondary_ra * u.deg, dec=secondary_dec * u.deg)
+            separation = primary_coord.separation(secondary_coord)
+            if separation.arcsec > 0.1:
+                logger.warning(f'Separation between primary and secondary target with __target_idx {target_idx} is {separation.arcsec:.2f} arcsec, which is larger than the threshold. Skipping secondary target.')
+                continue
+
+            self.__update_magnitdes_from_target_list(objid, pipeline_config, target_list, secondary_target)
+
+        # Update the magnitudes and fluxes for the primary target as well,
+        # these values will override the ones from pfsConfig and everything else
+        self.__update_magnitdes_from_target_list(objid, pipeline_config, target_list, primary_target)
+
+    def __update_magnitdes_from_target_list(self, objid, pipeline_config, target_list, idx):
+        # Check if any magnitudes with filter curves are defined in the config template
+        # and if so, try to match them to the filters available in pfsConfig
+        if pipeline_config.tempfit.photometry is not None:
+            for fn, mag in pipeline_config.tempfit.photometry.items():
+                if mag.filter_name is None:
+                    filter_names = [fn]
+                else:
+                    filter_names = mag.filter_name if isinstance(mag.filter_name, (list, tuple)) else [mag.filter_name]
+                
+                for filter_name in filter_names:
+                    flux_found = False
+                    if f'{filter_name}_flux' in target_list.columns:
+                        # The flux is available in it's own column
+                        # ~np.isnan(target_list.loc[primary_target, f'{filter_name}_flux']):
+                        flux = target_list.loc[idx, f'{filter_name}_flux'].item()
+                        flux_err = target_list.loc[idx, f'{filter_name}_flux_err'].item()
+                        flux_found = True
+                    else:
+                        for cc in [ c for c in target_list.columns if c.startswith('filter_')]:
+                            if target_list.loc[idx, cc] == filter_name:
+                                # The filter name is available in one of the bands
+                                band = cc[len('filter_'):]
+                                flux = target_list.loc[idx, f'psf_flux_{band}'].item()
+                                flux_err = target_list.loc[idx, f'psf_flux_error_{band}'].item()
+                                flux_found = True
+
+                    if flux_found:
+                        break
+
+                if flux_found and flux is not None and flux_err is not None and \
+                    np.isfinite(flux) and np.isfinite(flux_err):
+                    
+                    # Set the config values based on the target list values
+                    # These will override the pfsConfig values
+                    mag.flux = flux
+                    mag.flux_error = flux_err
 
     def __configure_tempfit_magnitudes_stellar_params(self, objid, pipeline_config, stellar_params):
         # TODO: when a stellar_params file is provided, look up magnitudes from there as

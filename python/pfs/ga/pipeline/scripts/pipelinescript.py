@@ -321,6 +321,35 @@ class PipelineScript(Script):
 
         return stellar_params
 
+    def _load_target_list_files(self, target_lists_files):
+        """
+        Load target list files from the netflow output directory.
+        """
+
+        target_list = None
+
+        for target_lists_file in target_lists_files if isinstance(target_lists_files, list) else [target_lists_files]:
+            for f in glob(target_lists_file):
+
+                # Skip sky files because they're too large
+                if f.endswith('sky.feather'):
+                    logger.info(f'Skipping sky target list file {f} because it is too large.')
+                    continue
+                
+                logger.info(f'Loading target list from {f}.')
+
+                df = pd.read_feather(f)
+
+                if target_list is None:
+                    target_list = df
+                else:
+                    target_list = pd.concat([target_list, df], ignore_index=True)
+
+        # Remove duplicates
+        target_list.drop_duplicates(inplace=True)
+
+        return target_list
+
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')
         print(f'  Full path: {filename}')
