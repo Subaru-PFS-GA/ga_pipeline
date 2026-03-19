@@ -177,12 +177,6 @@ class GAPipeline(Pipeline):
                     }
                 ]
             },
-            # {
-            #     'type': VCorrStep,
-            #     'name': 'vcorr',
-            #     'func': self.__step_vcorr,
-            #     'critical': False
-            # },
             {
                 'type': TempFitStep,
                 'name': 'tempfit',

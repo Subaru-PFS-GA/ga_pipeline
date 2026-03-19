@@ -218,7 +218,9 @@ class ConfigureScript(PipelineScript, Progress):
                 obsTime = id.obstime[visit_mask],
                 expTime = id.exptime[visit_mask],
                 seeing = id.seeing[visit_mask],
-            )
+            ),
+            ra = id.ra[0],
+            dec = id.dec[0]
         )
 
         return target
@@ -327,6 +329,9 @@ class ConfigureScript(PipelineScript, Progress):
         # to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
         # to the fluxes available in the pfsConfig file, set the values and the errors.
+
+        # TODO: we could use additional photometry from the original target lists, not
+        #       just from the PfsConfig files
 
         # TODO: this takes the very first pfsConfig file, should we do something smarter?
         pfs_config = pfs_configs[pipeline_config.target.observations.visit[0]]

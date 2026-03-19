@@ -1,7 +1,11 @@
 import os
 from collections import defaultdict
+import astropy.units as u
+from astropy.time import Time
+from astropy.coordinates import SkyCoord, EarthLocation
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
+from pfs.ga.pfsspec.core import Astro, Physics
 from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
@@ -366,10 +370,58 @@ class TempFitStep(PipelineStep):
     #region Preprocess
 
     def preprocess(self, context):
-        # TODO: validate available spectra here and throw warning if any of the arms are missing after
-        #       filtering based on masks
+        vcorr = context.config.tempfit.vcorr
+
+        if vcorr is not None and vcorr.from_frame is not None and vcorr.to_frame is not None:
+            self.__calculate_vcorr(context)
+            self.__apply_vcorr(context)
+            logger.info('Velocity correction applied.')
+        else:
+            logger.info('Velocity correction is set to `None`, skipping corrections.')
         
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def __calculate_vcorr(self, context):
+
+        location = EarthLocation.of_site(context.config.tempfit.vcorr.site)
+
+        obs_time = { v: t for v, t in zip(
+            context.config.target.observations.visit,
+            context.config.target.observations.obsTime) }
+
+        ra = context.config.target.ra * u.deg
+        dec = context.config.target.dec * u.deg
+        coords = SkyCoord(ra=ra, dec=dec, frame='icrs')
+
+        def eval_vcorr(frame, t0):
+            if frame is None or frame == '':
+                correction = 0.0
+            elif frame == 'observed':
+                correction = 0.0
+            else:
+                correction = Astro.v_corr(frame, ra, dec, time=t0, location=location)
+
+            return correction
+
+        velocity_correction = {}
+
+        for i, visit, identity in context.config.enumerate_visits():
+            t0 = Time(obs_time[visit], format='isot', scale='utc')
+            from_correction = eval_vcorr(context.config.tempfit.vcorr.from_frame, t0)
+            to_correction = eval_vcorr(context.config.tempfit.vcorr.to_frame, t0)
+
+            # Calculate the correction in terms of Doppler shift
+            velocity_correction[visit] = to_correction - from_correction
+
+        context.state.tempfit_vcorr = velocity_correction
+
+    def __apply_vcorr(self, context):
+        # Apply the velocity correction for each spectrum
+        for arm in context.state.tempfit_spectra:
+            for s in context.state.tempfit_spectra[arm]:
+                if s is not None:
+                    # Apply the correction to the spectrum
+                    s.apply_v_corr(v_corr=context.state.tempfit_vcorr[s.identity.visit])
     
     #endregion
     #region Run

@@ -96,6 +96,11 @@ config = dict(
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i2.txt',
             ),
         },
+
+        vcorr = dict(
+            from_frame = 'observed',
+            to_frame = 'heliocentric',
+        ),
         
         psf_path = f'{GAPIPE_ROOT}/data/instruments/pfs/psf/import/{{arm}}.real/gauss.h5',
         mask_flags = [

@@ -16,12 +16,16 @@ class GATargetConfig(Config):
                  proposalId = None,
                  targetType = None,
                  identity: GAObjectIdentityConfig = GAObjectIdentityConfig(),
-                 observations: GAObjectObservationsConfig = GAObjectObservationsConfig()):
+                 observations: GAObjectObservationsConfig = GAObjectObservationsConfig(),
+                 ra = None,
+                 dec = None):
 
         self.proposalId = proposalId
         self.targetType = targetType
         self.identity = identity
         self.observations = observations
+        self.ra = ra
+        self.dec = dec
 
         super().__init__()
 
