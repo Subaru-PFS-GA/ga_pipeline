@@ -57,41 +57,67 @@ config = dict(
         photometry = {
             'g_ps1': dict(
                 instrument = 'ps1',
+                priority = 2,
                 filter_name = 'g_ps1',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.g.dat',
             ),
             'r_ps1': dict(
                 instrument = 'ps1',
+                priority = 2,
                 filter_name = 'r_ps1',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.r.dat',
             ),
             'i_ps1': dict(
                 instrument = 'ps1',
+                priority = 2,
                 filter_name = 'i_ps1',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.i.dat',
             ),
+            'gaia_g': dict(
+                instrument = 'gaia',
+                priority = 3,
+                filter_name = 'gaia_g',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/gaia/filters/GAIA_GAIA3.G.dat',
+            ),
+            'bp_gaia': dict(
+                instrument = 'gaia',
+                priority = 3,
+                filter_name = 'bp_gaia',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/gaia/filters/GAIA_GAIA3.Gbp.dat',
+            ),
+            'rp_gaia': dict(
+                instrument = 'gaia',
+                priority = 3,
+                filter_name = 'rp_gaia',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/gaia/filters/GAIA_GAIA3.Grp.dat',
+            ),
             'g_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = 'g_hsc',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-g.txt',
             ),
             'r_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = ['r_hsc', 'r_old_hsc'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-r.txt',
             ),
             'r2_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = 'r2_hsc',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-r2.txt',
             ),
             'i_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = ['i_hsc', 'i_old_hsc'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i.txt',
             ),
             'i2_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = 'i2_hsc',
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i2.txt',
             ),

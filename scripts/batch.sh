@@ -14,6 +14,7 @@ declare -a PROPOSAL
 declare -a RERUN
 declare -a PIPECONFIG
 declare -a OBSLOGS
+declare -a TARGETLISTS
 declare -a ASSIGNMENTS
 declare -a VISITS
 declare -a CATID
@@ -26,9 +27,9 @@ source $BATCHCONFIG
 # Pipeline config name. Path is generated from RERUN and PIPECONFIG.
 PIPECONFIG=$2
 
-# EXTRAPARAMS="--debug"
+EXTRAPARAMS="--debug"
 # EXTRAPARAMS="--top 10 --debug"
-EXTRAPARAMS=""
+# EXTRAPARAMS=""
 
 BATCHPARAMS="--batch slurm --partition cpu --cpus 4 --mem 12G"
 
@@ -49,6 +50,12 @@ echo "Number of configuration entries: ${#PROPOSAL[@]}"
 # Iterate over the configuration entries and run the gapipe-config script for
 # each catalog entry.
 for i in "${!PROPOSAL[@]}"; do
+
+    # Skip the first few entries
+    if [ $i -lt 1 ]; then
+        continue
+    fi
+
     echo "Configuring gapipe for entry $i:"
     echo "  GARUN: ${GARUN[$i]}"
     echo "  PROPOSAL: ${PROPOSAL[$i]}"
@@ -78,24 +85,25 @@ for i in "${!PROPOSAL[@]}"; do
     UNIQUE_VISITS=$(unique_array "${VISITS[$i]}")
     UNIQUE_CATIDS=$(unique_array "${CATID[$i]}")
 
-    OBJID[$i]="0x0000000200003a7e"
+    # OBJID[$i]="0x0000000200003a7e"
 
     # # Generate the configuration files for a given field
-    # gapipe-configure \
-    #     --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
-    #     --yes ${EXTRAPARAMS} \
-    #     --visit ${VISITS[$i]} \
-    #     --obs-logs ${OBSLOGS[$i]} \
-    #     --catid ${CATID[$i]} \
-    #     --objid  # --objid ${OBJID[$i]}
-
-    # Schedule the pipeline run for the stars of the given field
-    gapipe-run \
+    gapipe-configure \
+        --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
         --yes ${EXTRAPARAMS} \
         --visit ${VISITS[$i]} \
+        --obs-logs ${OBSLOGS[$i]} \
+        --target-lists ${TARGETLISTS[$i]} \
         --catid ${CATID[$i]} \
-        --objid ${OBJID[$i]} \
-        $BATCHPARAMS
+        --objid ${OBJID[$i]}
+
+    # Schedule the pipeline run for the stars of the given field
+    # gapipe-run \
+    #     --yes ${EXTRAPARAMS} \
+    #     --visit ${VISITS[$i]} \
+    #     --catid ${CATID[$i]} \
+    #     --objid ${OBJID[$i]} \
+    #     $BATCHPARAMS
 
     # # Generate the catalog for the given field for each catId
     # for catid in ${UNIQUE_CATIDS[*]}; do
@@ -108,6 +116,6 @@ for i in "${!PROPOSAL[@]}"; do
     #         --catid $catid ${EXTRAPARAMS}
     # done
 
-    exit 0
+    # exit 0
 
 done

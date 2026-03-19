@@ -10,6 +10,9 @@ class PhotometryConfig(Config):
         # Name of the instrument, e.g. 'ps1', 'hsc' etc.
         self.instrument = None
 
+        # Priority of the photometric measurement
+        self.priority = None
+
         # Name of the filter, within the photometric system
         self.filter_name = None
 
