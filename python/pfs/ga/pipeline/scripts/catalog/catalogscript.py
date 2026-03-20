@@ -382,22 +382,6 @@ class CatalogScript(PipelineScript, Progress):
         # TODO: make sure it doesn use any visits that are not listed
         #       by the filter
 
-    def __find_matching_assignment(self, assignments, obcode, objid):
-        # Match with the assignments by obCode and objId
-        if obcode == 'N/A':
-            # This is a calibration target with a missing obCode
-            assignments_idx = (assignments['targetid'] == (objid & 0xFFFFFFFF))
-        else:
-            # This is a science target, we also match by obcode
-            assignments_idx = (assignments['obcode'] == obcode) # & (assignments['__target_idx'] == (objid & 0xFFFFFFFF))
-        
-        if np.sum(assignments_idx) == 0:
-            logger.warning(f'No matching assignment found for obCode {obcode}.')
-        elif np.sum(assignments_idx) > 1:
-            logger.warning(f'Multiple matching assignments found for obCode {obcode}, taking the one with the highest stage.')
-
-        return assignments_idx
-
     def __get_unique_fiber_id(self, obj):
         # Collect the fiberId from each visit. Only set these IDs
         # if they are the same across all visits, otherwise set to -1.
@@ -661,14 +645,10 @@ class CatalogScript(PipelineScript, Progress):
                 photometry_table.fluxErr.append(magnitudes[mag].flux_err)
                 photometry_table.mag.append(magnitudes[mag].mag)
                 photometry_table.magErr.append(magnitudes[mag].mag_err)
-        else:
-            pass
-
-        
 
     def __append_parameters_from_assignments(self, table, obj, assignments, obcode, objid):
         if assignments is not None:
-            assignments_idx = self.__find_matching_assignment(assignments, obcode, objid)
+            assignments_idx = self._find_matching_assignment(assignments, obcode, objid)
 
             if np.sum(assignments_idx) == 1:
                 priority = assignments.loc[assignments_idx, 'priority'].item()

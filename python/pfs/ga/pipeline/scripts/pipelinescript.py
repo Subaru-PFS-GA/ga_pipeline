@@ -405,23 +405,14 @@ class PipelineScript(Script):
 
         return primary_target, secondary_targets
 
-    def _find_magnitudes_in_target_list(self, photometry, target_list, idx, magnitudes=None, force_update=False):
-        # Check if any magnitudes with filter curves are defined in the config template
-        # and if so, try to match them to the filters available in pfsConfig
-
-        # TODO: the targets lists actually should have the magnitudes, not just the fluxes,
-        #       but earlier netflow runs don't keep track of the column they're stored in and
-        #       it's not straighforward to match the filter names, so for now we just look for
-        #       fluxes in the target list.
-
-        magnitudes = magnitudes if magnitudes is not None else defaultdict(SimpleNamespace)
-
-        for fn, mag in photometry.items():
-            if mag.filter_name is None:
-                filter_names = [fn]
+    def _enumerate_target_list_fluxes(self, photometry, target_list, idx):
+        for filter, config in photometry.items():
+            if config.filter_name is None:
+                filter_names = [filter]
             else:
-                filter_names = mag.filter_name if isinstance(mag.filter_name, (list, tuple)) else [mag.filter_name]
+                filter_names = config.filter_name if isinstance(config.filter_name, (list, tuple)) else [config.filter_name]
             
+            # Search among possible filter names for the same instrument band
             for filter_name in filter_names:
                 flux_found = False
                 if f'{filter_name}_flux' in target_list.columns:
@@ -434,9 +425,9 @@ class PipelineScript(Script):
                     for cc in [ c for c in target_list.columns if c.startswith('filter_')]:
                         if target_list.loc[idx, cc] == filter_name:
                             # The filter name is available in one of the bands
-                            band = cc[len('filter_'):]
-                            flux = target_list.loc[idx, f'psf_flux_{band}'].item()
-                            flux_err = target_list.loc[idx, f'psf_flux_error_{band}'].item()
+                            filter = cc[len('filter_'):]
+                            flux = target_list.loc[idx, f'psf_flux_{filter}'].item()
+                            flux_err = target_list.loc[idx, f'psf_flux_error_{filter}'].item()
                             flux_found = True
 
                 if flux_found:
@@ -444,14 +435,44 @@ class PipelineScript(Script):
 
             if flux_found and flux is not None and flux_err is not None and \
                 np.isfinite(flux) and np.isfinite(flux_err):
-                
-                # Set the config values based on the target list values
-                if fn not in magnitudes or force_update:
-                    magnitudes[fn].flux = flux
-                    magnitudes[fn].flux_err = flux_err
-                    magnitudes[fn].mag, magnitudes[fn].mag_err = Physics.jy_to_abmag(1e-9 * flux, 1e-9 * flux_err)
+
+                yield filter, config, flux, flux_err
+
+    def _find_magnitudes_in_target_list(self, photometry, target_list, idx, magnitudes=None, force_update=False):
+        # Check if any magnitudes with filter curves are defined in the config template
+        # and if so, try to match them to the filters available in pfsConfig
+
+        # TODO: the targets lists actually should have the magnitudes, not just the fluxes,
+        #       but earlier netflow runs don't keep track of the column they're stored in and
+        #       it's not straighforward to match the filter names, so for now we just look for
+        #       fluxes in the target list.
+
+        magnitudes = magnitudes if magnitudes is not None else defaultdict(SimpleNamespace)
+
+        for filter, config, flux, flux_err in self._enumerate_target_list_fluxes(photometry, target_list, idx):
+            # Set the config values based on the target list values
+            if filter not in magnitudes or force_update:
+                magnitudes[filter].flux = flux
+                magnitudes[filter].flux_err = flux_err
+                magnitudes[filter].mag, magnitudes[filter].mag_err = Physics.jy_to_abmag(1e-9 * flux, 1e-9 * flux_err)
 
         return magnitudes
+
+    def _find_matching_assignment(self, assignments, obcode, objid):
+        # Match with the assignments by obCode and objId
+        if obcode == 'N/A':
+            # This is a calibration target with a missing obCode
+            assignments_idx = (assignments['targetid'] == (objid & 0xFFFFFFFF))
+        else:
+            # This is a science target, we also match by obcode
+            assignments_idx = (assignments['obcode'] == obcode) # & (assignments['__target_idx'] == (objid & 0xFFFFFFFF))
+        
+        if np.sum(assignments_idx) == 0:
+            logger.warning(f'No matching assignment found for obCode {obcode}.')
+        elif np.sum(assignments_idx) > 1:
+            logger.warning(f'Multiple matching assignments found for obCode {obcode}, taking the one with the highest stage.')
+
+        return assignments_idx
 
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')

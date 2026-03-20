@@ -110,6 +110,7 @@ class ConfigureScript(PipelineScript, Progress):
         if self.__target_lists is not None:
             target_list = self._load_target_list_files(self.__target_lists)
         else:
+            logger.warning('No target list files specified, skipping loading target lists.')
             target_list = None
 
         # Find the objects matching the command-line arguments. Arguments
@@ -428,37 +429,11 @@ class ConfigureScript(PipelineScript, Progress):
         obcode = pfs_config.obCode[idx]
         objid = pfs_config.objId[idx]
 
-        if obcode == 'N/A':
-            # This is probably a calibration target
-            mask = (target_list['targetid'] == objid)
-        else:
-            # Science targets always have a valid obcode
-            mask = (target_list['obcode'] == obcode) & (target_list['__target_idx'] == (objid & 0xFFFFFFFF))
+        primary_target, secondary_targets = self._find_matching_targets(target_list, obcode, objid)
 
-        primary_target = np.where(mask)[0].item()
-        target_idx = target_list.loc[primary_target, '__target_idx']
-        primary_ra = target_list.loc[primary_target, 'RA']
-        primary_dec = target_list.loc[primary_target, 'Dec']
-
-        # Find other targets with matching __target_idx
-        secondary_targets = np.where(target_list['__target_idx'] == target_idx)[0]
+        # Update the magnitudes and fluxes from secondary targets. These values
+        # might be overwritten by the primary target values.
         for secondary_target in secondary_targets:
-            # Skip primary target because we will use it to override other targets
-            if secondary_target == primary_target:
-                continue
-
-            # Calculate the separation between the primary and secondary target
-            # and skip if they are too far apart because they are likely wrong matches
-            secondary_ra = target_list.loc[secondary_target, 'RA']
-            secondary_dec = target_list.loc[secondary_target, 'Dec']
-
-            primary_coord = SkyCoord(ra=primary_ra * u.deg, dec=primary_dec * u.deg)
-            secondary_coord = SkyCoord(ra=secondary_ra * u.deg, dec=secondary_dec * u.deg)
-            separation = primary_coord.separation(secondary_coord)
-            if separation.arcsec > 0.1:
-                logger.warning(f'Separation between primary and secondary target with __target_idx {target_idx} is {separation.arcsec:.2f} arcsec, which is larger than the threshold. Skipping secondary target.')
-                continue
-
             self.__update_magnitdes_from_target_list(objid, pipeline_config, target_list, secondary_target)
 
         # Update the magnitudes and fluxes for the primary target as well,
@@ -475,39 +450,11 @@ class ConfigureScript(PipelineScript, Progress):
         #       fluxes in the target list.
 
         if pipeline_config.tempfit.photometry is not None:
-            for fn, mag in pipeline_config.tempfit.photometry.items():
-                if mag.filter_name is None:
-                    filter_names = [fn]
-                else:
-                    filter_names = mag.filter_name if isinstance(mag.filter_name, (list, tuple)) else [mag.filter_name]
-                
-                for filter_name in filter_names:
-                    flux_found = False
-                    if f'{filter_name}_flux' in target_list.columns:
-                        # The flux is available in it's own column
-                        # ~np.isnan(target_list.loc[primary_target, f'{filter_name}_flux']):
-                        flux = target_list.loc[idx, f'{filter_name}_flux'].item()
-                        flux_err = target_list.loc[idx, f'{filter_name}_flux_err'].item()
-                        flux_found = True
-                    else:
-                        for cc in [ c for c in target_list.columns if c.startswith('filter_')]:
-                            if target_list.loc[idx, cc] == filter_name:
-                                # The filter name is available in one of the bands
-                                band = cc[len('filter_'):]
-                                flux = target_list.loc[idx, f'psf_flux_{band}'].item()
-                                flux_err = target_list.loc[idx, f'psf_flux_error_{band}'].item()
-                                flux_found = True
-
-                    if flux_found:
-                        break
-
-                if flux_found and flux is not None and flux_err is not None and \
-                    np.isfinite(flux) and np.isfinite(flux_err):
-                    
-                    # Set the config values based on the target list values
-                    # These will override the pfsConfig values
-                    mag.flux = flux
-                    mag.flux_error = flux_err
+            for filter, config, flux, flux_err in self._enumerate_target_list_fluxes(pipeline_config.tempfit.photometry, target_list, idx):
+                # Set the config values based on the target list values
+                # These will override the pfsConfig values
+                config.flux = flux
+                config.flux_error = flux_err
 
     def __configure_tempfit_magnitudes_stellar_params(self, objid, pipeline_config, stellar_params):
         # TODO: when a stellar_params file is provided, look up magnitudes from there as
