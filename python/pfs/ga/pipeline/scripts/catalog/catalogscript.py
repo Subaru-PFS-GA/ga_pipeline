@@ -13,13 +13,14 @@ import astropy.io.fits
 from pfs.datamodel import *
 from pfs.datamodel.utils import calculatePfsVisitHash, wraparoundNVisit
 from pfs.ga.pfsspec.survey.pfs.utils import *
+from pfs.ga.common.scripts import Progress
 
 from ..pipelinescript import PipelineScript
 from ...gapipe.config import *
 
 from ...setup_logger import logger
 
-class CatalogScript(PipelineScript):
+class CatalogScript(PipelineScript, Progress):
     """
     Create a PfsStarCatalog from the GA pipeline results using the PfsStar files and
     other parameters.
@@ -32,25 +33,27 @@ class CatalogScript(PipelineScript):
         super().__init__()
 
         self.__obs_logs = None                      # Observation log files
-        self.__top = None                           # Stop after this many objects
+        self.__target_lists = None                  # Target list files to look up the target properties from
         self.__assignments = None                   # Fiber assignments file
         self.__include_missing_objects = False      # Include missing objects in the catalog
 
     def _add_args(self):
-        self.add_arg('--top', type=int, help='Stop after this many objects')
+        self.add_arg('--config', type=str, nargs='*', required=True, help='Configuration file')
         self.add_arg('--obs-logs', type=str, nargs='*', help='Observation log files')
+        self.add_arg('--target-lists', type=str, nargs='*', help='Target list files to look up the target properties from')
         self.add_arg('--assignments', type=str, nargs='*', help='Fiber assignments file')
         self.add_arg('--include-missing-objects', action='store_true', help='Include missing objects in the catalog')
 
         super()._add_args()
 
     def _init_from_args(self, args):
-        self.__top = self.get_arg('top', args, self.__top)
         self.__obs_logs = self.get_arg('obs_logs', args, self.__obs_logs)
+        self.__target_lists = self.get_arg('target_lists', args, self.__target_lists)
         self.__assignments = self.get_arg('assignments', args, self.__assignments)
         self.__include_missing_objects = self.get_arg('include_missing_objects', args, False)
 
-        super()._init_from_args(args)
+        PipelineScript._init_from_args(self, args)
+        Progress._init_from_args(self, args)
 
     def prepare(self):
         super().prepare()
@@ -63,6 +66,9 @@ class CatalogScript(PipelineScript):
         Find all the pfsStar or pfsConfig files that match the filters, look
         up the corresponding PfsStar files and compile the final catalog.
         """
+
+        files = ' '.join(self.config.config_files)
+        logger.info(f'Using configuration template file(s) {files}.')
 
         # Load the observation logs
         if self.__obs_logs is not None:
@@ -77,6 +83,13 @@ class CatalogScript(PipelineScript):
         else:
             logger.warning('No fiber assignments file specified, skipping loading assignments.')
             assignments = None
+
+        # Load target list files
+        if self.__target_lists is not None:
+            target_lists = self._load_target_list_files(self.__target_lists)
+        else:
+            logger.warning('No target list files specified, skipping loading target lists.')
+            target_lists = None
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
@@ -93,7 +106,7 @@ class CatalogScript(PipelineScript):
         else:
             logger.info(f'Found {len(identities)} objects matching the filters.')
 
-        catalog = self.__create_catalog(identities, pfs_configs, obs_log, assignments)
+        catalog = self.__create_catalog(identities, pfs_configs, obs_log, target_lists, assignments)
         logger.info(f'Created catalog with {len(catalog.catalog)} objects.')
 
         _, filename, _ = self.work_repo.get_data_path(catalog)
@@ -126,7 +139,7 @@ class CatalogScript(PipelineScript):
         return assignments
 
     def __init_catalog_table(self):
-        table = SimpleNamespace(
+        catalog_table = SimpleNamespace(
             catId = [],
             objId = [],
             ra = [],
@@ -186,21 +199,36 @@ class CatalogScript(PipelineScript):
             tempfitstatus = [],
         )
 
-        return table
+        return catalog_table
 
-    def __create_catalog(self, identities, pfs_configs, obs_log, assignments):
-        table, catid, visit, arm, pfsDesignId, obstime, exptime = \
-            self.__create_catalog_table(identities, pfs_configs, obs_log, assignments)
+    def __init_photometry_table(self):
+        photometry_table = SimpleNamespace(
+            catId = [],
+            objId = [],
+            filterName = [],
+            flux = [],
+            fluxErr = [],
+            mag = [],
+            magErr = [],
+        )
 
-        # Format table
-        table = { k: np.array(v) for k, v in table.__dict__.items()}
+        return photometry_table
+
+    def __create_catalog(self, identities, pfs_configs, obs_log, target_lists, assignments):
+        catalog_table, photometry_table, catid, visit, arm, pfsDesignId, obstime, exptime = \
+            self.__create_catalog_table(identities, pfs_configs, obs_log, target_lists, assignments)
+
+        # Format the tables into a dict of arrays
+        catalog_table = { k: np.array(v) for k, v in catalog_table.__dict__.items()}
+        photometry_table = { k: np.array(v) for k, v in photometry_table.__dict__.items()}
         
         # Sanitize a few columns that might have invalid values for FITS format
-        table['targetPriority'][pd.isna(table['targetPriority'])] = -1
-        table['targetPriority'] = np.astype(table['targetPriority'], np.int32)
+        catalog_table['targetPriority'][pd.isna(catalog_table['targetPriority'])] = -1
+        catalog_table['targetPriority'] = np.astype(catalog_table['targetPriority'], np.int32)
         
         # Create the catalog table
-        table = StarCatalogTable(**table)
+        catalog_table = StarCatalogTable(**catalog_table)
+        photometry_table = StarPhotometryTable(**photometry_table)
 
         # Sort observations and append to the catalog
         observations = Observations(
@@ -214,13 +242,13 @@ class CatalogScript(PipelineScript):
             obsTime = np.array(obstime),
             expTime = np.array(exptime))
         
-        catalog = PfsStarCatalog(catid, observations, table)
+        catalog = PfsStarCatalog(catid, observations, catalog_table, photometry_table)
 
         self.__verify_catalog(catalog)
 
         return catalog
 
-    def __create_catalog_table(self, identities, pfs_configs, obs_log, assignments):
+    def __create_catalog_table(self, identities, pfs_configs, obs_log, target_lists, assignments):
         # A unique catalog ID that all objects must match
         catid = None
     
@@ -231,13 +259,14 @@ class CatalogScript(PipelineScript):
         obstime = []
         exptime = []
 
-        # Initialize the empty catalog table
-        table = self.__init_catalog_table()
+        # Initialize the empty catalog table and photometry table
+        catalog_table = self.__init_catalog_table()
+        photometry_table = self.__init_photometry_table()
 
         q = 0
-        for objid, id in identities.items():
+        for objid, id in self._wrap_in_progressbar(identities.items(), total=len(identities), logger=logger):
             q += 1
-            if self.__top is not None and q >= self.__top:
+            if self.top is not None and q >= self.top:
                 logger.info(f'Stopping after {q} objects.')
                 break
 
@@ -252,14 +281,16 @@ class CatalogScript(PipelineScript):
                     raise ValueError("All catIDs must match in a catalog.")
 
                 self.__append_pfsStar(
-                    table, objid, obj, visit, arm, pfsDesignId, obstime, exptime,
-                    pfs_configs, assignments, obs_log)
+                    catalog_table, photometry_table,
+                    objid, obj, visit, arm, pfsDesignId, obstime, exptime,
+                    pfs_configs, target_lists, assignments, obs_log)
             elif self.__include_missing_objects:
                 self.__append_missing_object(
-                    table, objid, visit, arm, pfsDesignId, obstime, exptime,
-                    pfs_configs, assignments, obs_log)
+                    catalog_table, photometry_table,
+                    objid, visit, arm, pfsDesignId, obstime, exptime,
+                    pfs_configs, target_lists, assignments, obs_log)
         
-        return table, catid, visit, arm, pfsDesignId, obstime, exptime
+        return catalog_table, photometry_table, catid, visit, arm, pfsDesignId, obstime, exptime
 
     def __verify_catalog(self, catalog):
         """
@@ -353,20 +384,17 @@ class CatalogScript(PipelineScript):
 
     def __find_matching_assignment(self, assignments, obcode, objid):
         # Match with the assignments by obCode and objId
-        if assignments is not None:
-            if obcode == 'N/A':
-                # This is a calibration target with a missing obCode
-                assignments_idx = (assignments['targetid'] == (objid & 0xFFFFFFFF))
-            else:
-                # This is a science target, we also match by obcode
-                assignments_idx = (assignments['obcode'] == obcode) # & (assignments['__target_idx'] == (objid & 0xFFFFFFFF))
-            
-            if np.sum(assignments_idx) == 0:
-                logger.warning(f'No matching assignment found for obCode {obcode}.')
-            elif np.sum(assignments_idx) > 1:
-                logger.warning(f'Multiple matching assignments found for obCode {obcode}, taking the one with the highest stage.')
+        if obcode == 'N/A':
+            # This is a calibration target with a missing obCode
+            assignments_idx = (assignments['targetid'] == (objid & 0xFFFFFFFF))
         else:
-            assignments_idx = None
+            # This is a science target, we also match by obcode
+            assignments_idx = (assignments['obcode'] == obcode) # & (assignments['__target_idx'] == (objid & 0xFFFFFFFF))
+        
+        if np.sum(assignments_idx) == 0:
+            logger.warning(f'No matching assignment found for obCode {obcode}.')
+        elif np.sum(assignments_idx) > 1:
+            logger.warning(f'Multiple matching assignments found for obCode {obcode}, taking the one with the highest stage.')
 
         return assignments_idx
 
@@ -386,17 +414,20 @@ class CatalogScript(PipelineScript):
         else:
             return -1
 
-    def __append_pfsStar(self, table, objid, obj, visit, arm, pfsDesignId, obstime, exptime,
-                         pfs_configs, assignments, obs_log):
+    def __append_pfsStar(self, catalog_table, photometry_table, objid, obj, visit, arm, pfsDesignId, obstime, exptime,
+                         pfs_configs, target_lists, assignments, obs_log):
 
-        # Find the object in the PfsConfig file to look up certain parameters that
-        # are not available in the PfsStar file
+        # Find the object in the PfsConfig file
         config = pfs_configs[obj.observations.visit[0]]
         config_idx = np.where(config.objId == objid)[0].item()
 
+        # Look up the object in the target lists and assignments files to get the target properties
         obcode = config.obCode[config_idx]
         objid = config.objId[config_idx]
-        assignments_idx = self.__find_matching_assignment(assignments, obcode, objid)
+        catid = config.catId[config_idx]
+        
+        self.__append_magnitudes_from_target_lists(photometry_table, obj, target_lists, obcode, catid, objid)
+        self.__append_parameters_from_assignments(catalog_table, obj, assignments, obcode, objid)
 
         # Keep track of visits, designs, arms and spectrographs, etc. used for this catalog
         for i, v in enumerate(obj.observations.visit):
@@ -429,32 +460,26 @@ class CatalogScript(PipelineScript):
         id = obj.getIdentity()
 
         # Append the table columns
-        table.catId.append(obj.target.identity['catId'])
-        table.objId.append(obj.target.identity['objId'])
+        catalog_table.catId.append(obj.target.identity['catId'])
+        catalog_table.objId.append(obj.target.identity['objId'])
 
-        table.ra.append(config.ra[config_idx])
-        table.dec.append(config.dec[config_idx])
-        table.epoch.append(config.epoch[config_idx])
-        table.pmRa.append(config.pmRa[config_idx])
-        table.pmDec.append(config.pmDec[config_idx])
-        table.parallax.append(config.parallax[config_idx])
-        table.targetType.append(config.targetType[config_idx])
-        
-        if assignments is not None and np.sum(assignments_idx) == 1:
-            table.targetPriority.append(assignments.loc[assignments_idx, 'priority'].item())
-        else:
-            table.targetPriority.append(-1)
+        catalog_table.ra.append(config.ra[config_idx])
+        catalog_table.dec.append(config.dec[config_idx])
+        catalog_table.epoch.append(config.epoch[config_idx])
+        catalog_table.pmRa.append(config.pmRa[config_idx])
+        catalog_table.pmDec.append(config.pmDec[config_idx])
+        catalog_table.parallax.append(config.parallax[config_idx])
+        catalog_table.targetType.append(config.targetType[config_idx])        
+        catalog_table.proposalId.append(config.proposalId[config_idx])
+        catalog_table.obCode.append(config.obCode[config_idx])
 
-        table.proposalId.append(config.proposalId[config_idx])
-        table.obCode.append(config.obCode[config_idx])
-
-        table.fiberId.append(fiberid)
-        table.spectrograph.append(spectrograph)
+        catalog_table.fiberId.append(fiberid)
+        catalog_table.spectrograph.append(spectrograph)
 
         # These are used to generate the file name for PfsStar, include these in the catalog
         # to allow finding the corresponding files more easily
-        table.nVisit.append(id['nVisit'])
-        table.pfsVisitHash.append(id['pfsVisitHash'])
+        catalog_table.nVisit.append(id['nVisit'])
+        catalog_table.pfsVisitHash.append(id['pfsVisitHash'])
 
         # Count how many times an arm's been used to process PfsStar
         def count_arms(a):
@@ -462,19 +487,19 @@ class CatalogScript(PipelineScript):
         
         for a, nVisit in zip(
             ['b', 'm', 'r', 'n'],
-            [table.nVisit_b, table.nVisit_m, table.nVisit_r, table.nVisit_n]
+            [catalog_table.nVisit_b, catalog_table.nVisit_m, catalog_table.nVisit_r, catalog_table.nVisit_n]
         ):
             nVisit.append(count_arms(a))
 
         for a, expTimeEff in zip(
             ['b', 'm', 'r', 'n'],
-            [table.expTimeEff_b, table.expTimeEff_m, table.expTimeEff_r, table.expTimeEff_n]
+            [catalog_table.expTimeEff_b, catalog_table.expTimeEff_m, catalog_table.expTimeEff_r, catalog_table.expTimeEff_n]
         ):
             expTimeEff.append(eet[a])
 
         for a, snr_arm in zip(
             ['b', 'm', 'r', 'n'],
-            [table.snr_b, table.snr_m, table.snr_r, table.snr_n]
+            [catalog_table.snr_b, catalog_table.snr_m, catalog_table.snr_r, catalog_table.snr_n]
         ):
             snr_idx = np.where(np.array(obj.stellarParams.param) == f'snr_{a}')[0]
             if snr_idx.size == 1:
@@ -484,9 +509,9 @@ class CatalogScript(PipelineScript):
 
         for param, value, error, status in zip(
             ['v_los', 'ebv', 'T_eff', 'M_H', 'a_M', 'C', 'log_g'],
-            [table.v_los, table.EBV, table.T_eff, table.M_H, table.a_M, table.C, table.log_g],
-            [table.v_losErr, table.EBVErr, table.T_effErr, table.M_HErr, table.a_MErr, table.CErr, table.log_gErr],
-            [table.v_losStatus, table.EBVStatus, table.T_effStatus, table.M_HStatus, table.a_MStatus, table.CStatus, table.log_gStatus],
+            [catalog_table.v_los, catalog_table.EBV, catalog_table.T_eff, catalog_table.M_H, catalog_table.a_M, catalog_table.C, catalog_table.log_g],
+            [catalog_table.v_losErr, catalog_table.EBVErr, catalog_table.T_effErr, catalog_table.M_HErr, catalog_table.a_MErr, catalog_table.CErr, catalog_table.log_gErr],
+            [catalog_table.v_losStatus, catalog_table.EBVStatus, catalog_table.T_effStatus, catalog_table.M_HStatus, catalog_table.a_MStatus, catalog_table.CStatus, catalog_table.log_gStatus],
         ):
             param_idx = np.where((np.array(obj.stellarParams.param) == param) &
                                     (np.array(obj.stellarParams.method) == 'tempfit'))[0]
@@ -503,14 +528,14 @@ class CatalogScript(PipelineScript):
         # TODO: add different flags for tempfit, chemfit and coadd
         flags_index = np.where(obj.measurementFlags.method == 'tempfit')[0]
         if flags_index.size == 1:
-            table.tempfitflag.append(obj.measurementFlags.flag[flags_index[0]])
-            table.tempfitstatus.append(obj.measurementFlags.status[flags_index[0]])
+            catalog_table.tempfitflag.append(obj.measurementFlags.flag[flags_index[0]])
+            catalog_table.tempfitstatus.append(obj.measurementFlags.status[flags_index[0]])
         else:
-            table.tempfitflag.append(False)
-            table.tempfitstatus.append('')
+            catalog_table.tempfitflag.append(False)
+            catalog_table.tempfitstatus.append('')
 
-    def __append_missing_object(self, table, objid, visit, arm, pfsDesignId, obstime, exptime,
-                                pfs_configs, assignments, obs_log):
+    def __append_missing_object(self, catalog_table, photometry_table, objid, visit, arm, pfsDesignId, obstime, exptime,
+                                pfs_configs, target_lists, assignments, obs_log):
         # Collect missing object info from the PfsConfig files and obs_log if available,
         # and append to the catalog with NaN values for the parameters that would have been
         # derived from the PfsStar file.
@@ -553,65 +578,106 @@ class CatalogScript(PipelineScript):
 
         obcode = config.obCode[config_idx]
         objid = config.objId[config_idx]
-        assignments_idx = self.__find_matching_assignment(assignments, obcode, objid)
+        catid = config.catId[config_idx]
+        
+        self.__append_magnitudes_from_target_lists(photometry_table, None, target_lists, obcode, catid, objid)
+        self.__append_parameters_from_assignments(catalog_table, None, assignments, obcode, objid)
 
         # Append the table columns
-        table.catId.append(config.catId[config_idx])
-        table.objId.append(config.objId[config_idx])
+        catalog_table.catId.append(config.catId[config_idx])
+        catalog_table.objId.append(config.objId[config_idx])
 
-        table.ra.append(config.ra[config_idx])
-        table.dec.append(config.dec[config_idx])
-        table.epoch.append(config.epoch[config_idx])
-        table.pmRa.append(config.pmRa[config_idx])
-        table.pmDec.append(config.pmDec[config_idx])
-        table.parallax.append(config.parallax[config_idx])
-        table.targetType.append(config.targetType[config_idx])
+        catalog_table.ra.append(config.ra[config_idx])
+        catalog_table.dec.append(config.dec[config_idx])
+        catalog_table.epoch.append(config.epoch[config_idx])
+        catalog_table.pmRa.append(config.pmRa[config_idx])
+        catalog_table.pmDec.append(config.pmDec[config_idx])
+        catalog_table.parallax.append(config.parallax[config_idx])
+        catalog_table.targetType.append(config.targetType[config_idx])
+        catalog_table.proposalId.append(config.proposalId[config_idx])
+        catalog_table.obCode.append(config.obCode[config_idx])
 
-        if assignments is not None and np.sum(assignments_idx) == 1:
-            table.targetPriority.append(assignments.loc[assignments_idx, 'priority'].item())
-        else:
-            table.targetPriority.append(-1)
-
-        table.proposalId.append(config.proposalId[config_idx])
-        table.obCode.append(config.obCode[config_idx])
-
-        table.fiberId.append(fiberid)
-        table.spectrograph.append(spectrograph)
-        table.nVisit.append(-1)
-        table.pfsVisitHash.append(-1)
+        catalog_table.fiberId.append(fiberid)
+        catalog_table.spectrograph.append(spectrograph)
+        catalog_table.nVisit.append(-1)
+        catalog_table.pfsVisitHash.append(-1)
 
         # Set the arm, nVisit and expTimeEff to 0 since we don't have a PfsStar file for this object
         for a, nVisit in zip(
             ['b', 'm', 'r', 'n'],
-            [table.nVisit_b, table.nVisit_m, table.nVisit_r, table.nVisit_n]
+            [catalog_table.nVisit_b, catalog_table.nVisit_m, catalog_table.nVisit_r, catalog_table.nVisit_n]
         ):
             nVisit.append(0)
 
         for a, expTimeEff in zip(
             ['b', 'm', 'r', 'n'],
-            [table.expTimeEff_b, table.expTimeEff_m, table.expTimeEff_r, table.expTimeEff_n]
+            [catalog_table.expTimeEff_b, catalog_table.expTimeEff_m, catalog_table.expTimeEff_r, catalog_table.expTimeEff_n]
         ):
             expTimeEff.append(0.0)
 
         for a, snr_arm in zip(
             ['b', 'm', 'r', 'n'],
-            [table.snr_b, table.snr_m, table.snr_r, table.snr_n]
+            [catalog_table.snr_b, catalog_table.snr_m, catalog_table.snr_r, catalog_table.snr_n]
         ):
             snr_arm.append(np.nan)
 
         for param, value, error, status in zip(
             ['v_los', 'ebv', 'T_eff', 'M_H', 'a_M', 'C', 'log_g'],
-            [table.v_los, table.EBV, table.T_eff, table.M_H, table.a_M, table.C, table.log_g],
-            [table.v_losErr, table.EBVErr, table.T_effErr, table.M_HErr, table.a_MErr, table.CErr, table.log_gErr],
-            [table.v_losStatus, table.EBVStatus, table.T_effStatus, table.M_HStatus, table.a_MStatus, table.CStatus, table.log_gStatus],
+            [catalog_table.v_los, catalog_table.EBV, catalog_table.T_eff, catalog_table.M_H, catalog_table.a_M, catalog_table.C, catalog_table.log_g],
+            [catalog_table.v_losErr, catalog_table.EBVErr, catalog_table.T_effErr, catalog_table.M_HErr, catalog_table.a_MErr, catalog_table.CErr, catalog_table.log_gErr],
+            [catalog_table.v_losStatus, catalog_table.EBVStatus, catalog_table.T_effStatus, catalog_table.M_HStatus, catalog_table.a_MStatus, catalog_table.CStatus, catalog_table.log_gStatus],
         ):
             value.append(np.nan)
             error.append(np.nan)
             status.append('')
 
         # Status value of tempfit
-        table.tempfitflag.append(True)
-        table.tempfitstatus.append(TempFitFlag.NODATA.name)
+        catalog_table.tempfitflag.append(True)
+        catalog_table.tempfitstatus.append(TempFitFlag.NODATA.name)
+
+    def __append_magnitudes_from_target_lists(self, photometry_table, obj, target_lists, obcode, catid, objid):
+        if target_lists is not None:
+            primary_target_idx, secondary_target_idx = self._find_matching_targets(target_lists, obcode, objid)
+
+            # Look up the broad-band magnitudes in the original target lists
+            magnitudes = self._find_magnitudes_in_target_list(
+                self.config.tempfit.photometry,
+                target_lists,
+                primary_target_idx)
+
+            for sidx in secondary_target_idx:
+                magnitudes = self._find_magnitudes_in_target_list(
+                    self.config.tempfit.photometry,
+                    target_lists,
+                    sidx,
+                    magnitudes=magnitudes,
+                    force_update=False)
+                
+            for mag in magnitudes:
+                photometry_table.catId.append(catid)
+                photometry_table.objId.append(objid)
+                photometry_table.filterName.append(mag)
+                photometry_table.flux.append(magnitudes[mag].flux)
+                photometry_table.fluxErr.append(magnitudes[mag].flux_err)
+                photometry_table.mag.append(magnitudes[mag].mag)
+                photometry_table.magErr.append(magnitudes[mag].mag_err)
+        else:
+            pass
+
+        
+
+    def __append_parameters_from_assignments(self, table, obj, assignments, obcode, objid):
+        if assignments is not None:
+            assignments_idx = self.__find_matching_assignment(assignments, obcode, objid)
+
+            if np.sum(assignments_idx) == 1:
+                priority = assignments.loc[assignments_idx, 'priority'].item()
+            else:
+                priority = -1
+        else:
+            priority = -1    
+            
+        table.targetPriority.append(priority)
 
 def main():
     script = CatalogScript()

@@ -6,9 +6,13 @@ import pandas as pd
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from dateutil import parser as dateparser
+from collections import defaultdict
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 
 from pfs.ga.common.scripts import Script
 from pfs.ga.common.config import ConfigJSONEncoder
+from pfs.ga.pfsspec.core import Physics
 from pfs.ga.pfsspec.core import Trace
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
@@ -348,7 +352,106 @@ class PipelineScript(Script):
         # Remove duplicates
         target_list.drop_duplicates(inplace=True)
 
+        logger.info(f'Found {len(target_list)} unique entries in target list files.')
+
         return target_list
+
+    def _find_matching_targets(self, target_list, obcode, objid, max_separation=0.1):
+        # Find objects in the target lists.
+
+        # The object can be present multiple times in the target list because we cross-match each input catalog
+        # and store each match in the target list. However, only the primary occurance of the target will have
+        # an obcode associated with. Yet, the values in the column __target_idx should match. We can use all
+        # entries in the target list to load fluxes and magnitudes.
+
+        # Some early runs of netflow used a cross-match radius too large, so we need to verify if duplicate
+        # entries in the target list are actually duplicates or if they are wrong matches.
+
+        # First, find the unique matching target based on obcode. For this, we need to look up the obcode from
+        # the pfsConfig file.
+
+        if obcode == 'N/A':
+            # This is probably a calibration target
+            mask = (target_list['targetid'] == objid)
+        else:
+            # Science targets always have a valid obcode
+            mask = (target_list['obcode'] == obcode) & (target_list['__target_idx'] == (objid & 0xFFFFFFFF))
+
+        primary_target = np.where(mask)[0].item()
+        target_idx = target_list.loc[primary_target, '__target_idx']
+        primary_ra = target_list.loc[primary_target, 'RA']
+        primary_dec = target_list.loc[primary_target, 'Dec']
+
+        # Find other targets with matching __target_idx
+        secondary_targets = []
+        for secondary_target in np.where(target_list['__target_idx'] == target_idx)[0]:
+            # Skip primary target because we will use it to override other targets
+            if secondary_target == primary_target:
+                continue
+
+            # Calculate the separation between the primary and secondary target
+            # and skip if they are too far apart because they are likely wrong matches
+            secondary_ra = target_list.loc[secondary_target, 'RA']
+            secondary_dec = target_list.loc[secondary_target, 'Dec']
+
+            primary_coord = SkyCoord(ra=primary_ra * u.deg, dec=primary_dec * u.deg)
+            secondary_coord = SkyCoord(ra=secondary_ra * u.deg, dec=secondary_dec * u.deg)
+            separation = primary_coord.separation(secondary_coord)
+            if separation.arcsec > max_separation:
+                logger.warning(f'Separation between primary and secondary target with __target_idx {target_idx} is {separation.arcsec:.2f} arcsec, which is larger than the threshold. Skipping secondary target.')
+                continue
+
+            secondary_targets.append(secondary_target)
+
+        return primary_target, secondary_targets
+
+    def _find_magnitudes_in_target_list(self, photometry, target_list, idx, magnitudes=None, force_update=False):
+        # Check if any magnitudes with filter curves are defined in the config template
+        # and if so, try to match them to the filters available in pfsConfig
+
+        # TODO: the targets lists actually should have the magnitudes, not just the fluxes,
+        #       but earlier netflow runs don't keep track of the column they're stored in and
+        #       it's not straighforward to match the filter names, so for now we just look for
+        #       fluxes in the target list.
+
+        magnitudes = magnitudes if magnitudes is not None else defaultdict(SimpleNamespace)
+
+        for fn, mag in photometry.items():
+            if mag.filter_name is None:
+                filter_names = [fn]
+            else:
+                filter_names = mag.filter_name if isinstance(mag.filter_name, (list, tuple)) else [mag.filter_name]
+            
+            for filter_name in filter_names:
+                flux_found = False
+                if f'{filter_name}_flux' in target_list.columns:
+                    # The flux is available in it's own column
+                    # ~np.isnan(target_list.loc[primary_target, f'{filter_name}_flux']):
+                    flux = target_list.loc[idx, f'{filter_name}_flux'].item()
+                    flux_err = target_list.loc[idx, f'{filter_name}_flux_err'].item()
+                    flux_found = True
+                else:
+                    for cc in [ c for c in target_list.columns if c.startswith('filter_')]:
+                        if target_list.loc[idx, cc] == filter_name:
+                            # The filter name is available in one of the bands
+                            band = cc[len('filter_'):]
+                            flux = target_list.loc[idx, f'psf_flux_{band}'].item()
+                            flux_err = target_list.loc[idx, f'psf_flux_error_{band}'].item()
+                            flux_found = True
+
+                if flux_found:
+                    break
+
+            if flux_found and flux is not None and flux_err is not None and \
+                np.isfinite(flux) and np.isfinite(flux_err):
+                
+                # Set the config values based on the target list values
+                if fn not in magnitudes or force_update:
+                    magnitudes[fn].flux = flux
+                    magnitudes[fn].flux_err = flux_err
+                    magnitudes[fn].mag, magnitudes[fn].mag_err = Physics.jy_to_abmag(1e-9 * flux, 1e-9 * flux_err)
+
+        return magnitudes
 
     def __print_info(self, object, filename):
         print(f'{type(object).__name__}')
