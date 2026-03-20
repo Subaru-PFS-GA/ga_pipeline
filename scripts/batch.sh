@@ -4,6 +4,8 @@
 
 # NOTE: dSph data from different runs cannot currently be combined into a single catalog!
 
+set -e
+
 # Data directories
 export DATADIR="/scratch/aszalay1/dobos/pfs"
 export OBSLOGDIR="/home/dobos/project/Subaru-PFS/spt_ssp_observation"
@@ -27,11 +29,14 @@ source $BATCHCONFIG
 # Pipeline config name. Path is generated from RERUN and PIPECONFIG.
 PIPECONFIG=$2
 
-EXTRAPARAMS="--debug"
+# EXTRAPARAMS="--debug"
 # EXTRAPARAMS="--top 10 --debug"
-# EXTRAPARAMS=""
+EXTRAPARAMS=""
 
-BATCHPARAMS="--batch slurm --partition cpu --cpus 4 --mem 12G"
+# Run in slurm
+# BATCHPARAMS="--batch slurm --partition cpu --cpus 4 --mem 12G"
+# Run locally
+# BATCHPARAMS=""
 
 function unique_array() {
     local array=("$@")
@@ -51,10 +56,10 @@ echo "Number of configuration entries: ${#PROPOSAL[@]}"
 # each catalog entry.
 for i in "${!PROPOSAL[@]}"; do
 
-    # Skip the first few entries
-    if [ $i -lt 1 ]; then
-        continue
-    fi
+    # # Skip the first few entries
+    # if [ $i -lt 1 ]; then
+    #     continue
+    # fi
 
     echo "Configuring gapipe for entry $i:"
     echo "  GARUN: ${GARUN[$i]}"
@@ -81,23 +86,24 @@ for i in "${!PROPOSAL[@]}"; do
 
     # Get the list of unique values for each of the configuration parameters
     UNIQUE_OBSLOGS=$(unique_array "${OBSLOGS[$i]}")
+    UNIQUE_TARGETLISTS=$(unique_array "${TARGETLISTS[$i]}")
     UNIQUE_ASSIGNMENTS=$(unique_array "${ASSIGNMENTS[$i]}")
     UNIQUE_VISITS=$(unique_array "${VISITS[$i]}")
     UNIQUE_CATIDS=$(unique_array "${CATID[$i]}")
 
     # OBJID[$i]="0x0000000200003a7e"
 
-    # # Generate the configuration files for a given field
-    gapipe-configure \
-        --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
-        --yes ${EXTRAPARAMS} \
-        --visit ${VISITS[$i]} \
-        --obs-logs ${OBSLOGS[$i]} \
-        --target-lists ${TARGETLISTS[$i]} \
-        --catid ${CATID[$i]} \
-        --objid ${OBJID[$i]}
+    # Generate the configuration files for a given field
+    # gapipe-configure \
+    #     --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
+    #     --yes ${EXTRAPARAMS} \
+    #     --visit ${VISITS[$i]} \
+    #     --obs-logs ${OBSLOGS[$i]} \
+    #     --target-lists ${TARGETLISTS[$i]} \
+    #     --catid ${CATID[$i]} \
+    #     --objid ${OBJID[$i]}
 
-    # Schedule the pipeline run for the stars of the given field
+    # # Schedule the pipeline run for the stars of the given field
     # gapipe-run \
     #     --yes ${EXTRAPARAMS} \
     #     --visit ${VISITS[$i]} \
@@ -105,16 +111,18 @@ for i in "${!PROPOSAL[@]}"; do
     #     --objid ${OBJID[$i]} \
     #     $BATCHPARAMS
 
-    # # Generate the catalog for the given field for each catId
-    # for catid in ${UNIQUE_CATIDS[*]}; do
-    #     echo "Generating catalog for catID $catid"
-    #     gapipe-catalog \
-    #         --obs-log ${UNIQUE_OBSLOGS[*]} \
-    #         --assignments ${UNIQUE_ASSIGNMENTS[*]} \
-    #         --visit ${UNIQUE_VISITS[*]} \
-    #         --include-missing-objects \
-    #         --catid $catid ${EXTRAPARAMS}
-    # done
+    # Generate the catalog for the given field for each catId
+    for catid in ${UNIQUE_CATIDS[*]}; do
+        echo "Generating catalog for catID $catid"
+        gapipe-catalog \
+            --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
+            --obs-log ${UNIQUE_OBSLOGS[*]} \
+            --target-lists ${UNIQUE_TARGETLISTS[*]} \
+            --assignments ${UNIQUE_ASSIGNMENTS[*]} \
+            --visit ${UNIQUE_VISITS[*]} \
+            --include-missing-objects \
+            --catid $catid ${EXTRAPARAMS}
+    done
 
     # exit 0
 
