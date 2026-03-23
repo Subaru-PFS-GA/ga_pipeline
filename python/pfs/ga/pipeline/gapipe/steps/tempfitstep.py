@@ -507,6 +507,7 @@ class TempFitStep(PipelineStep):
             context.state.tempfit.finish_ml(context.state.tempfit_state)
 
         context.state.tempfit_spectra, _ = context.state.tempfit.append_corrections_and_templates(
+            context.state.tempfit_state,
             context.state.tempfit_spectra, None,
             context.state.tempfit_results.rv_fit,
             context.state.tempfit_results.params_fit,
@@ -551,6 +552,7 @@ class TempFitStep(PipelineStep):
                 pf = { p: v for p, v in params.items() if p not in pb }
 
                 context.state.tempfit.map_log_L(
+                    context.state.tempfit_state,
                     context.state.tempfit_spectra,
                     size=10,
                     rv=context.state.tempfit_results.rv_fit,

@@ -114,6 +114,7 @@ class CoaddStep(PipelineStep):
 
         # Append the flux correction model to the coadded spectra
         stacked_spectra, _ = tempfit.append_corrections_and_templates(
+            state,
             stacked_spectra, None,
             context.state.tempfit_results.rv_fit,
             context.state.tempfit_results.params_fit,
