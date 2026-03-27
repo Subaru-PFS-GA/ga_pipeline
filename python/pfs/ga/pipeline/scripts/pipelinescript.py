@@ -350,9 +350,9 @@ class PipelineScript(Script):
                     target_list = pd.concat([target_list, df], ignore_index=True)
 
         # Remove duplicates
-        target_list.drop_duplicates(inplace=True)
-
-        logger.info(f'Found {len(target_list)} unique entries in target list files.')
+        if target_list is not None:
+            target_list.drop_duplicates(inplace=True)
+            logger.info(f'Found {len(target_list)} unique entries in target list files.')
 
         return target_list
 

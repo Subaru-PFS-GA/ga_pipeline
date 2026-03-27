@@ -328,7 +328,8 @@ class ConfigureScript(PipelineScript, Progress):
         self.__configure_tempfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
 
         # Update magnitudes and fluxes from the target list files
-        self.__configure_tempfit_magnitudes_target_list(objid, pipeline_config, pfs_configs, target_list)
+        if target_list is not None:
+            self.__configure_tempfit_magnitudes_target_list(objid, pipeline_config, pfs_configs, target_list)
 
         if stellar_params is None:
             pass
