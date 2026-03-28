@@ -112,12 +112,16 @@ class RepoScript(PipelineScript, Batch, Progress):
         # See if the very first argument can be interpreted as a product type.
         # If not, interpret it as a filename
         if self.is_arg('in'):
-            try:
-                for repo in [ self.input_repo, self.work_repo, self.output_repo ]:
+            for repo in [ self.input_repo, self.work_repo, self.output_repo ]:
+                try:
                     self.__product = repo.parse_product_type(self.get_arg('in'))
                     if not repo.has_product(self.__product):
                         self.__product = None
-            except ValueError:
+                    break
+                except ValueError:
+                    continue
+            
+            if self.__product is None:
                 self.__filename = self.get_arg('in')
 
         self.__format = self.get_arg('format', args, self.__format)
@@ -196,7 +200,9 @@ class RepoScript(PipelineScript, Batch, Progress):
         filenames, identities = self.__get_extract_product_filenames()
 
         # Load the products one by one and extract all sub-products
-        for i, fn in enumerate(self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):
+        for i, fn in enumerate(
+            self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):
+            
             if self.__product is not None:
                 product = self.__product
             else:
@@ -210,13 +216,16 @@ class RepoScript(PipelineScript, Batch, Progress):
             if subprods is not None:
                 for subprod, subid, _ in subprods:
                     # If the sub-product matches the object filters, save it
-                    # to the work directory
+                    # to the input repository
                     if self.input_repo.match_object_filters(subid):
-                        _, filename = self.work_repo.save_product(
+                        _, filename = self.input_repo.save_product(
                             subprod, identity=subid,
-                            variables={
-                                'datadir': self.config.workdir
-                            })
+                            # variables={
+                            #     'datadir': self.config.workdir,
+                            #     'rundir': self.config.rundir,
+                            #     'run': identities.run[i],
+                            # }
+                        )
 
             if self.top is not None and i >= self.top:
                 logger.info(f'Stop after processing {self.top} objects.')
