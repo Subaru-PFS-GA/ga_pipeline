@@ -57,10 +57,42 @@ class RepoScript(PipelineScript, Batch, Progress):
             )
         }
 
+        self.__products = {
+            PfsSingle: SimpleNamespace(
+                print = [ self.__print_pfsSingle ]
+            ),
+            PfsObject: SimpleNamespace(
+                print = [ self.__print_pfsObject ]
+            ),
+            PfsDesign: SimpleNamespace(
+                print = [ self.__print_pfsDesign ]
+            ),
+            PfsConfig: SimpleNamespace(
+                print = [ self.__print_pfsConfig ]
+            ),
+            PfsMerged: SimpleNamespace(
+                print = [ self.__print_pfsMerged ]
+            ),
+            PfsCalibrated: SimpleNamespace(
+                print = [ self.__print_pfsCalibrated ]
+            ),
+            PfsStar: SimpleNamespace(
+                print = [ self.__print_pfsStar]
+            ),
+            PfsStarCatalog: SimpleNamespace(
+                print = [ self.__print_pfsStarCatalog ]
+            )
+        }
+
         self.__command = None           # Command to execute
         self.__filename = None          # Path of the input file
         self.__product = None           # Product to be processed
         self.__format = 'table'         # Output format
+
+    def __get_products(self):
+        return self.__products
+
+    products = property(__get_products)
 
     def _add_args(self):
         self.add_arg('command', type=str,
@@ -108,10 +140,10 @@ class RepoScript(PipelineScript, Batch, Progress):
 
     def __run_info(self):
         datadir = self.input_repo.get_resolved_variable('datadir')
-        rerundir = self.input_repo.get_resolved_variable('rerundir')
+        rundir = self.input_repo.get_resolved_variable('rundir')
         
         print(f'Data root directory: {datadir}')
-        print(f'Rerun directory: {rerundir}')
+        print(f'Run directory: {rundir}')
 
     def __run_find_product(self):
         if self.__product is None:
@@ -278,10 +310,11 @@ class RepoScript(PipelineScript, Batch, Progress):
 
             # Figure out what repo has the product
             found = False
-            for repo in [self.input_repo, self.work_repo]:
-                product_type = self.input_repo.parse_product_type(re.split('[-_]', name)[0])
+            for repo in [self.input_repo, self.work_repo, self.output_repo]:
+                product_type = repo.parse_product_type(re.split('[-_]', name)[0])
                 if repo.has_product(product_type):
-                    product, identity, filename = repo.load_product(product_type, filename=self.__filename,
+                    product, identity, filename = repo.load_product(product_type,
+                                                                    filename=self.__filename,
                                                                     skip_locate=True)
                     found = True
                     break
@@ -290,7 +323,7 @@ class RepoScript(PipelineScript, Batch, Progress):
                 raise NotImplementedError(f'File type not recognized: {basename}')
         elif self.__product is not None:
             found = False
-            for repo in [self.input_repo, self.work_repo]:
+            for repo in [self.input_repo, self.work_repo, self.output_repo]:
                 if repo.has_product(self.__product):
                     product, identity, filename = repo.load_product(self.__product)
                     found = True
@@ -302,6 +335,136 @@ class RepoScript(PipelineScript, Batch, Progress):
 
         for func in self.products[type(product)].print:
             func(product, identity, filename)
+
+    #region Print functions for different product types
+
+    def __print_info(self, object, filename):
+        print(f'{type(object).__name__}')
+        print(f'  Full path: {filename}')
+
+    def __print_identity(self, identity):
+        print(f'Identity')
+        d = identity.__dict__
+        for key in d:
+            # Check if pfsDesignId is in the key
+            if 'pfsdesignid' in key.lower():
+                print(f'  {key}: 0x{d[key]:016x}')
+            else:
+                print(f'  {key}: {d[key]}')
+
+    def __print_target(self, target):
+        print(f'Target')
+        d = target.__dict__
+        for key in d:
+            # Check if pfsDesignId is in the key
+            if 'objid' in key.lower() or 'pfsdesignid' in key.lower():
+                print(f'  {key}: 0x{d[key]:016x}')
+            else:
+                print(f'  {key}: {d[key]}')
+
+    def __print_observations(self, observations, s=()):
+        print(f'Observations')
+        print(f'  num: {observations.num}')
+        d = observations.__dict__
+        for key in d:
+            # Check if pfsDesignId is in the key
+            if key == 'num':
+                pass
+            elif key == 'arm':
+                print(f'  {key}: {d[key]}')
+            elif 'objid' in key.lower() or 'pfsdesignid' in key.lower():
+                v = ' '.join(f'{x:016x}' for x in d[key][s])
+                print(f'  {key}: {v}')
+            else:
+                v = ' '.join(str(x) for x in np.array(d[key])[s])
+                print(f'  {key}: {v}')
+
+    def __print_pfsDesign(self, product, identity, filename):
+        pass
+
+    def __print_pfsConfig(self, product, identity, filename):
+        self.__print_info(product, filename)
+        print(f'  DesignName: {product.designName}')
+        print(f'  PfsDesignId: 0x{product.pfsDesignId:016x}')
+        print(f'  Variant: {product.variant}')
+        print(f'  Visit: {product.visit}')
+        print(f'  Date: {identity.date:%Y-%m-%d}')
+        print(f'  Center: {product.raBoresight:0.5f}, {product.decBoresight:0.5f}')
+        print(f'  PosAng: {product.posAng:0.5f}')
+        print(f'  Arms: {product.arms}')
+        print(f'  Tract: {np.unique(product.tract)}')
+        print(f'  Patch: {np.unique(product.patch)}')
+        print(f'  CatId: {np.unique(product.catId)}')
+        print(f'  ProposalId: {np.unique(product.proposalId)}')
+
+    def __print_pfsSingle(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+        
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=0)
+
+        # Try to locate the corresponding pfsConfig file
+        try:
+            config, identity, filename = self.input_repo.load_product(identity={'visit': identity.visit})
+            self.__print_pfsConfig(config, identity, filename)
+        except Exception as e:
+            raise e
+
+    def __print_pfsObject(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=())
+
+    def __print_pfsCalibrated(self, product, identity, filename):
+        self.__print_info(product, filename)
+        self.__print_identity(identity)
+        print(f'Items')
+        print(f'  Spectra: {len(product.spectra)}')
+
+        # Try to locate the corresponding pfsConfig file
+        try:
+            config, identity, filename = self.input_repo.load_product(PfsConfig, identity={'visit': identity.visit})
+            self.__print_pfsConfig(config, identity, filename)
+        except Exception as e:
+            raise e
+
+    def __print_pfsMerged(self, product, identity, filename):
+        self.__print_info(product, filename)
+        self.__print_identity(identity)
+        print(f'Arrays')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux:       {product.wavelength.shape}')
+
+        # Try to locate the corresponding pfsConfig file
+        try:
+            config, identity, filename = self.input_repo.load_product(PfsConfig, identity={'visit': identity.visit})
+            self.__print_pfsConfig(config, identity, filename)
+        except Exception as e:
+            raise e
+
+    def __print_pfsStar(self, product, identity, filename):
+        self.__print_info(product, filename)
+
+        print(f'  nVisit: {product.nVisit}')
+        print(f'  Wavelength: {product.wavelength.shape}')
+        print(f'  Flux: {product.wavelength.shape}')
+
+        self.__print_target(product.target)
+        self.__print_observations(product.observations, s=())
+
+    def __print_pfsStarCatalog(self, product, identity, filename):
+        raise NotImplementedError()
+
+    #endregion
 
 def main():
     script = RepoScript()
