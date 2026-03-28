@@ -33,8 +33,8 @@ GAPIPE stores a handful of settings in environmental variables, such as the loca
 Environment variables not listed here are already configure by their correct value by the install script and must not be changed.
 
 * `GAPIPE_DATADIR` when not using the LSST stack with Butler, this path must point to the directory with observation data. Please refer to Section 2 for details.
-* `GAPIPE_RERUN` must be the name of the rerun to be processed. This is just a default value that can be overriden from the command-line when GAPIPE is executed. This variable is not used when GAPIPE is installed on top of the LSST stack and Butler is available.
-* `GAPIPE_RERUNDIR` must be path to the rerun files to be processed. This is just a default value that can be overriden from the command-line when GAPIPE is executed. This variable is not used when GAPIPE is installed on top of the LSST stack and Butler is available.
+* `GAPIPE_RUN` must be the name of the run to be processed. This is just a default value that can be overriden from the command-line when GAPIPE is executed. This variable is not used when GAPIPE is installed on top of the LSST stack and Butler is available.
+* `GAPIPE_RUNDIR` must be path to the run files to be processed. This is just a default value that can be overriden from the command-line when GAPIPE is executed. This variable is not used when GAPIPE is installed on top of the LSST stack and Butler is available.
 * `GAPIPE_WORKDIR` must point to an existing directory which will be used for data staging during GAPIPE execution.
 * `GAPIPE_OUTDIR` must point to an existing directory which will be used to write the GAPIPE output files such as the results of processing of the spectrum of each object and the final catalog files.
 * `PFSSPEC_DATA`  must point to the data directory where model files such as synthetic stellar grids are stored. Please refer to Section 2 for details.
@@ -47,8 +47,8 @@ When running on top of the LSST stack and Butler is available, the following var
 When not using Butler, the following variables must be set to find data products by sweeping the file system.
 
 * `PFSSPEC_PFS_DATADIR` must point to the root of the observation data directory (datastore).
-* `PFSSPEC_PFS_RERUNDIR` must be the path to the directory, relative to `$PFSSPEC_PFS_DATADIR`, that contains the rerun we want to process
-* `PFSSPEC_PFS_RERUN` must be the name of the rerun as it appears in the name of the data files.
+* `PFSSPEC_PFS_RUNDIR` must be the name of the run as it appears in the name of the data files.
+* `PFSSPEC_PFS_RUN` must be the name out the gapipe run that will be the name out the output directory
 * `PFSSPEC_PFS_DESIGNDIR` must be the path to the directory, relative to `$PFSSPEC_PFS_DATADIR`, that contains the PfsDesign files.
 * `PFSSPEC_PFS_CONFIGDIR` must be the path to the directory, relative to `$PFSSPEC_PFS_DATADIR`, that contains the PfsConfig files.
 

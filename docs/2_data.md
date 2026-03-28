@@ -12,20 +12,25 @@ TODO: folder names below are preliminary and currently reflect the current devel
 
 ```
 $GAPIPE_DIR/data/
-  + 2d/
-  + models/
-    + stellar/
-      + grid/
-        + <grid_name>/
-          + <model_name>/
-            + spectra.fits
-    + subaru/
-      + hsc/
-        + filters/
-          - <filter_name>.txt
-      + pfs/
-        + psf/import
-          - <psf_name>.fits
+  + instruments
+    + hsc/
+      + filters/
+        - <filter_name>.txt
+    + pfs/
+      + arms/
+      + noise/
+      + psf/
+        + import/
+          + <psf_name>/
+            - gauss.h5
+            - pca.h5
+  + pfsspec
+    + models/
+      + stellar/
+        + grid/
+          + <grid_name>/
+            + <model_name>/
+              - spectra.fits
 ```
 
 ## 2.2 Importing synthetic stellar grids
@@ -135,11 +140,11 @@ TBW
 When not using Butler, the observation data is accessed from the file system by sweeping the file system for files that match the expected naming convention. The following environment variables must be set to point to the directories where the observation data is stored:
 
 * `GAPIPE_DATADIR`
-* `GAPIPE_RERUN`
-* `GAPIPE_RERUNDIR`
+* `GAPIPE_RUNDIR`
+* `GAPIPE_RUN`
 * `PFSSPEC_PFS_DATADIR`
-* `PFSSPEC_PFS_RERUNDIR`
-* `PFSSPEC_PFS_RERUN`
+* `PFSSPEC_PFS_RUNDIR`
+* `PFSSPEC_PFS_RUN`
 * `PFSSPEC_PFS_DESIGNDIR`
 * `PFSSPEC_PFS_CONFIGDIR`
 
@@ -327,7 +332,7 @@ GAPIPE uses two output directories (and many subdirectories withing them) to sto
 
 * **Output directory**: The `outdir` is used to store the final results of the processing, such as the processed spectra and the final catalog files. It is specified in the configuration file and can be overridden from the command-line. The default value is `$GAPIPE_OUTDIR` and it can be overridden from the configuration template (see below) or the `--outdir` command-line argument.
 
-* **Rerun directory**: This directory refers to the Butler collections. Since GAPIPE doesn't currently use Butler for output data, a directory is created for each 2dpipe rerun under `workdir` and `outdir`. Note, that the rerun directory is not currently figured out from the Butler collections, so it must be specified manually in the configuration file or from the command-line using the `--rerundir` argument.
+* **Run directory**: This directory refers to the Butler collections. Since GAPIPE doesn't currently use Butler for output data, a directory is created for each 2dpipe run under `workdir` and `outdir`. Note, that the run directory is not currently figured out from the Butler collections, so it must be specified manually in the configuration file or from the command-line using the `--rundir` argument.
 
 ### 2.6.2 GAPIPE file names
 
@@ -346,27 +351,27 @@ Note, that it is not necessary to extract the single-object data products from t
 Once the PfsCalibrated files are downloaded, you can extract the individual PfsSingle files using the `gapipe-repo extract-product` command. This should be done by 2dpipe processing runs, so let's define a few variables first:
 
     $ OBSRUN="2025-05"
-    $ RERUN="run22_July2025"
-    $ BUTLER_COLLECTIONS="$RERUN"
+    $ RUN="run22_July2025"
+    $ BUTLER_COLLECTIONS="$RUN"
     $ VISITS="$(cat spt_ssp_observation/runs/$OBSRUN/obslog/*.csv | grep SSP_GA | cut -d ',' -f 1)"
 
 To extract all PfsSingle files for a specific visit and catId, run:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 125950 --catid 10092 --rerundir $RERUN --log-level DEBUG
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 125950 --catid 10092 --rundir $RUN --log-level DEBUG
 
 Extract all the PfsSingle files from PfsCalibrated for a given list of visits and a catalog ID by running.
 
     $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID
 
-This command will write the PfsSingle files to the `workdir/rerundir` directory specified in the configuration file. The list of objects can further be filtered by target type, spectrograph arm, obcode, etc. For example, to extract only the PfsSingle files for science targets, you can run:
+This command will write the PfsSingle files to the `workdir/rundir` directory specified in the configuration file. The list of objects can further be filtered by target type, spectrograph arm, obcode, etc. For example, to extract only the PfsSingle files for science targets, you can run:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --targettype SCIENCE --rerundir $RERUN
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --targettype SCIENCE --rundir $RUN
 
 Similarly, you can extract FLUXSTD targets by setting `--targettype FLUXSTD`.
 
 PfsSingle files for all visits of a single objects can be extracted by running:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --objid "$OBJID" --rerundir $RERUN
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --objid "$OBJID" --rundir $RUN
 
 To get some progress information during the extraction, use the `--log-level DEBUG` option or try `--progress`.
 
@@ -376,7 +381,7 @@ Please note that extracting files for a large number of objects and visits can t
 
 Extracting lots of PfsSingle files can take a long time, especially when the number of visits is large. To parallelize the process, you can schedule a batch job for each visit to extract the PfsSingle files from PfsCalibrated. This can be done by using the `--batch` option with the `gapipe-repo extract-product` command.
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --rerundir $RERUN --batch slurm --partition v100 --cpus 2 --memory 8G
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --rundir $RUN --batch slurm --partition v100 --cpus 2 --memory 8G
 
 Here the `--batch slurm` option specifies that the extraction should be run as a batch job on the SLURM scheduler, and the `--partition` option specifies the SLURM partition to use. The `gapipe-repo` command will generate a batch script for each visit and submit it to the SLURM scheduler.
 

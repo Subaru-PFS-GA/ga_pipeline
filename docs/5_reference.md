@@ -6,12 +6,12 @@ The pipeline uses various directories to locate input data, write configuration 
 * `workdir`: working directory for gapipe
 * `outdir`: output directory for the final data products
 
-The `rerundir` directory is relative to the above directories and is used to store the configuration files and log files for each run of the pipeline.
+The `rundir` directory is relative to the above directories and is used to store the configuration files and log files for each run of the pipeline.
 
 # Environment variables
 
 * `GAPIPE_DATADIR`: root directory of the PFS data repository
-* `GAPIPE_RERUNDIR`: rerun directory, relative to the data directories
+* `GAPIPE_RUNDIR`: run directory, relative to the data directories
 * `GAPIPE_WORKDIR`: working directory for gapipe
 * `GAPIPE_OUTDIR`: output directory for the gapipe data products
 
@@ -54,11 +54,11 @@ The following options are available for all commands that process data:
 
 Note that the configuration template file specified by the `--config` option has to uses when running the `gapipe-configure` command. The directories specified in the configuration file have precedence over the environment variables (but can be overridden by the command line options). The configuration file is also used as a template to generate the configuration files for the individual objects for which the pipeline is executed.
 
-Instead of the current directory, the `gapipe-configure` writes its log and other output to `workdir` whereas the generated configuration files are written to `workdir/rerundir`.
+Instead of the current directory, the `gapipe-configure` writes its log and other output to `workdir` whereas the generated configuration files are written to `workdir/rundir`.
 
 * **--datadir** *datadir*: the root directory of PFS DRP output files.
 
-* **--rerundir** *rerundir*: directory relative to `datadir` that contains the output files, such as `PfsSingle` of a specifc rerun.
+* **--rundir** *rundir*: directory relative to `datadir` that contains the output files, such as `PfsSingle` of a specifc run.
 
 * **--workdir** *workdir*: directory to write the config files and auxiliary output files to for each object, basically anything other than the pfsStar files. Log files and figures are written to the `workdir/{objId}/log` and `workdir/{objId}/fig`, respectively.
 
