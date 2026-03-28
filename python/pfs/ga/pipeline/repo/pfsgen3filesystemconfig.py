@@ -13,12 +13,8 @@ PfsGen3FileSystemConfig = SimpleNamespace(
     root = '$datadir',
     variables = {
         ** PfsGen3FileSystemConfigBase.variables,
-
-        'workdir': '$GAPIPE_WORKDIR',
-        'outdir': '$GAPIPE_OUTDIR',
         'datadir': '$GAPIPE_DATADIR',
-        'rerundir': '$GAPIPE_RERUNDIR',
-        'rerun': '$GAPIPE_RERUN',
+        'rundir': '$GAPIPE_RUNDIR',
     },
     products = {
         **PfsGen3FileSystemConfigBase.products,

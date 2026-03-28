@@ -63,9 +63,9 @@ figdir: null
 loglevel: 20
 workdir: /datascope/subaru/user/dobos/gapipe/work
 datadir: /datascope/subaru/data/ssp/2d
-rerundir: run21_June2025
+rundir: run21_June2025
 outdir: /datascope/subaru/user/dobos/gapipe/out
-rerun: run21_June2025
+run: run21_June2025
 ignore_missing_files: true
 target:
   proposalId: S25A-OT02
