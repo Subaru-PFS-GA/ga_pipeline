@@ -113,7 +113,10 @@ class RepoScript(PipelineScript, Batch, Progress):
         # If not, interpret it as a filename
         if self.is_arg('in'):
             try:
-                self.__product = self.input_repo.parse_product_type(self.get_arg('in'))
+                for repo in [ self.input_repo, self.work_repo, self.output_repo ]:
+                    self.__product = repo.parse_product_type(self.get_arg('in'))
+                    if not repo.has_product(self.__product):
+                        self.__product = None
             except ValueError:
                 self.__filename = self.get_arg('in')
 
