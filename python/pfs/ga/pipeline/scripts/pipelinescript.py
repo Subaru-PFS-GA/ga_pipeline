@@ -50,10 +50,12 @@ class PipelineScript(Script):
         self.__plot_level = None
 
         self.__config = self._create_config()
-        self.__use_butler = False
-        self.__input_repo = None
-        self.__work_repo = None
-        self.__output_repo = None
+        self.__use_butler = False       # Use Butler for pfsConfig files and input files
+
+        self.__config_repo = None       # Data repository to read PfsConfig files from
+        self.__input_repo = None        # Data repository of input file
+        self.__work_repo = None         # Working data repository for intermediate files
+        self.__output_repo = None       # Data repository for output files
 
     def __get_plot_level(self):
         return self.__plot_level
@@ -69,6 +71,11 @@ class PipelineScript(Script):
         return self.__config
     
     config = property(__get_config)
+
+    def __get_config_repo(self):
+        return self.__config_repo
+
+    config_repo = property(__get_config_repo)
 
     def __get_input_repo(self):
         return self.__input_repo
@@ -93,6 +100,7 @@ class PipelineScript(Script):
         # Register custom directories, these will specialize the work and output repos
         self.add_arg('--workdir', type=str, help='Work directory for the pipeline.')
         self.add_arg('--outdir', type=str, help='Output directory for the pipeline.')
+        self.add_arg('--configrun', type=str, help='Run name for pfsConfig files.')
         self.add_arg('--garun', type=str, help='Run name for the GA pipeline.')
         self.add_arg('--garundir', type=str, help='Rerun directory for the GA pipeline.')
 
@@ -112,6 +120,7 @@ class PipelineScript(Script):
         #       command-line arguments. This needs to be fixed.
 
         self.__use_butler = self.get_arg('use_butler', args, self.__use_butler)
+        self.__config_repo = self._create_config_repo()
         self.__input_repo = self._create_input_repo()
         self.__work_repo = self._create_work_repo()
         self.__output_repo = self._create_output_repo()
@@ -136,16 +145,23 @@ class PipelineScript(Script):
         # Override configuration with command-line arguments
         self.__config.workdir = self.get_arg('workdir', args, self.get_env('GAPIPE_WORKDIR'))
         self.__config.outdir = self.get_arg('outdir', args, self.get_env('GAPIPE_OUTDIR'))
+        
         if self.is_arg('datadir', args):
             self.__config.datadir = self.get_arg('datadir', args)
+        
         if self.is_arg('rundir', args):
             self.__config.rundir = self.get_arg('rundir', args)
+        
         if self.is_arg('garundir', args):
             self.__config.garundir = self.get_arg('garundir', args)
+
+        if self.is_arg('configrun', args):
+            self.__config.configrun = self.get_arg('configrun', args)
 
         # Initialize the data repository, first from the configuration,
         # then from the command-line arguments
         
+        self._init_config_repo()
         self._init_input_repo()
         self._init_work_repo()
         self._init_output_repo()
@@ -171,6 +187,14 @@ class PipelineScript(Script):
 
     def _create_config(self):
         return GAPipelineConfig()
+
+    def _create_config_repo(self):
+        if self.__use_butler:
+            repo = PfsGen3Repo(**self.__repo_types['butler_repo'])
+        else:
+            repo = PfsGen3Repo(**self.__repo_types['input_repo'])
+
+        return repo
 
     def _create_input_repo(self):
         """
@@ -201,6 +225,14 @@ class PipelineScript(Script):
 
         return repo
 
+    def _init_config_repo(self):
+        # When configured, allow for certain input files to be missing
+        # This is useful when the pipeline is run on a subset of data
+        # This setting can be overridden in the command line
+
+        self.__config_repo.ignore_missing_files = self.__config.ignore_missing_files
+        self.__config_repo.init_from_args(self)
+
     def _init_input_repo(self):
         # When configured, allow for certain input files to be missing
         # This is useful when the pipeline is run on a subset of data
@@ -216,12 +248,14 @@ class PipelineScript(Script):
 
         self.__work_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__work_repo.init_from_args(self)
+        self.__work_repo.defaults.run = self.__config.garun
 
     def _init_output_repo(self):
         self.__output_repo.init_from_args(self)
 
         self.__output_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__output_repo.init_from_args(self)
+        self.__output_repo.defaults.run = self.__config.garun
 
     def _update_repo_directories(self, config):
         """
@@ -241,12 +275,21 @@ class PipelineScript(Script):
             config.outdir = self.get_arg('outdir')
         if self.is_arg('rundir'):
             config.rundir = self.get_arg('rundir')
-        if self.is_arg('run'):
-            config.run = self.get_arg('run')
+        if self.is_arg('run'):                          #### TODO: multi-repo
+            config.run = self.get_arg('run')[0]
         if self.is_arg('garundir'):
             config.garundir = self.get_arg('garundir')
         if self.is_arg('garun'):
             config.garun = self.get_arg('garun')
+        if self.is_arg('configrun'):
+            config.configrun = self.get_arg('configrun')
+
+        if config.datadir is None:
+            self.__config_repo.set_variable('datadir', config.datadir)
+        if config.configrun is not None:
+            # Override  the run filter for pfsConfig files which might be in
+            # a special directory for non-public data releases.
+            self.__config_repo.filters.run.parse([ config.configrun ])
 
         if config.datadir is not None:
             self.__input_repo.set_variable('datadir', config.datadir)
@@ -263,12 +306,18 @@ class PipelineScript(Script):
         if config.garundir is not None:
             self.__output_repo.set_variable('rundir', config.garundir)
 
+    def _log_repo_variables(self):
+        for repo, name in zip([self.__input_repo, self.__work_repo, self.__output_repo], ['Input', 'Work', 'Output']):
+            logger.info(f'{name} repository variables:')
+            for k in repo.variables:
+                logger.info(f'  {k}: {repo.get_resolved_variable(k)}')
+
     def _set_log_file_to_workdir(self):
         # Override logging directory to use the same as the pipeline workdir
         logfile = os.path.basename(self.log_file)
         self.log_file = os.path.join(
-            self.work_repo.get_resolved_variable('workdir'),
-            self.work_repo.get_resolved_variable('rerun'),
+            self.work_repo.get_resolved_variable('datadir'),
+            self.config.garundir,
             logfile)
 
     def _load_obs_log_files(self, obs_logs_path):
@@ -507,3 +556,6 @@ class PipelineScript(Script):
             logger.warning(f'Multiple matching assignments found for obCode {obcode}, taking the one with the highest stage.')
 
         return assignments_idx
+
+    def prepare(self):
+        super().prepare()

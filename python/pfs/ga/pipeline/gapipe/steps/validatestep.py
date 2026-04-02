@@ -52,11 +52,12 @@ class ValidateStep(PipelineStep):
     def __validate_input_directories(self, context):
         # If we're not using Butler, verify that the input repo is set up correctly
         # and the input directories exist.
+        #### review for multi-repo
         if context.input_repo.is_filesystem_repo:
             context.pipeline.test_dir('data', context.input_repo.get_resolved_variable('datadir'))
             context.pipeline.test_dir('rerun', os.path.join(
-                context.repo.get_resolved_variable('datadir'),
-                context.repo.get_resolved_variable('rerundir')))
+                context.input_repo.get_resolved_variable('datadir'),
+                context.input_repo.get_resolved_variable('rundir')))
 
     def __validate_tempfit_input_files(self, context):
         if context.config.run_tempfit:

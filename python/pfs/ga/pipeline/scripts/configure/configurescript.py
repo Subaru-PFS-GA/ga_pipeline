@@ -76,13 +76,16 @@ class ConfigureScript(PipelineScript, Progress):
     def prepare(self):
         super().prepare()
 
-        # Override logging directory to use the same as the pipeline workdir
-        self._set_log_file_to_workdir()
-
     def run(self):
         """
         Find all the pfsSingle or pfsConfig files that match the filters and generate a config file for each.
         """
+
+        # Override logging directory to use the same as the pipeline workdir
+        self._set_log_file_to_workdir()
+
+        # Log the resolved variables for each repository to make sure they are correct
+        self._log_repo_variables()
 
         files = ' '.join(self.config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
@@ -116,7 +119,7 @@ class ConfigureScript(PipelineScript, Progress):
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
-        pfs_configs = self.input_repo.load_pfsConfigs()
+        pfs_configs = self.config_repo.load_pfsConfigs()
 
         # Get the dictionary of object identities matching the filters, keyed by objid
         identities = self.input_repo.find_objects(pfs_configs=pfs_configs, groupby='objid')
@@ -253,7 +256,7 @@ class ConfigureScript(PipelineScript, Progress):
 
             # Try each repository in order
             found = False
-            for repo in [self.input_repo, self.work_repo]:
+            for repo in [self.config_repo, self.input_repo, self.work_repo]:
                 # Look up the product type based on its name as a string. If the
                 # product is not available in a certain repo, skip to the next one.
                 try:
@@ -276,13 +279,10 @@ class ConfigureScript(PipelineScript, Progress):
                     elif not os.path.isfile(fn):
                         logger.warning(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} not found.')
                     else:
-                        m[i] = True
-
-                break   # If we found the product in one of the repositories, we can stop looking further.
+                        m[i] |= True
 
             if not found:
-                logger.warning(f'Required product type `{product_name}` not found in any of the repositories for object 0x{objid:x}.')
-                continue
+                raise RuntimeError(f'Required product type `{product_name}` not found in any of the repositories.')
 
             mask &= m
                 
@@ -309,13 +309,18 @@ class ConfigureScript(PipelineScript, Progress):
         # Input data directories; if not set, use the default from the config
         if 'datadir' in self.input_repo.variables:
             config.datadir = self.input_repo.get_resolved_variable('datadir')
-        if 'rerundir' in self.input_repo.variables:
-            config.rerundir = self.input_repo.get_resolved_variable('rerundir')
+        if 'rundir' in self.input_repo.variables:                               # TODO: multirepo
+            config.rundir = self.input_repo.get_resolved_variable('rundir')
+        if 'configrun' in self.config_repo.variables:
+            config.configrun = self.config_repo.get_resolved_variable('configrun')
 
         logger.debug(f'Configured data directory for object {identity}: {config.datadir}')
-        logger.debug(f'Configured rerun directory for object {identity}: {config.rerundir}')
         logger.debug(f'Configured work directory for object {identity}: {config.workdir}')
         logger.debug(f'Configured output directory for object {identity}: {config.outdir}')
+        logger.debug(f'Configured rerun directory for object {identity}: {config.rundir}')
+        logger.debug(f'Configured config run for object {identity}: {config.configrun}')
+        logger.debug(f'Configured GA run directory for object {identity}: {config.garundir}')
+        logger.debug(f'Configured GA run for object {identity}: {config.garun}')
 
         return config, filename
 

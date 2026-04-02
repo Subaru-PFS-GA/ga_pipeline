@@ -11,8 +11,9 @@ class RepoConfig(PipelineConfig):
         self.datadir = self._get_env('GAPIPE_DATADIR')        # PFS survey data directory root
         self.workdir = self._get_env('GAPIPE_WORKDIR')        # Working directory
         self.outdir = self._get_env('GAPIPE_OUTDIR')          # Pipeline output directory
-        self.rundir = self._get_env('GAPIPE_RUNDIR')          # Directory for the run
-        self.run = self._get_env('GAPIPE_RUN')                # Name of data processing run
+        self.rundir = self._get_env('GAPIPE_RUNDIR')          # Directory of the input processing run
+        self.run = self._get_env('GAPIPE_RUN')                # Name of the input processing run
+        self.configrun = self._get_env('GAPIPE_CONFIGRUN')    # Run name for pfsConfig files
         self.garundir = self._get_env('GAPIPE_GARUNDIR')      # Directory for the GA data processing run
         self.garun = self._get_env('GAPIPE_GARUN')            # Name of GA data processing run
 

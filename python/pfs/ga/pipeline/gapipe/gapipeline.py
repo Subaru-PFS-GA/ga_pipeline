@@ -41,8 +41,10 @@ class GAPipeline(Pipeline):
     def __init__(self, /,
                  script: Script = None,
                  config: GAPipelineConfig = None,
+                 config_repo: Repo = None,
                  input_repo: Repo = None,
                  work_repo: FileSystemRepo = None,
+                 output_repo: FileSystemRepo = None,
                  trace: GAPipelineTrace = None,
                  id: str = None):
         """
@@ -67,8 +69,10 @@ class GAPipeline(Pipeline):
         super().__init__(script=script, config=config, trace=trace)
 
         self.__id = id                          # Identity represented as string
-        self.__input_repo = input_repo
+        self.__config_repo = config_repo
+        self.__input_repo = input_repo          #### multi-repo
         self.__work_repo = work_repo
+        self.__output_repo = output_repo
        
     def reset(self):
         super().reset()
@@ -276,14 +280,18 @@ class GAPipeline(Pipeline):
         ]
     
     def get_product_workdir(self):
-        return self.__work_repo.format_dir(GAPipelineConfig,
-                                           self.config.target.identity,
-                                           variables={ 'workdir': self.config.workdir })
+        return self.__work_repo.format_dir(
+            GAPipelineConfig,
+            self.config.target.identity,
+            variables={ 'workdir': self.config.workdir }
+        )
 
     def get_product_outdir(self):
-        return self.__work_repo.format_dir(PfsStar,
-                                           self.config.target.identity,
-                                           variables={ 'datadir': self.config.outdir })
+        return self.__output_repo.format_dir(
+            PfsStar,
+            self.config.target.identity,
+            variables={ 'datadir': self.config.outdir }
+        )
 
     def get_loglevel(self):
         return self.config.loglevel
@@ -543,16 +551,21 @@ class GAPipeline(Pipeline):
         Save the output product to the output directory.
         """
 
-        identity, filename = self.__work_repo.save_product(
-            product,
-            identity = identity,
-            variables = { 'datadir': self.config.outdir },
-            create_dir = create_dir,
-            exist_ok = exist_ok)
-    
-        logger.info(f'Output file saved to `{filename}`.')
+        for repo in [self.__work_repo, self.__output_repo]:
+            if repo.has_product(type(product)):
+                identity, filename = repo.save_product(
+                    product,
+                    identity = identity,
+                    variables = {
+                        'datadir': self.config.outdir,
+                    },
+                    create_dir = create_dir,
+                    exist_ok = exist_ok)
 
-        return identity, filename
+                logger.info(f'Output file saved to `{filename}`.')        
+                return identity, filename
+
+        raise PipelineError('No repository available for saving the output product.')
     
     def get_avail_arms(self, product):
         """

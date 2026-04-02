@@ -119,8 +119,10 @@ class RunScript(PipelineScript, Batch, Progress):
         self.__trace = GAPipelineTrace()
         self.__pipeline = GAPipeline(
             script = self,
+            config_repo = self.config_repo,
             input_repo = self.input_repo,
             work_repo = self.work_repo,
+            output_repo = self.output_repo,
             trace = self.__trace)
 
         for i, config_file in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
