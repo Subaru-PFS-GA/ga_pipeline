@@ -178,7 +178,10 @@ class RunScript(PipelineScript, Batch, Progress):
         logger.info(f'Using configuration file(s) `{self.config.config_files}`.')
         
         # Execute the pipeline
-        self.__pipeline.execute()
+        if self.dry_run:
+            logger.info('Dry run: skipping pipeline execution.')
+        else:
+            self.__pipeline.execute()
 
         # Restore the logging to the main log file
         self.stop_logging()
