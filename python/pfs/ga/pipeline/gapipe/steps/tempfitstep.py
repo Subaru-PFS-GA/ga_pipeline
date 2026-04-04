@@ -520,6 +520,9 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_state.params_0['T_eff'] = min(4250, T_eff_guess)
     
     def run(self, context):
+        # TODO: add parameters to config to control the fitting procedure
+        # TODO: add MCMC
+
         # Run the maximum likelihood fitting with the Nelder-Mead method first
         context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.run_ml(
             context.state.tempfit_state,
@@ -532,12 +535,9 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_state,
             method='gradient')
         
-        # Polish the result with further optimizint as a function of RV only
+        # Polish the result with further optimizing as a function of RV only
         context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.polish_rv_ml(
             context.state.tempfit_state)
-
-
-        # TODO: add MCMC
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
