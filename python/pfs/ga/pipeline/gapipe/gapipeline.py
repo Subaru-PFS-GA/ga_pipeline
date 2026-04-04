@@ -398,7 +398,7 @@ class GAPipeline(Pipeline):
             # the input repository with fall-back to the work repository, in case some of the
             # data products are already copied to the output directory.
             found = False
-            for repo in [self.__input_repo, self.__work_repo]:
+            for repo in [self.__config_repo, self.__input_repo, self.__work_repo]:
                 if not repo.has_product(product_type):
                     logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
                     continue
@@ -482,12 +482,18 @@ class GAPipeline(Pipeline):
                 if identity.objId not in self.product_cache[product][visit]:
                     found = False
                     for repo in [self.__input_repo, self.__work_repo]:
+                        if not repo.has_product(product):
+                            continue
+
                         try:
                             data, id, filename = repo.load_product(product, identity=identity)
                             data.filename = filename
                             self.product_cache[product][visit][identity.objId] = data
                             found = True
                             q += 1
+                        except FileNotFoundError:
+                            # The product file is not available in the repository, skip
+                            continue
                         except KeyError:
                             # The product type is not available in the repository, skip
                             continue
@@ -499,12 +505,18 @@ class GAPipeline(Pipeline):
                 # Data product contains multiple objects
                 if visit not in self.product_cache[product]:
                     found = False
-                    for repo in [self.__input_repo, self.__work_repo]:
+                    for repo in [self.__config_repo, self.__input_repo, self.__work_repo]:
+                        if not repo.has_product(product):
+                            continue
+
                         try:
                             data, id, filename = repo.load_product(product, identity=identity)
                             self.product_cache[product][visit] = data
                             found = True
                             q += 1
+                        except FileNotFoundError:
+                            # The product file is not available in the repository, skip
+                            continue
                         except KeyError:
                             # The product type is not available in the repository, skip
                             continue
