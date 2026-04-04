@@ -112,13 +112,15 @@ class RepoScript(PipelineScript, Batch, Progress):
         # See if the very first argument can be interpreted as a product type.
         # If not, interpret it as a filename
         if self.is_arg('in'):
-            for repo in [ self.input_repo, self.work_repo, self.output_repo ]:
+            for repo in [ self.config_repo, self.input_repo, self.work_repo, self.output_repo ]:
                 try:
-                    self.__product = repo.parse_product_type(self.get_arg('in'))
-                    if not repo.has_product(self.__product):
-                        self.__product = None
-                    break
+                    if repo is not None:
+                        self.__product = repo.parse_product_type(self.get_arg('in'))
+                        if not repo.has_product(self.__product):
+                            self.__product = None
+                        break
                 except ValueError:
+                    # Butler throws ValueError if the product type is not recognized, catch it and try the next repo
                     continue
             
             if self.__product is None:
@@ -146,17 +148,45 @@ class RepoScript(PipelineScript, Batch, Progress):
             self.__commands[self.__command].run()
 
     def __run_info(self):
-        datadir = self.input_repo.get_resolved_variable('datadir')
-        rundir = self.input_repo.get_resolved_variable('rundir')
-        
-        print(f'Data root directory: {datadir}')
-        print(f'Run directory: {rundir}')
+
+        print(f'Data root directory:  {self.input_repo.get_resolved_variable("datadir")}')
+        print(f'pipe2d run directory: {self.input_repo.get_resolved_variable("rundir")}')
+        print(f'pipe2d run:           {self.input_repo.filters.run.value}')
+        print(f'pfsConfig run:        {self.config_repo.filters.run.value}')
+
+        print()
+
+        print(f'Work directory:       {self.work_repo.get_resolved_variable("datadir")}')
+        print(f'Output directory:     {self.output_repo.get_resolved_variable("datadir")}')
+        print(f'gapipe run directory: {self.work_repo.get_resolved_variable("garundir")}')
+        print(f'gapipe run:           {self.work_repo.filters.garun.value}')
+
+        print()
+
+        if self.use_butler:
+            print('Using Butler for data access.')
+            butler_configdir = self.input_repo.get_resolved_variable('butlerconfigdir')
+            butler_collections = self.input_repo.get_resolved_variable('butlercollections')
+            print(f'Butler config dir:   {butler_configdir}')
+            print(f'Butler collections:  {butler_collections}')
+        else:
+            print('Not using Butler for data access.')
 
     def __run_find_product(self):
         if self.__product is None:
-            raise ValueError('Product type not provided')
+            raise ValueError('Product type not provided or could not be inferred from the input arguments.')
         
-        filenames, identities = self.input_repo.find_product(self.__product)
+        # Find the first repository that has the product type.
+        repo = None
+        for i, repo, repo_name in self._enumerate_repos():
+            if repo is not None and repo.has_product(self.__product):
+                logger.debug(f'Product type {self.__product} found in repo {repo_name}.')
+                break
+
+        if repo is None:
+            raise ValueError(f'Product type {self.__product} not found in any repo.')
+        
+        filenames, identities = repo.find_product(self.__product)
         identities.filename = filenames
 
         # Print results in different formats
@@ -215,10 +245,9 @@ class RepoScript(PipelineScript, Batch, Progress):
 
             if subprods is not None:
                 for subprod, subid, _ in subprods:
-                    # If the sub-product matches the object filters, save it
-                    # to the input repository
+                    # If the sub-product matches the object filters, save it to the work repository
                     if self.input_repo.match_object_filters(subid):
-                        _, filename = self.input_repo.save_product(
+                        _, filename = self.work_repo.save_product(
                             subprod, identity=subid,
                             # variables={
                             #     'datadir': self.config.workdir,
@@ -258,8 +287,17 @@ class RepoScript(PipelineScript, Batch, Progress):
                 logger.info(f'Stop after processing {self.top} objects.')
                 break
 
-    def __run_find_object(self):
-        identities = self.input_repo.find_objects(groupby='none')
+    def __run_find_object(self):       
+        # identities = self.config_repo.find_objects(groupby='none', configrun=self.config.configrun)
+
+        # Find the objects matching the command-line arguments. Arguments
+        # are parsed by the repo object itself, so no need to pass them in here.
+        logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
+        pfs_configs = self.config_repo.load_pfsConfigs()
+
+        # Get the dictionary of object identities matching the filters, keyed by objid
+        identities = self.input_repo.find_objects(pfs_configs=pfs_configs, groupby='none')
+
         if identities is not None:
             if self.top is not None:
                 for k, v in identities.__dict__.items():
@@ -288,8 +326,10 @@ class RepoScript(PipelineScript, Batch, Progress):
         pd.set_option('display.show_dimensions', False)
         pd.set_option('display.max_colwidth', None)
 
+        if not isinstance(identities, dict):
+            identities = identities.__dict__
         
-        df = pd.DataFrame(identities.__dict__)
+        df = pd.DataFrame(identities)
 
         if 'objId' in df.columns:
             df['objId'] = df['objId'].apply(lambda x: f'0x{x:016x}')
@@ -385,14 +425,18 @@ class RepoScript(PipelineScript, Batch, Progress):
             elif key == 'arm':
                 print(f'  {key}: {d[key]}')
             elif 'objid' in key.lower() or 'pfsdesignid' in key.lower():
-                v = ' '.join(f'{x:016x}' for x in d[key][s])
+                v = ' '.join(f'{x:016x}' for x in np.atleast_1d(d[key][s]))
                 print(f'  {key}: {v}')
             else:
-                v = ' '.join(str(x) for x in np.array(d[key])[s])
+                v = ' '.join(str(x) for x in np.atleast_1d(np.array(d[key])[s]))
                 print(f'  {key}: {v}')
 
     def __print_pfsDesign(self, product, identity, filename):
         pass
+
+    def __load_pfsConfig(self, identity):
+        config, identity, filename = self.config_repo.load_product(PfsConfig, identity={'visit': identity.visit})
+        return config, identity, filename
 
     def __print_pfsConfig(self, product, identity, filename):
         self.__print_info(product, filename)
@@ -400,7 +444,8 @@ class RepoScript(PipelineScript, Batch, Progress):
         print(f'  PfsDesignId: 0x{product.pfsDesignId:016x}')
         print(f'  Variant: {product.variant}')
         print(f'  Visit: {product.visit}')
-        print(f'  Date: {identity.date:%Y-%m-%d}')
+        if identity.date is not None:
+            print(f'  Date: {identity.date:%Y-%m-%d}')
         print(f'  Center: {product.raBoresight:0.5f}, {product.decBoresight:0.5f}')
         print(f'  PosAng: {product.posAng:0.5f}')
         print(f'  Arms: {product.arms}')
@@ -421,7 +466,7 @@ class RepoScript(PipelineScript, Batch, Progress):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            config, identity, filename = self.input_repo.load_product(identity={'visit': identity.visit})
+            config, identity, filename = self.__load_pfsConfig(identity)
             self.__print_pfsConfig(config, identity, filename)
         except Exception as e:
             raise e
@@ -444,7 +489,7 @@ class RepoScript(PipelineScript, Batch, Progress):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            config, identity, filename = self.input_repo.load_product(PfsConfig, identity={'visit': identity.visit})
+            config, identity, filename = self.__load_pfsConfig(identity)
             self.__print_pfsConfig(config, identity, filename)
         except Exception as e:
             raise e
@@ -458,7 +503,7 @@ class RepoScript(PipelineScript, Batch, Progress):
 
         # Try to locate the corresponding pfsConfig file
         try:
-            config, identity, filename = self.input_repo.load_product(PfsConfig, identity={'visit': identity.visit})
+            config, identity, filename = self.__load_pfsConfig(identity)
             self.__print_pfsConfig(config, identity, filename)
         except Exception as e:
             raise e

@@ -1,4 +1,5 @@
 import os
+import argparse
 from glob import glob
 from types import SimpleNamespace
 import numpy as np
@@ -50,7 +51,7 @@ class PipelineScript(Script):
         self.__plot_level = None
 
         self.__config = self._create_config()
-        self.__use_butler = False       # Use Butler for pfsConfig files and input files
+        self.__use_butler = None        # Use Butler for pfsConfig files and input files
 
         self.__config_repo = None       # Data repository to read PfsConfig files from
         self.__input_repo = None        # Data repository of input file
@@ -92,10 +93,15 @@ class PipelineScript(Script):
 
     output_repo = property(__get_output_repo)
 
+    def _enumerate_repos(self, repo_list=['config', 'input', 'work', 'output']):
+        for i, repo_name in enumerate(repo_list):
+            yield i, getattr(self, f'{repo_name}_repo'), repo_name
+
     def _add_args(self):
         self.add_arg('--plot-level', type=str, choices=['NONE', 'INFO', 'DEBUG', 'TRACE'], help='Plot level for tracing')
-        self.add_arg('--butler', action='store_true', dest='use_butler', help='Whether to use Butler for data access.')
-        self.add_arg('--no-butler', action='store_false', dest='use_butler', help='Whether to use Butler for data access.')
+        self.add_arg("--butler", dest='use_butler', action=argparse.BooleanOptionalAction, help='Whether to use Butler for data access.')
+        # self.add_arg('--butler', action='store_true', dest='use_butler', help='Whether to use Butler for data access.')
+        # self.add_arg('--no-butler', action='store_false', dest='use_butler', help='Whether to use Butler for data access.')
 
         # Register custom directories, these will specialize the work and output repos
         self.add_arg('--workdir', type=str, help='Work directory for the pipeline.')
@@ -119,7 +125,7 @@ class PipelineScript(Script):
         #       is determined by the environment variables instead of any config files or
         #       command-line arguments. This needs to be fixed.
 
-        self.__use_butler = self.get_arg('use_butler', args, self.__use_butler)
+        self.__use_butler = self.get_arg('use_butler', args, self.get_env('GAPIPE_USE_BUTLER', '0') in ['1', 'true', 'True'])
         self.__config_repo = self._create_config_repo()
         self.__input_repo = self._create_input_repo()
         self.__work_repo = self._create_work_repo()
@@ -248,14 +254,18 @@ class PipelineScript(Script):
 
         self.__work_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__work_repo.init_from_args(self)
-        self.__work_repo.defaults.run = self.__config.garun
+        self.__work_repo.filters.run.parse([ self.__config.run ])
+        self.__work_repo.defaults.run = self.__config.run
+        self.__work_repo.filters.garun.parse([ self.__config.garun ])
+        self.__work_repo.defaults.garun = self.__config.garun
 
     def _init_output_repo(self):
         self.__output_repo.init_from_args(self)
 
         self.__output_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__output_repo.init_from_args(self)
-        self.__output_repo.defaults.run = self.__config.garun
+        self.__output_repo.filters.garun.parse([ self.__config.garun ])
+        self.__output_repo.defaults.garun = self.__config.garun
 
     def _update_repo_directories(self, config):
         """
@@ -295,16 +305,28 @@ class PipelineScript(Script):
             self.__input_repo.set_variable('datadir', config.datadir)
         if config.rundir is not None:
             self.__input_repo.set_variable('rundir', config.rundir)
+        if config.run is not None:
+            self.__input_repo.filters.run.parse([ config.run ])
 
         if config.workdir is not None:
             self.__work_repo.set_variable('datadir', config.workdir)
+        if config.rundir is not None:
+            self.__work_repo.set_variable('rundir', config.rundir)
+        if config.run is not None:
+            self.__work_repo.filters.run.parse([ config.run ])
         if config.garundir is not None:
-            self.__work_repo.set_variable('rundir', config.garundir)
+            self.__work_repo.set_variable('garundir', config.garundir)
+        if config.garun is not None:
+            self.__work_repo.filters.garun.parse([ config.garun ])
+            self.__work_repo.defaults.garun = config.garun
 
         if config.outdir is not None:
             self.__output_repo.set_variable('datadir', config.outdir)
         if config.garundir is not None:
-            self.__output_repo.set_variable('rundir', config.garundir)
+            self.__output_repo.set_variable('garundir', config.garundir)
+        if config.garun is not None:
+            self.__output_repo.filters.garun.parse([ config.garun ])
+            self.__output_repo.defaults.garun = config.garun
 
     def _log_repo_variables(self):
         for repo, name in zip([self.__input_repo, self.__work_repo, self.__output_repo], ['Input', 'Work', 'Output']):
