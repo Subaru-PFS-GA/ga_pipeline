@@ -331,7 +331,7 @@ class ConfigureScript(PipelineScript, Progress):
         # Update temp fit configuration based on the obs parameters
         self.__configure_tempfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
 
-        # Update magnitudes and fluxed from the pfsConfig files
+        # Update magnitudes and fluxes from the pfsConfig files
         self.__configure_tempfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
 
         # Update magnitudes and fluxes from the target list files
@@ -354,6 +354,13 @@ class ConfigureScript(PipelineScript, Progress):
 
         pipeline_config.tempfit.photometry = photometry
 
+        # If only a single flux is available, disable fitting it
+        # this will also force skipping the T_eff guess step as well
+        if len(pipeline_config.tempfit.photometry) < 2:
+            if pipeline_config.tempfit.fit_photometry:
+                logger.warning(f'Only {len(pipeline_config.tempfit.photometry)} photometric fluxes available for object 0x{objid:x}, disabling fitting photometry.')
+            pipeline_config.tempfit.fit_photometry = False
+            
     def __configure_tempfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
         pass
 
