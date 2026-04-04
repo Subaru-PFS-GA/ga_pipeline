@@ -19,7 +19,10 @@ from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
 from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo
 from ..gapipe.config import *
-from ..repo import GAPipeWorkdirConfig, PfsGen3ButlerConfig, PfsGen3FileSystemConfig, PfsGAFileSystemConfig
+from ..repo import (
+    GAPipeWorkdirConfig, PfsGen3ButlerConfig, PfsGen3FileSystemConfig,
+    PfsGAFileSystemConfig, PfsConfigOnlyConfig
+)
 from ..common import PipelineError
 
 from ..setup_logger import logger
@@ -33,6 +36,10 @@ class PipelineScript(Script):
             'butler_repo': dict(
                 repo_type = ButlerRepo,
                 config = PfsGen3ButlerConfig
+            ),
+            'config_repo': dict(
+                repo_type = FileSystemRepo,
+                config = PfsConfigOnlyConfig
             ),
             'input_repo': dict(
                 repo_type = FileSystemRepo,
@@ -107,8 +114,9 @@ class PipelineScript(Script):
         self.add_arg('--workdir', type=str, help='Work directory for the pipeline.')
         self.add_arg('--outdir', type=str, help='Output directory for the pipeline.')
         self.add_arg('--configrun', type=str, help='Run name for pfsConfig files.')
+        self.add_arg('--configrundir', type=str, help='Run directory for pfsConfig files.')
         self.add_arg('--garun', type=str, help='Run name for the GA pipeline.')
-        self.add_arg('--garundir', type=str, help='Rerun directory for the GA pipeline.')
+        self.add_arg('--garundir', type=str, help='Run directory for the GA pipeline.')
 
         # Instantiate all repo types to register their command-line arguments
         for k in self.__repo_types:
@@ -149,20 +157,7 @@ class PipelineScript(Script):
             self.__config.load(config_files, ignore_collisions=True)
 
         # Override configuration with command-line arguments
-        self.__config.workdir = self.get_arg('workdir', args, self.get_env('GAPIPE_WORKDIR'))
-        self.__config.outdir = self.get_arg('outdir', args, self.get_env('GAPIPE_OUTDIR'))
-        
-        if self.is_arg('datadir', args):
-            self.__config.datadir = self.get_arg('datadir', args)
-        
-        if self.is_arg('rundir', args):
-            self.__config.rundir = self.get_arg('rundir', args)
-        
-        if self.is_arg('garundir', args):
-            self.__config.garundir = self.get_arg('garundir', args)
-
-        if self.is_arg('configrun', args):
-            self.__config.configrun = self.get_arg('configrun', args)
+        self.__config.init_from_args(args)
 
         # Initialize the data repository, first from the configuration,
         # then from the command-line arguments
@@ -198,7 +193,7 @@ class PipelineScript(Script):
         if self.__use_butler:
             repo = PfsGen3Repo(**self.__repo_types['butler_repo'])
         else:
-            repo = PfsGen3Repo(**self.__repo_types['input_repo'])
+            repo = PfsGen3Repo(**self.__repo_types['config_repo'])
 
         return repo
 
@@ -276,26 +271,12 @@ class PipelineScript(Script):
         #   2. Configuration file
         #   3. Default values
 
-        # Override configuration with command-line arguments
-        if self.is_arg('datadir'):
-            config.datadir = self.get_arg('datadir')
-        if self.is_arg('workdir'):
-            config.workdir = self.get_arg('workdir')
-        if self.is_arg('outdir'):
-            config.outdir = self.get_arg('outdir')
-        if self.is_arg('rundir'):
-            config.rundir = self.get_arg('rundir')
-        if self.is_arg('run'):                          #### TODO: multi-repo
-            config.run = self.get_arg('run')[0]
-        if self.is_arg('garundir'):
-            config.garundir = self.get_arg('garundir')
-        if self.is_arg('garun'):
-            config.garun = self.get_arg('garun')
-        if self.is_arg('configrun'):
-            config.configrun = self.get_arg('configrun')
-
         if config.datadir is None:
             self.__config_repo.set_variable('datadir', config.datadir)
+        if config.configrundir is not None:
+            # Set the special directory for pfsConfig files which might be
+            # in a special directory for non-public data releases.
+            self.__input_repo.set_variable('configrundir', config.configrundir)
         if config.configrun is not None:
             # Override  the run filter for pfsConfig files which might be in
             # a special directory for non-public data releases.
@@ -329,8 +310,8 @@ class PipelineScript(Script):
             self.__output_repo.defaults.garun = config.garun
 
     def _log_repo_variables(self):
-        for repo, name in zip([self.__input_repo, self.__work_repo, self.__output_repo], ['Input', 'Work', 'Output']):
-            logger.info(f'{name} repository variables:')
+        for i, repo, name in self._enumerate_repos():
+            logger.info(f'{name[0].upper()}{name[1:]} repository variables:')
             for k in repo.variables:
                 logger.info(f'  {k}: {repo.get_resolved_variable(k)}')
 

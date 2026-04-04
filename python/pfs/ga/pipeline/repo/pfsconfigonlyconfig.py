@@ -3,13 +3,11 @@ import re
 from types import SimpleNamespace
 
 from pfs.datamodel import *
-from pfs.ga.pfsspec.survey.repo import IntFilter, HexFilter, DateFilter, StringFilter
 from pfs.ga.pfsspec.survey.pfs import PfsGen3FileSystemConfig as PfsGen3FileSystemConfigBase
 
-# Extend the basic PfsFileSystemConfig with the GAPipelineConfig. This is only used
-# when Butler is not available.
+# Use this repo config for pfsConfig files only
 
-PfsGen3FileSystemConfig = SimpleNamespace(
+PfsConfigOnlyConfig = SimpleNamespace(
     root = '$datadir',
     variables = {
         ** PfsGen3FileSystemConfigBase.variables,
@@ -18,6 +16,6 @@ PfsGen3FileSystemConfig = SimpleNamespace(
         'configrundir': '$GAPIPE_CONFIGRUNDIR'
     },
     products = {
-        **PfsGen3FileSystemConfigBase.products,
+        PfsConfig: PfsGen3FileSystemConfigBase.products[PfsConfig],
     }
 )

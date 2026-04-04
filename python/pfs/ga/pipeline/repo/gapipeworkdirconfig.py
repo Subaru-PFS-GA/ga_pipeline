@@ -42,7 +42,7 @@ GAPipeWorkdirConfig = SimpleNamespace(
             params_regex = [
                 re.compile(r'pfsStar_PFS_(?P<catId>\d{5})-(?P<objId>[0-9a-f]{16})-(?P<nVisit>\d{3})-0x(?P<pfsVisitHash>[0-9a-f]{16})_(?P<garun>.+)\.(yaml)$'),
             ],
-            dir_format = '$datadir/$rundir/pfsStar/{catId}/{objId}-{nVisit}-0x{pfsVisitHash}',
+            dir_format = [ '$datadir', '$garundir', 'pfsStar/{catId}/{objId}' ],
             filename_format = 'pfsStar_PFS_{catId}-{objId}-{nVisit}-0x{pfsVisitHash}_{garun_}.yaml',
             load = load_GAPipelineConfig,
             save = save_GAPipelineConfig,

@@ -229,7 +229,7 @@ class RepoScript(PipelineScript, Batch, Progress):
         self.__validate_extract_product()
         filenames, identities = self.__get_extract_product_filenames()
 
-        # Load the products one by one and extract all sub-products
+        # Load the products one by one and extract all sub-products to the work repo
         for i, fn in enumerate(
             self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):
             
@@ -247,14 +247,11 @@ class RepoScript(PipelineScript, Batch, Progress):
                 for subprod, subid, _ in subprods:
                     # If the sub-product matches the object filters, save it to the work repository
                     if self.input_repo.match_object_filters(subid):
-                        _, filename = self.work_repo.save_product(
-                            subprod, identity=subid,
-                            # variables={
-                            #     'datadir': self.config.workdir,
-                            #     'rundir': self.config.rundir,
-                            #     'run': identities.run[i],
-                            # }
-                        )
+                        if self.dry_run:
+                            _, filename, _ = self.work_repo.get_data_path(subprod, identity=subid)
+                            logger.info(f'Dry run: would save sub-product {type(subprod).__name__} to {filename}')
+                        else:
+                            _, filename = self.work_repo.save_product(subprod, identity=subid)
 
             if self.top is not None and i >= self.top:
                 logger.info(f'Stop after processing {self.top} objects.')
@@ -277,7 +274,10 @@ class RepoScript(PipelineScript, Batch, Progress):
             # TODO: Add other command-line arguments
             command += ' --log-to-console'
 
-            for a in ['workdir', 'outdir', 'datadir', 'rerun', 'rerundir']:
+            # TODO: filter out wrong arguments instead
+            raise NotImplementedError()
+        
+            for a in ['workdir', 'outdir', 'datadir', 'run', 'rundir']:
                 if self.is_arg(a, args):
                     command += f' --{a} {self.get_arg(a, args)}'
             

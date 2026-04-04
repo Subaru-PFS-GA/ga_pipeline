@@ -275,11 +275,13 @@ class ConfigureScript(PipelineScript, Progress):
                         fn = None
 
                     if fn is None:
-                        logger.warning(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} not found.')
+                        logger.debug(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} was not found.')
                     elif not os.path.isfile(fn):
-                        logger.warning(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} not found.')
+                        logger.debug(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} was not found.')
                     else:
                         m[i] |= True
+
+                break
 
             if not found:
                 raise RuntimeError(f'Required product type `{product_name}` not found in any of the repositories.')
@@ -534,7 +536,7 @@ class ConfigureScript(PipelineScript, Progress):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             pipeline_config.save(filename)
         else:
-            logger.info(f'Skipped saving configuration file `{filename}`.')
+            logger.info(f'Dry run: Would save configuration file to `{filename}`.')
 
 def main():
     script = ConfigureScript()
