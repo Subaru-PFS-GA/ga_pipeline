@@ -423,7 +423,7 @@ class PipelineScript(Script):
 
                 # Skip sky files because they're too large
                 if f.endswith('sky.feather'):
-                    logger.info(f'Skipping sky target list file {f} because it is too large.')
+                    logger.info(f'Skipping sky target list file {f}.')
                     continue
                 
                 logger.info(f'Loading target list from {f}.')

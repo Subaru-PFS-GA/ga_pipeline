@@ -44,7 +44,8 @@ class CatalogScript(PipelineScript, Progress):
         self.add_arg('--assignments', type=str, nargs='*', help='Fiber assignments file')
         self.add_arg('--include-missing-objects', action='store_true', help='Include missing objects in the catalog')
 
-        super()._add_args()
+        PipelineScript._add_args(self)
+        Progress._add_args(self)
 
     def _init_from_args(self, args):
         self.__obs_logs = self.get_arg('obs_logs', args, self.__obs_logs)
@@ -94,7 +95,7 @@ class CatalogScript(PipelineScript, Progress):
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
-        pfs_configs = self.input_repo.load_pfsConfigs()
+        pfs_configs = self.config_repo.load_pfsConfigs()
 
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
@@ -109,9 +110,12 @@ class CatalogScript(PipelineScript, Progress):
         catalog = self.__create_catalog(identities, pfs_configs, obs_log, target_lists, assignments)
         logger.info(f'Created catalog with {len(catalog.catalog)} objects.')
 
-        _, filename, _ = self.work_repo.get_data_path(catalog)
-        logger.info(f'Saving catalog to `{filename}`...')
-        self.work_repo.save_product(catalog, filename=filename, create_dir=True)
+        _, filename, _ = self.output_repo.get_data_path(catalog)
+        if self.dry_run:
+            logger.info(f'Dry run: skipping saving catalog to `{filename}`.')
+        else:
+            logger.info(f'Saving catalog to `{filename}`...')
+            self.output_repo.save_product(catalog, filename=filename, create_dir=True)
 
     def __load_assignment_files(self, assignment_files):
         assignments = None
@@ -366,7 +370,7 @@ class CatalogScript(PipelineScript, Progress):
         )
 
         try:
-            data, id, filename = self.work_repo.load_product(
+            data, id, filename = self.output_repo.load_product(
                 PfsStar,
                 identity=id,
                 variables = { 'datadir': self.config.outdir })
