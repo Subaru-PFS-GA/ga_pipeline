@@ -261,7 +261,10 @@ class ConfigureScript(PipelineScript, Progress):
                 # product is not available in a certain repo, skip to the next one.
                 try:
                     product_type = repo.parse_product_type(product_name)
-                    found = True
+                    if repo.has_product(product_type):
+                        found = True
+                    else:
+                        continue
                 except ValueError:
                     logger.debug(f'Product type `{product_name}` not available in repo of type {type(repo.repo).__name__}.')
                     continue

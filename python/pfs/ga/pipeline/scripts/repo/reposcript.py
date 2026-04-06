@@ -85,8 +85,7 @@ class RepoScript(PipelineScript, Batch, Progress):
         }
 
         self.__command = None           # Command to execute
-        self.__filename = None          # Path of the input file
-        self.__product = None           # Product to be processed
+        self.__in = None                # Input parameter, product type or filename as a string
         self.__format = 'table'         # Output format
 
     def __get_products(self):
@@ -108,29 +107,41 @@ class RepoScript(PipelineScript, Batch, Progress):
 
     def _init_from_args(self, args):
         self.__command = self.get_arg('command')
-
-        # See if the very first argument can be interpreted as a product type.
-        # If not, interpret it as a filename
-        if self.is_arg('in'):
-            for repo in [ self.config_repo, self.input_repo, self.work_repo, self.output_repo ]:
-                try:
-                    if repo is not None:
-                        self.__product = repo.parse_product_type(self.get_arg('in'))
-                        if not repo.has_product(self.__product):
-                            self.__product = None
-                        break
-                except ValueError:
-                    # Butler throws ValueError if the product type is not recognized, catch it and try the next repo
-                    continue
-            
-            if self.__product is None:
-                self.__filename = self.get_arg('in')
-
+        self.__in = self.get_arg('in')
         self.__format = self.get_arg('format', args, self.__format)
 
         PipelineScript._init_from_args(self, args)
         Progress._init_from_args(self, args)
         Batch._init_from_args(self, args)
+
+    def __find_product_in_repos(self, product_or_filename, repo_list=None):
+
+        # See if the very first argument can be interpreted as a product type.
+        # If not, interpret it as a filename
+        product = None
+        repo = None
+        for i, r, name in self._enumerate_repos(repo_list=repo_list):
+            try:
+                if r is not None:
+                    product = r.parse_product_type(product_or_filename)
+                    if not r.has_product(product):
+                        product = None
+                        continue
+                    else:
+                        # Found a repo that has the product type, no need to continue searching
+                        repo = r
+                        break
+            except ValueError:
+                # Butler throws ValueError if the product type is not recognized, catch it and try the next repo
+                continue
+        
+        # If the input argument cannot be interpreted as a product type, interpret it as a filename
+        if product is None:
+            filename = product_or_filename
+        else:
+            filename = None
+
+        return product, repo, filename
 
     def _create_config(self):
         return RepoConfig()
@@ -173,20 +184,24 @@ class RepoScript(PipelineScript, Batch, Progress):
             print('Not using Butler for data access.')
 
     def __run_find_product(self):
-        if self.__product is None:
+
+        product, repo, filename = self.__find_product_in_repos(self.__in)
+
+        if product is None:
             raise ValueError('Product type not provided or could not be inferred from the input arguments.')
         
-        # Find the first repository that has the product type.
-        repo = None
-        for i, repo, repo_name in self._enumerate_repos():
-            if repo is not None and repo.has_product(self.__product):
-                logger.debug(f'Product type {self.__product} found in repo {repo_name}.')
-                break
+        # TODO: DELETE
+        # # Find the first repository that has the product type.
+        # repo = None
+        # for i, repo, repo_name in self._enumerate_repos():
+        #     if repo is not None and repo.has_product(product):
+        #         logger.debug(f'Product type {self.__product} found in repo {repo_name}.')
+        #         break
 
         if repo is None:
-            raise ValueError(f'Product type {self.__product} not found in any repo.')
+            raise ValueError(f'Product type {product} not found in any repo.')
         
-        filenames, identities = repo.find_product(self.__product)
+        filenames, identities = repo.find_product(product)
         identities.filename = filenames
 
         # Print results in different formats
@@ -197,10 +212,7 @@ class RepoScript(PipelineScript, Batch, Progress):
         elif self.__format == 'path':
             self.__print_paths(filenames)
 
-    def __validate_extract_product(self):
-
-        filename = self.__filename
-        product = self.__product
+    def __validate_extract_product(self, product, filename):
 
         if filename is None and product is None:
             raise ValueError('Neither the product type, nor a filename was provided')
@@ -215,27 +227,34 @@ class RepoScript(PipelineScript, Batch, Progress):
         if product is not None and not hasattr(product, 'extract'):       
             raise ValueError(f'Product type does not support extracting sub-product: {product}')
 
-    def __get_extract_product_filenames(self):
-        if isinstance(self.__filename, str):
-            filenames, identities = [self.__filename], None
-        elif self.__filename is not None:
-            filenames, identities = self.__filename, None
+    def __get_extract_product_filenames(self, product, filename):
+        # Depending on the command-line arguments, figure out the list of input files to be processed.
+        # This script can take two types of arguments as the first positional argument:
+        # a pair of product types (e.g. pfsCalibrated,pfsSingle) or a filename (e.g. pfsCalibrated_*.fits)
+        # The function `init_from_args` decides if the argument can be interpreted as a product type,
+        # and if not, it is interpreted as a filename. So here we just need to check which one we got
+        # and act accordingly.
+
+        if isinstance(filename, str):
+            filenames, identities = [filename], None
+        elif filename is not None:
+            filenames, identities = filename, None
         else:
-            filenames, identities = self.input_repo.find_product(self.__product)
+            filenames, identities = self.input_repo.find_product(product)
 
         return filenames, identities
 
     def __run_extract_product(self):
-        self.__validate_extract_product()
-        filenames, identities = self.__get_extract_product_filenames()
+        
+        product, repo, filename = self.__find_product_in_repos(self.__in, repo_list=['input'])
+        self.__validate_extract_product(product, filename)
+        filenames, identities = self.__get_extract_product_filenames(product, filename)
 
         # Load the products one by one and extract all sub-products to the work repo
         for i, fn in enumerate(
             self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):
             
-            if self.__product is not None:
-                product = self.__product
-            else:
+            if product is None:
                 product = self.input_repo.match_container_product_type(os.path.basename(fn))
 
             subprods = self.input_repo.load_products_from_container(
@@ -258,8 +277,10 @@ class RepoScript(PipelineScript, Batch, Progress):
                 break
 
     def __submit_extract_product(self):
-        self.__validate_extract_product()
-        filenames, identities = self.__get_extract_product_filenames()
+
+        product, repo, filename = self.__find_product_in_repos(self.__in)
+        self.__validate_extract_product(product, filename)
+        filenames, identities = self.__get_extract_product_filenames(product, filename)
 
         # Submit a job for each product matching the filters
         for i, fn in enumerate(self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):

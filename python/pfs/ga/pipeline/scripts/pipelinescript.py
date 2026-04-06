@@ -100,7 +100,10 @@ class PipelineScript(Script):
 
     output_repo = property(__get_output_repo)
 
-    def _enumerate_repos(self, repo_list=['config', 'input', 'work', 'output']):
+    def _enumerate_repos(self, repo_list=None):
+        if repo_list is None:
+            repo_list = ['config', 'input', 'work', 'output']
+            
         for i, repo_name in enumerate(repo_list):
             yield i, getattr(self, f'{repo_name}_repo'), repo_name
 
