@@ -14,28 +14,38 @@ GAPIPE_DEBUG=0                                  # 1 for debugging
 GAPIPE_UPGRADE=0                                # 1 for upgrading an existing installation
 GAPIPE_LOGLEVEL=1                               # Console log level
 GAPIPE_FORCE=0                                  # Force installation
-GAPIPE_DIR="$(realpath "${HOME}")/gapipe"       # Installation directory
+GAPIPE_ROOT="$(realpath "${HOME}")/pfsgapipe"   # Installation directory, can be overridden by command-line argument
+GAPIPE_TAG="master"                             # Git tag/branch to install
 GAPIPE_PACKAGE="SOURCE"                         # Install from source instead of package
-GAPIPE_CONDA_DIR="./stack/conda"                # Conda installation directory, relative to GAPIPE_DIR
-GAPIPE_CONDA_ENV="gapipe"                       # Conda environment name
-GAPIPE_CONDA_ENV_FILE="gapipe.yaml"             # Conda environment file
+GAPIPE_CONDA_DIR="./stack/conda"                # Conda installation directory, relative to GAPIPE_ROOT
+GAPIPE_CONDA_ENV="gapipe"                       # Conda environment name, when not using LSST
+GAPIPE_CONDA_ENV_FILE="gapipe.yaml"             # Conda environment file to install additional dependencies.
 GAPIPE_LSST=1                                   # 1 for installing on the LSST stack
 LSST_VERSION="w.2025.52"                        # LSST version to install, if GAPIPE_LSST is set to 1
-LSST_DIR="./stack"                              # LSST installation directory, relative to GAPIPE_DIR
+LSST_DIR="./stack"                              # LSST installation directory, relative to GAPIPE_ROOT
 LSST_CONDA_DIR="./conda"                        # LSST conda installation directory, relative to LSST_DIR
 LSST_CONDA_ENV=""                               # LSST conda environment name, if GAPIPE_LSST is set to 1
-LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file
+LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file to install additional dependencies.
 PFS_PIPE2D_VERSION="w.2025.52"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
 PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
 
 # Observation data locations
-PFS_DATADIR="/datascope/subaru/data/edr3/run21"
-PFS_RERUNDIR="u/kiyoyabe/processing/run21"
-PFS_RERUN="u_kiyoyabe_processing_run21_20250415a"
-PFS_DESIGNDIR="PFS/raw/pfsDesign"
-PFS_CONFIGDIR="PFS/raw/pfsConfig"
-LSST_BUTLER_CONFIGDIR="${PFS_DATADIR}"
-LSST_BUTLER_COLLECTIONS="${PFS_CONFIGDIR}:${PFS_RERUNDIR}"
+# Set these variables before running the installer. This will be the default
+# values that are written to your environment configuration script.
+GAPIPE_DATAROOT="/data/pfs/programs"
+GAPIPE_OBSLOGDIR="$(realpath "${HOME}")/pfs/Subaru-PFS/spt_ssp_observation"
+GAPIPE_TARGETINGDIR="$(realpath "${HOME}")/pfs/targeting"
+
+GAPIPE_DATADIR="$GAPIPE_DATAROOT/S25A-OT02/2d"
+GAPIPE_RUN="S25A_November2025"
+GAPIPE_RUNDIR="S25A_November2025"
+GAPIPE_CONFIGRUN="S25A_November2025"
+GAPIPE_CONFIGRUNDIR="S25A_November2025"
+GAPIPE_GARUNDIR="S25A_November2025"
+GAPIPE_GARUN="S25A_November2025"
+
+BUTLER_CONFIGDIR="${GAPIPE_DATADIR}"
+BUTLER_COLLECTIONS="${GAPIPE_CONFIGDIR}:${GAPIPE_RUNDIR}"
 
 # Library github URLs and tags. For PFSSPEC, install all submodules with the same tag.
 # datamodel is installed as source because the eups package does not contain the most
@@ -43,19 +53,19 @@ LSST_BUTLER_COLLECTIONS="${PFS_CONFIGDIR}:${PFS_RERUNDIR}"
 DATAMODEL_GITHUB="Subaru-PFS/datamodel"
 DATAMODEL_GIT_TAG="tickets/DAMD-162"
 GACOMMON_GITHUB="Subaru-PFS-GA/ga_common"
-GACOMMON_GIT_TAG="master"
+GACOMMON_GIT_TAG="$GAPIPE_TAG"
 PFSSPEC_GITHUB="Subaru-PFS-GA/ga_pfsspec_all"
-PFSSPEC_GIT_TAG="master"
+PFSSPEC_GIT_TAG="$GAPIPE_TAG"
 GAPIPE_GITHUB="Subaru-PFS-GA/ga_pipeline"
-GAPIPE_GIT_TAG="master"
+GAPIPE_GIT_TAG="$GAPIPE_TAG"
 CHEMFIT_GITHUB="Subaru-PFS-GA/ga_chemfit"
-CHEMFIT_GIT_TAG="main"
+CHEMFIT_GIT_TAG="$GAPIPE_TAG"
 
 function print_header() {
-    echo "==================================="
-    echo "   PFS GA Pipeline Installer       "
-    echo "   (c) 2019-2025 the PFS GA team   "
-    echo "==================================="
+    echo "=================================================="
+    echo "   PFS GA Pipeline Installer                      "
+    echo "   (c) 2019-2026 Laszlo Dobos & the PFS GA team   "
+    echo "=================================================="
 }
 
 # Parse command-line arguments
@@ -78,7 +88,11 @@ function parse_args() {
             shift
             ;;
         -d|--dir)
-            GAPIPE_DIR="$2"
+            GAPIPE_ROOT="$2"
+            shift 2
+            ;;
+        -t|--tag)
+            GAPIPE_TAG="$2"
             shift 2
             ;;
         --conda-dir)
@@ -127,7 +141,8 @@ function print_usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  --debug               Enable debug mode"
-    echo "  -d, --dir <dir>       Installation directory (default: $GAPIPE_DIR)"
+    echo "  -d, --dir <dir>       Installation directory (default: $GAPIPE_ROOT)"
+    echo "  -t, --tag <tag>       Git tag/branch to install (default: $GAPIPE_TAG)"
     echo "  --conda-dir <dir>     Conda installation directory (default: $GAPIPE_CONDA_DIR)"
     echo "  -e, --env <env>       Conda environment name (default: $GAPIPE_CONDA_ENV)"
     echo "  --source              Install from source instead of package"
@@ -140,12 +155,12 @@ function print_usage() {
 function print_summary() {
     conda_dir=$(get_conda_dir)
     echo "Please run the following command to activate the GAPIPE environment:"
-    echo "cd ${GAPIPE_DIR}/src/ga_pipeline && source ./bin/init"
+    echo "cd ${GAPIPE_ROOT}/src/ga_pipeline && source ./bin/init"
 }
 
 function init_logging() {
     # Initialize log file for the installation commands
-    INSTALL_LOG_DIR="$(join_path "${GAPIPE_DIR}" "logs")"
+    INSTALL_LOG_DIR="$(join_path "${GAPIPE_ROOT}" "logs")"
     INSTALL_COMMANDS_LOG="$(join_path "${INSTALL_LOG_DIR}" "commands.log")"
     INSTALL_MESSAGES_LOG="$(join_path "${INSTALL_LOG_DIR}" "install.log")"
 
@@ -427,7 +442,7 @@ function git_checkout_or_update() {
 function get_conda_dir() {
     # Return the conda directory
 
-    conda_dir=$(join_path "${GAPIPE_DIR}" "${GAPIPE_CONDA_DIR}")
+    conda_dir=$(join_path "${GAPIPE_ROOT}" "${GAPIPE_CONDA_DIR}")
     if [[ -d "${conda_dir}" ]]; then
         conda_dir=$(realpath "${conda_dir}")
     fi
@@ -512,7 +527,7 @@ function update_conda_env() {
 function get_lsst_dir() {
     # Return the directory of the LSST stack
 
-    lsst_dir=$(join_path "${GAPIPE_DIR}" "${LSST_DIR}")
+    lsst_dir=$(join_path "${GAPIPE_ROOT}" "${LSST_DIR}")
     lsst_dir=$(realpath "${lsst_dir}")
     echo "${lsst_dir}"
 }
@@ -749,12 +764,12 @@ export PYTHONPATH=""
 export PFSSPEC_LSST="${GAPIPE_LSST}"
 export PFSSPEC_CONDAPATH="${conda_dir}"
 export PFSSPEC_CONDAENV="${GAPIPE_CONDA_ENV}"
-export PFSSPEC_ROOT="${GAPIPE_DIR}/src/ga_pfsspec_all"
-export PFSSPEC_DATA="${GAPIPE_DIR}/data"
+export PFSSPEC_ROOT="${GAPIPE_ROOT}/src/ga_pfsspec_all"
+export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
 
 # Register the dependencies that are installed from source
 export PFSSPEC_MODULES=\\
-"datamodel:${GAPIPE_DIR}/src/datamodel:python"
+"datamodel:${GAPIPE_ROOT}/src/datamodel:python"
 EOF
 }
 
@@ -830,39 +845,87 @@ function generate_gapipe_env_file() {
     conda_dir=$(get_conda_dir)
 
     cat > ./configs/envs/default <<EOF
-export PYTHONPATH=""
+#!/bin/bash
 
-export GAPIPE_LSST="${GAPIPE_LSST}"
+# This shell script is generated by the gapipe installer.
+# It is sourced by the init script to set up the environment variables for gapipe.
+# You can modify this file to change the default values of the environment variables.
+
+# Directories of the GAPIPE installation
+export GAPIPE_ROOT="${GAPIPE_ROOT}/src/ga_pipeline"
 export GAPIPE_CONDAPATH="${conda_dir}"
 export GAPIPE_CONDAENV="${GAPIPE_CONDA_ENV}"
 
-export GAPIPE_ROOT="${GAPIPE_DIR}/src/ga_pipeline"
-export GAPIPE_DATADIR="${GAPIPE_DIR}/data"
-export GAPIPE_WORKDIR="${GAPIPE_DIR}/work"
-export GAPIPE_OUTDIR="${GAPIPE_DIR}/out"
+# Use these settings to enable Butler for data lookup
+export GAPIPE_LSST="${GAPIPE_LSST}"
+export GAPIPE_USE_BUTLER="${GAPIPE_LSST}"
 
-export PFSSPEC_ROOT="${GAPIPE_DIR}/src/ga_pfsspec_all"
-export PFSSPEC_DATA="${GAPIPE_DIR}/data/pfsspec"
+# Uncomment this if you don't want to use Butler
+# export GAPIPE_USE_BUTLER="0"
 
-# Observation file locations when running on the LSST stack
-export BUTLER_CONFIGDIR="${LSST_BUTLER_CONFIGDIR}"
-export BUTLER_COLLECTIONS="${LSST_BUTLER_COLLECTIONS}"
-export GAPIPE_RERUNDIR="${PFS_RERUNDIR}"
-export GAPIPE_RERUN="${PFS_RERUN}"
+# Uncomment these if you don't want to use the LSST stack
+# export GAPIPE_LSST="0"
+# export GAPIPE_CONDAPATH="~/miniconda"
+# export GAPIPE_CONDAENV="gapipe"
 
-# Observation file locations when running on a standard conda stack
-export PFSSPEC_PFS_DATADIR="${PFS_DATADIR}"
-export PFSSPEC_PFS_RERUNDIR="${PFS_RERUNDIR}"
-export PFSSPEC_PFS_RERUN="${PFS_RERUN}"
-export PFSSPEC_PFS_DESIGNDIR="${PFS_DATADIR}/${PFS_DESIGNDIR}"
-export PFSSPEC_PFS_CONFIGDIR="${PFS_DATADIR}/${PFS_CONFIGDIR}"
+# Data root directory, this can be used in the config files
+# to make them portable across different machines with different
+# directory structures.
+export GAPIPE_DATAROOT="$GAPIPE_DATAROOT"
 
-# Register the dependencies that are installed from source
-# Format: <module_name>:<path_to_source>:<rel_path_to_module>
-export GAPIPE_MODULES=\\
-"datamodel:${GAPIPE_DIR}/src/datamodel:python
-ga_common:${GAPIPE_DIR}/src/ga_common:python
-ga_pfsspec:${GAPIPE_DIR}/src/ga_pfsspec_all:python"
+# Data directories for temporary data (work) and final output (out)
+# You can change these to point to scratch or other fast storage when
+# running on a cluster.
+export GAPIPE_WORKDIR="$GAPIPE_ROOT/work"
+export GAPIPE_OUTDIR="$GAPIPE_ROOT/out"
+
+# Full path to the observation logs
+# For the SSP, use the git repo https://github.com/Subaru-PFS/spt_ssp_observation
+export GAPIPE_OBSLOGDIR="$GAPIPE_OBSLOGDIR"
+
+# To include the targeting data in the final catalog, such as fluxes and magnitudes,
+# you need to specify the location of the targeting data. This is only relevant
+# for field prepared with the GA version of Netflow.
+export GAPIPE_TARGETINGDIR="$GAPIPE_TARGETINGDIR"
+
+# The remaining configuration variables are for a specific GA pipeline run
+# You tipically want to override these before executing the pipeline
+# When using the batch script, use the common.sh config file to define these
+# instead of setting them here in the global environment
+export GAPIPE_DATADIR="${GAPIPE_DATADIR}"
+export GAPIPE_RUNDIR="$GAPIPE_RUNDIR"
+export GAPIPE_RUN="$GAPIPE_RUN"
+export GAPIPE_CONFIGRUNDIR="$GAPIPE_CONFIGRUNDIR"
+export GAPIPE_CONFIGRUN="$GAPIPE_CONFIGRUN"
+export GAPIPE_GARUNDIR="$GAPIPE_GARUNDIR"
+export GAPIPE_GARUN="$GAPIPE_GARUN"
+export BUTLER_CONFIGDIR="${BUTLER_CONFIGDIR}"
+export BUTLER_COLLECTIONS="${BUTLER_COLLECTIONS}"
+
+# --------------------------------------------------------
+# The remaining configuration variables are for developers
+
+# pfsspec library settings
+
+export PFSSPEC_ROOT="${GAPIPE_ROOT}/src/ga_pfsspec_all"
+export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
+
+# Define dependencies that are not installed as modules (conda or eups)
+# but should be added to PYTHONPATH. Also define dependencies that are to be
+# loaded from "source".
+# The format is <module_name>:<path_to_source>:<rel_path_to_module> where
+# * <module_name> is the name of the module to be imported in python
+# * <path_to_source> is the path to the root of the source code of the module
+# * <rel_path_to_module> is the relative path to the module from the root of the source code,
+#   i.e. the path to be added to PYTHONPATH, typically 'python' or 'src/python'
+# Specify multiple modules separated by new lines.
+export GAPIPE_MODULES=""
+
+# Define the debug port for remote debugging with vscode.
+export GAPIPE_DEBUGPORT=""
+
+# Add extra modules to PYTHONPATH
+export PYTHONPATH=""
 EOF
 }
 
@@ -918,22 +981,22 @@ print_header
 parse_args "$@"
 
 # Check if the installation directory exists and create if not
-if [[ -d "${GAPIPE_DIR}" ]]; then
+if [[ -d "${GAPIPE_ROOT}" ]]; then
     if [[ $GAPIPE_UPGRADE -eq 0 && $GAPIPE_FORCE -eq 1 ]]; then
-        log_warning "Installation directory ${GAPIPE_DIR} already exists, but --force option is set. Proceeding with installation."
+        log_warning "Installation directory ${GAPIPE_ROOT} already exists, but --force option is set. Proceeding with installation."
     elif [[ $GAPIPE_UPGRADE -eq 1 ]]; then
-        log_info "Installation directory ${GAPIPE_DIR} already exists, proceeding with upgrade."
+        log_info "Installation directory ${GAPIPE_ROOT} already exists, proceeding with upgrade."
     else
-        log_error "Installation directory ${GAPIPE_DIR} already exists. Use --force to overwrite."
+        log_error "Installation directory ${GAPIPE_ROOT} already exists. Use --force to overwrite."
         exit 1
     fi
 else
     if [[ $GAPIPE_UPGRADE -eq 1 ]]; then
-        log_error "Installation directory ${GAPIPE_DIR} does not exist, cannot upgrade."
+        log_error "Installation directory ${GAPIPE_ROOT} does not exist, cannot upgrade."
         exit 1
     else
-        log_info "Creating gapipe directory ${GAPIPE_DIR}."
-        run_cmd "mkdir -p \"${GAPIPE_DIR}\""
+        log_info "Creating gapipe directory ${GAPIPE_ROOT}."
+        run_cmd "mkdir -p \"${GAPIPE_ROOT}\""
     fi
 fi
 
@@ -969,7 +1032,7 @@ if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
 fi
 
 # Create subdirectories for the installation
-run_cmd "pushd \"$(realpath "${GAPIPE_DIR}")\" > /dev/null"
+run_cmd "pushd \"$(realpath "${GAPIPE_ROOT}")\" > /dev/null"
 run_cmd "mkdir -p ./bin"
 run_cmd "mkdir -p ./data"
 
@@ -1059,8 +1122,8 @@ run_cmd "source \"${GAPIPE_CONDA_DIR}/bin/activate\" \"${GAPIPE_CONDA_ENV}\""
 if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
     log_info "Installing GAPIPE from source."
 
-    run_cmd "mkdir -p \"${GAPIPE_DIR}/src\""
-    run_cmd "pushd \"${GAPIPE_DIR}/src\" > /dev/null"
+    run_cmd "mkdir -p \"${GAPIPE_ROOT}/src\""
+    run_cmd "pushd \"${GAPIPE_ROOT}/src\" > /dev/null"
 
     # Clone and configure the repositories
     install_module_source "datamodel" "${DATAMODEL_GITHUB}" "${DATAMODEL_GIT_TAG}"
@@ -1083,10 +1146,10 @@ else
 fi
 
 # Create the remainder of the directory structure
-run_cmd "mkdir -p \"${GAPIPE_DIR}/data\""
-run_cmd "mkdir -p \"${GAPIPE_DIR}/data/pfsspec\""
-run_cmd "mkdir -p \"${GAPIPE_DIR}/work\""
-run_cmd "mkdir -p \"${GAPIPE_DIR}/out\""
+run_cmd "mkdir -p \"${GAPIPE_ROOT}/data\""
+run_cmd "mkdir -p \"${GAPIPE_ROOT}/data/pfsspec\""
+run_cmd "mkdir -p \"${GAPIPE_ROOT}/work\""
+run_cmd "mkdir -p \"${GAPIPE_ROOT}/out\""
 
 # TODO: Check if the installation was successful
 

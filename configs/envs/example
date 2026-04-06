@@ -10,10 +10,10 @@ export GAPIPE_LSST="1"
 export GAPIPE_USE_BUTLER="1"
 
 # Uncomment this if you don't want to use Butler
-# export GAPIPE_LSST="0"
+# export GAPIPE_USE_BUTLER="0"
 
-# Use without the LSST stack
-# export GAPIPE_LSST="1"
+# Uncomment these if you don't want to use the LSST stack
+# export GAPIPE_LSST="0"
 # export GAPIPE_CONDAPATH="~/miniconda"
 # export GAPIPE_CONDAENV="gapipe"
 
@@ -56,6 +56,7 @@ export GAPIPE_GARUN="$GARUN"
 export BUTLER_CONFIGDIR="$GAPIPE_DATADIR"
 export BUTLER_COLLECTIONS="$PIPE2D_RUN"
 
+# --------------------------------------------------------
 # The remaining configuration variables are for developers
 
 # Define dependencies that are not installed as modules (conda or eups)
