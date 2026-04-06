@@ -17,8 +17,8 @@ CATID=3006          # fluxstd
 # CATID=1007          # sky PS1
 
 export PFSSPEC_PFS_DATADIR="$DATADIR"
-export PFSSPEC_PFS_RERUNDIR="$RERUN"
-export PFSSPEC_PFS_RERUN="$RERUN"
+export PFSSPEC_PFS_RUNDIR="$RERUN"
+export PFSSPEC_PFS_RUN="$RERUN"
 export PFSSPEC_PFS_DESIGNDIR="$DATADIR/raw/pfsDesign"
 export PFSSPEC_PFS_CONFIGDIR="$DATADIR/raw/pfsConfig"
 
@@ -99,6 +99,6 @@ function gapipe-repo() {
 gapipe-repo extract-product PfsCalibrated,PfsSingle \
     --visit $VISITS \
     --catid $CATID \
-    --rerundir $RERUN \
+    --rundir $RERUN \
     --log-level DEBUG \
     --batch slurm --partition cpu --cpus 2 --memory 2G

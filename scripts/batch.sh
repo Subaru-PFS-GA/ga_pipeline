@@ -45,7 +45,7 @@
 # Send any extra parameters for gapipe commands
 EXTRAPARAMS=""
 # EXTRAPARAMS="--dry-run --log-level DEBUG"
-# EXTRAPARAMS="--dry-run --debug"
+# EXTRAPARAMS="--dry-run --top 1 --debug"
 # EXTRAPARAMS="--debug"
 
 # Skip processing entries
@@ -114,10 +114,10 @@ function load_gapipe_config() {
 
 function run_extract() {
     # Find the obs logs and the relevant entries
-    echo "Finding visits in the obslog with prefix $OBSPREFIX"
-    OBSLOGS="$GAPIPE_OBSLOGDIR/runs/${OBSDATE}/obslog/*.csv"
-    VISITS=($(cat ${OBSLOGS[0]} | grep "$OBSPREFIX" | cut -d ',' -f 1))
-    echo "Found ${#VISITS[@]} visits in the obs logs for prefix $OBSPREFIX."
+    UNIQUE_VISITS=($(unique_array "${GAPIPE_ALLVISITS[@]}"))
+    echo "Found ${#UNIQUE_VISITS[@]} visits in the obs logs."
+
+    # TODO: limit extract to certain catIDs or objIDs
 
     echo "Data directory: $GAPIPE_DATADIR/$GAPIPE_RUNDIR"
     if [[ $GAPIPE_USE_BUTLER -eq 1 ]]; then
@@ -130,8 +130,8 @@ function run_extract() {
 
     cmd=$(cat <<EOF
 gapipe-repo extract-product PfsCalibrated,PfsSingle \
-    --visit ${VISITS[@]} \
-    ${EXTRAPARAMS}
+    --visit ${UNIQUE_VISITS[*]} \
+    --yes ${EXTRAPARAMS}
 EOF
     )
 
@@ -251,13 +251,9 @@ function main_loop() {
         echo "  OBJID: ${OBJID[$i]}"
 
         if [[ $GAPIPE_USE_BUTLER -eq 1 ]]; then
-            # TODO: how to get BUTLER_CONFIGDIR from the config shell file?
-            export BUTLER_COLLECTIONS="${RUN[$i]}"
-            export BUTLER_CONFIGDIR="$DATADIR/data/repo/ssp/${PROPOSAL[$i]}/2d"
-
             echo "Using butler."
-            echo "Butler directory: $BUTLER_CONFIGDIR"
-            echo "Butler collections: $BUTLER_COLLECTIONS"
+            echo "  BUTLER_CONFIGDIR: $BUTLER_CONFIGDIR"
+            echo "  BUTLER_COLLECTIONS: $BUTLER_COLLECTIONS"
 
     #     echo "The following collections are available in the butler repo:"
     #     python <<EOF
