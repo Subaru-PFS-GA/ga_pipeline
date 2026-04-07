@@ -68,7 +68,12 @@ export BUTLER_COLLECTIONS="$PIPE2D_RUN"
 # * <rel_path_to_module> is the relative path to the module from the root of the source code,
 #   i.e. the path to be added to PYTHONPATH, typically 'python' or 'src/python'
 # Specify multiple modules separated by new lines.
-export GAPIPE_MODULES=""
+export GAPIPE_MODULES=\
+"datamodel:$GAPIPE_ROOT/src/datamodel:python
+ga_common:$GAPIPE_ROOT/src/ga_common:python
+ga_pfsspec:$GAPIPE_ROOT/src/ga_pfsspec_all:python
+gapipe:$GAPIPE_ROOT/src/ga_pipeline:python
+gapipe-test:${GAPIPE_ROOT}/src/ga_pipeline:tests"
 
 # Define the debug port for remote debugging with vscode.
 export GAPIPE_DEBUGPORT=5678

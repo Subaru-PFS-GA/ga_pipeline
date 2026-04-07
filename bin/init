@@ -58,14 +58,7 @@ else
 fi
 
 # Add default modules to GAPIPE_MODULES already set in the environment config
-
-export GAPIPE_MODULES=\
-"datamodel:$GAPIPE_ROOT/src/datamodel:python
-ga_common:$GAPIPE_ROOT/src/ga_common:python
-ga_pfsspec:$GAPIPE_ROOT/src/ga_pfsspec_all:python
-gapipe:$GAPIPE_ROOT/src/ga_pipeline:python
-gapipe-test:${GAPIPE_ROOT}:tests
-${GAPIPE_MODULES}"
+export GAPIPE_MODULES="${GAPIPE_MODULES}"
 
 # Construct the PYTHONPATH from the GAPIPE_MODULES variable
 # The modules are separated by spaces, and each module consists of
