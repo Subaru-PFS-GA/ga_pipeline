@@ -19,5 +19,5 @@ dependencies:
 - ipython
 - ipython_genutils
 - pip
-- pip:
-  - extinction
+# - pip:
+#   - extinction

@@ -12,7 +12,7 @@
 # Defaults
 GAPIPE_DEBUG=0                                  # 1 for debugging
 GAPIPE_UPGRADE=0                                # 1 for upgrading an existing installation
-GAPIPE_LOGLEVEL=1                               # Console log level
+GAPIPE_LOGLEVEL=3                               # Console log level
 GAPIPE_FORCE=0                                  # Force installation
 GAPIPE_ROOT="$(realpath "${HOME}")/pfsgapipe"   # Installation directory, can be overridden by command-line argument
 GAPIPE_TAG="master"                             # Git tag/branch to install
@@ -26,16 +26,18 @@ LSST_DIR="./stack"                              # LSST installation directory, r
 LSST_CONDA_DIR="./conda"                        # LSST conda installation directory, relative to LSST_DIR
 LSST_CONDA_ENV=""                               # LSST conda environment name, if GAPIPE_LSST is set to 1
 LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file to install additional dependencies.
+LSST_PIP_REQ_FILE='lsst_requirements.txt'       # Pip requirements file for additional dependencies to install in the LSST conda environment
 PFS_PIPE2D_VERSION="w.2025.52"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
 PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
 
 # Observation data locations
 # Set these variables before running the installer. This will be the default
 # values that are written to your environment configuration script.
-GAPIPE_DATAROOT="/data/pfs/programs"
+GAPIPE_DATAROOT="/pfs/data/programs"
 GAPIPE_OBSLOGDIR="$(realpath "${HOME}")/pfs/Subaru-PFS/spt_ssp_observation"
 GAPIPE_TARGETINGDIR="$(realpath "${HOME}")/pfs/targeting"
 
+# Configure a single data reduction run as an example
 GAPIPE_DATADIR="$GAPIPE_DATAROOT/S25A-OT02/2d"
 GAPIPE_RUN="S25A_November2025"
 GAPIPE_RUNDIR="S25A_November2025"
@@ -45,7 +47,7 @@ GAPIPE_GARUNDIR="S25A_November2025"
 GAPIPE_GARUN="S25A_November2025"
 
 BUTLER_CONFIGDIR="${GAPIPE_DATADIR}"
-BUTLER_COLLECTIONS="${GAPIPE_CONFIGDIR}:${GAPIPE_RUNDIR}"
+BUTLER_COLLECTIONS="${BUTLER_CONFIGDIR}:${GAPIPE_RUNDIR}"
 
 # Library github URLs and tags. For PFSSPEC, install all submodules with the same tag.
 # datamodel is installed as source because the eups package does not contain the most
@@ -93,6 +95,10 @@ function parse_args() {
             ;;
         -t|--tag)
             GAPIPE_TAG="$2"
+            GACOMMON_GIT_TAG="$GAPIPE_TAG"
+            PFSSPEC_GIT_TAG="$GAPIPE_TAG"
+            GAPIPE_GIT_TAG="$GAPIPE_TAG"
+            CHEMFIT_GIT_TAG="$GAPIPE_TAG"
             shift 2
             ;;
         --conda-dir)
@@ -264,6 +270,7 @@ function run_cmd() {
     # Log the command into the installation command file
     log_debug "Running command: ${cmd}"
     if [[ -n $INSTALL_COMMANDS_LOG ]]; then
+        echo "# Running command at $(date)" >> "${INSTALL_COMMANDS_LOG}"
         echo "${cmd}" >> "${INSTALL_COMMANDS_LOG}"
     fi
     
@@ -522,6 +529,17 @@ function update_conda_env() {
     run_cmd \
         "conda env update --quiet --name \""${env_name}"\" --file \""${env_file}"\"" \
         "conda_update_${env_name}.log"
+}
+
+function install_pip_requirements() {
+    # Install a pip requirements file into the current conda environment
+    # Assume that conda is already activated
+
+    req_file="$1"
+
+    run_cmd \
+        "pip install --quiet --no-color --no-input -r \"${req_file}\"" \
+        "pip_install_$(basename "${req_file}" | sed 's/\.[^.]*$//').log"
 }
 
 function get_lsst_dir() {
@@ -852,7 +870,7 @@ function generate_gapipe_env_file() {
 # You can modify this file to change the default values of the environment variables.
 
 # Directories of the GAPIPE installation
-export GAPIPE_ROOT="${GAPIPE_ROOT}/src/ga_pipeline"
+export GAPIPE_ROOT="${GAPIPE_ROOT}"
 export GAPIPE_CONDAPATH="${conda_dir}"
 export GAPIPE_CONDAENV="${GAPIPE_CONDA_ENV}"
 
@@ -919,7 +937,11 @@ export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
 # * <rel_path_to_module> is the relative path to the module from the root of the source code,
 #   i.e. the path to be added to PYTHONPATH, typically 'python' or 'src/python'
 # Specify multiple modules separated by new lines.
-export GAPIPE_MODULES=""
+export GAPIPE_MODULES="datamodel:$GAPIPE_ROOT/src/datamodel:python
+ga_common:$GAPIPE_ROOT/src/ga_common:python
+ga_pfsspec:$GAPIPE_ROOT/src/ga_pfsspec_all:python
+gapipe:$GAPIPE_ROOT/src/ga_pipeline:python
+gapipe-test:${GAPIPE_ROOT}/src/ga_pipeline:tests"
 
 # Define the debug port for remote debugging with vscode.
 export GAPIPE_DEBUGPORT=""
@@ -1066,10 +1088,23 @@ if [[ $GAPIPE_LSST -eq 1 ]]; then
     # Activate the newly installed conda environment
     activate_lsst_conda_env "${GAPIPE_CONDA_DIR}" "${GAPIPE_CONDA_ENV}"
 
+    # TODO: installing the pip package will try to activate the environment
+    #       but it fails because ${EUPS_DIR} has the value of
+    #           /srv/local/tmp/dobos/gapipe/stack/conda/eups
+    #       instead of
+    #           /srv/local/tmp/dobos/gapipe/stack/conda/envs/lsst-scipipe-12.1.0/eups
+
     # Install additional conda packages required by gapipe
     log_info "Installing additional conda packages for gapipe."
     conda_env_file="$(realpath $(join_path "$SCRIPT_DIR" "${LSST_CONDA_ENV_FILE}"))"
     update_conda_env "${GAPIPE_CONDA_ENV}" "${conda_env_file}"
+
+    # NOTE: activation of the LSST conda env breaks if trying to pip-install
+    #       packages with 'conda env update'. Install instead directly with pip
+    #       which will print a lot of errors but it's OK
+
+    pip_req_file="$(realpath $(join_path "$SCRIPT_DIR" "${LSST_PIP_REQ_FILE}"))"
+    install_pip_requirements "${pip_req_file}"
 
     # Install the LSST packages using EUPS
     install_lsst_eups_packages "${LSST_VERSION}" \
