@@ -1,42 +1,75 @@
 #!/bin/bash
 
-# Configure the pipeline for a given field
+# Configure and execute the pipeline for a given field in batch mode
+#
+# Usage:
+#
+#   ./scripts/batch.sh <VERB> <PARAM_RUN> <PARAM_GARUN> <PARAM_CONFIG>
+#
+# Example:
+#
+#   ./scripts/batch.sh configure u_price_dobos-20260327_20260327T185911Z dSph_dra_2025-06-pointings b
+#
+#   This command will load the common config from
+#       ./configs/gapipe/u_price_dobos-20260327_20260327T185911Z/common.sh,
+#   then load the field-specific config from
+#       ./configs/gapipe/u_price_dobos-20260327_20260327T185911Z/garuns/dSph_dra_2025-06-pointings.sh
+#   and then run the gapipe-configure command with the configuration template
+#       ./configs/gapipe/u_price_dobos-20260327_20260327T185911Z/b.py
+#
+# Arguments:
+#
+#   <VERB>: The action to perform. Must be one of:
+#       * extract: Extract the data from the PIPE2D run pfsCalibrated files
+#       * configure: Generate the configuration files for the GAPIPE run
+#       * run: Run the pipeline for the GAPIPE run
+#       * submit: Submit the pipeline run to the batch system (if configured)
+#       * catalog: Generate the catalog for the GAPIPE run
+#   <PARAM_RUN>: The name of the PIPE2D run to process the data from. This should
+#       match the directory name in ./configs/gapipe/<PARAM_RUN>/common.sh
+#   <PARAM_GARUN>: The name of the GAPIPE run to create. This should match the
+#       file name in ./configs/gapipe/<PARAM_RUN>/garuns/<PARAM_GARUN>.sh
+#   <PARAM_CONFIG>: The configuration template to use for the gapipe-configure command.
+#       This should match the file name in ./configs/gapipe/<PARAM_RUN>/<PARAM_CONFIG>.py
+#       Not used with the "extract" verb.
 
-# NOTE: dSph data from different runs cannot currently be combined into a single catalog!
+### Developer notes:
 
-set -e
+# NOTE: data from different PIPE2D runs cannot currently be combined into a single catalog!
+# TODO: allow for specifying more than one pipeline configs
 
-# Data directories
-export DATADIR="/scratch/aszalay1/dobos/pfs"
-export OBSLOGDIR="/home/dobos/project/Subaru-PFS/spt_ssp_observation"
+### End of developer notes
 
-# Configure gapipe for a given run and field
-declare -a GARUN
+### Start of user config section -- costumize script behavior here
+
+# Send any extra parameters for gapipe commands
+EXTRAPARAMS=""
+# EXTRAPARAMS="--dry-run --log-level DEBUG"
+# EXTRAPARAMS="--dry-run --top 1 --debug"
+# EXTRAPARAMS="--debug"
+
+# Skip processing entries
+SKIP_BEFORE=
+SKIP_AFTER=
+
+# Run in slurm, only applies to the gapipe-run command, only used with the "submit" verb
+BATCHPARAMS="--batch slurm --partition cpu --cpus 4 --mem 12G"
+
+### End of user config section
+
 declare -a PROPOSAL
-declare -a RERUN
-declare -a PIPECONFIG
+declare -a RUN
+declare -a RUNDIR
+declare -a GARUN
+declare -a GARUNDIR
+declare -a CONFIGRUN
+declare -a CONFIGRUNDIR
 declare -a OBSLOGS
 declare -a TARGETLISTS
 declare -a ASSIGNMENTS
 declare -a VISITS
 declare -a CATID
 declare -a OBJID
-
-# Batch config from a shell script
-BATCHCONFIG=$1
-source $BATCHCONFIG
-
-# Pipeline config name. Path is generated from RERUN and PIPECONFIG.
-PIPECONFIG=$2
-
-# EXTRAPARAMS="--debug"
-# EXTRAPARAMS="--top 10 --debug"
-EXTRAPARAMS=""
-
-# Run in slurm
-# BATCHPARAMS="--batch slurm --partition cpu --cpus 4 --mem 12G"
-# Run locally
-# BATCHPARAMS=""
 
 function unique_array() {
     local array=("$@")
@@ -47,83 +80,255 @@ function unique_array() {
             unique_array+=("$item")
         fi
     done
-    echo "${unique_array[@]}"
+    echo ${unique_array[@]}
 }
 
-echo "Number of configuration entries: ${#PROPOSAL[@]}"
-
-# Iterate over the configuration entries and run the gapipe-config script for
-# each catalog entry.
-for i in "${!PROPOSAL[@]}"; do
-
-    # # Skip the first few entries
-    # if [ $i -lt 1 ]; then
-    #     continue
+function run_cmd() {
+    cmd="$1"
+    echo "About to run command:"
+    echo "$cmd"
+    
+    # read -p "Proceed with command? [Y/n] " -n 1 -r
+    # echo
+    # if [[ ! $REPLY =~ ^[Yy]?$ ]]; then
+    #     echo "Aborting."
+    #     exit 1
     # fi
+    
+    eval "$cmd"
+}
 
-    echo "Configuring gapipe for entry $i:"
-    echo "  GARUN: ${GARUN[$i]}"
-    echo "  PROPOSAL: ${PROPOSAL[$i]}"
-    echo "  RERUN: ${RERUN[$i]}"
-    echo "  VISITS: ${VISITS[$i]}"
-    echo "  CATID: ${CATID[$i]}"
-    echo "  OBJID: ${OBJID[$i]}"
+function load_script_config() {
+    # Load main config file
+    echo "Loading configuration for run $PARAM_RUN."
+    source ./configs/gapipe/$PARAM_RUN/common.sh
+}
 
-    # These environment variables are used by the gapipe-configure
-    # end gapipe-run to find the relevant data
-    export BUTLER_CONFIGDIR="$DATADIR/ssp/${PROPOSAL[$i]}/2d"
-    export BUTLER_COLLECTIONS="${RERUN[$i]}"
-    export GAPIPE_RERUNDIR="${RERUN[$i]}"
-    export GAPIPE_RERUN="${RERUN[$i]}"
-    export GAPIPE_GARUNDIR="${GARUN[$i]}_${PIPECONFIG}"
+function load_gapipe_config() {
+    # Load the GAPIPE config file
+    echo "Loading configuration for ${PARAM_GARUN}."
+    source ./configs/gapipe/${PARAM_RUN}/garuns/$PARAM_GARUN.sh
 
-#     echo "The following collections are available in the butler repo:"
-#     python <<EOF
-# from lsst.daf.butler import Butler
-# butler = Butler('$DATADIR/ssp/${PROPOSAL[$i]}/2d', writeable=False)
-# print(butler.registry.queryCollections())
-# EOF
+    echo "Number of configuration entries: ${#GARUN[@]}"
+}
 
-    # Get the list of unique values for each of the configuration parameters
-    UNIQUE_OBSLOGS=$(unique_array "${OBSLOGS[$i]}")
-    UNIQUE_TARGETLISTS=$(unique_array "${TARGETLISTS[$i]}")
-    UNIQUE_ASSIGNMENTS=$(unique_array "${ASSIGNMENTS[$i]}")
-    UNIQUE_VISITS=$(unique_array "${VISITS[$i]}")
-    UNIQUE_CATIDS=$(unique_array "${CATID[$i]}")
+function run_extract() {
+    # Find the obs logs and the relevant entries
+    UNIQUE_VISITS=($(unique_array "${GAPIPE_ALLVISITS[@]}"))
+    echo "Found ${#UNIQUE_VISITS[@]} visits in the obs logs."
 
-    # OBJID[$i]="0x0000000200003a7e"
+    # TODO: limit extract to certain catIDs or objIDs
 
-    # Generate the configuration files for a given field
-    # gapipe-configure \
-    #     --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
-    #     --yes ${EXTRAPARAMS} \
-    #     --visit ${VISITS[$i]} \
-    #     --obs-logs ${OBSLOGS[$i]} \
-    #     --target-lists ${TARGETLISTS[$i]} \
-    #     --catid ${CATID[$i]} \
-    #     --objid ${OBJID[$i]}
+    echo "Data directory: $GAPIPE_DATADIR/$GAPIPE_RUNDIR"
+    if [[ $GAPIPE_USE_BUTLER -eq 1 ]]; then
+        echo "Using butler."
+        echo "Butler directory: $BUTLER_CONFIGDIR"
+        echo "Butler collections: $BUTLER_COLLECTIONS"
+    else
+        echo "Not using butler."
+    fi
 
-    # # Schedule the pipeline run for the stars of the given field
-    # gapipe-run \
-    #     --yes ${EXTRAPARAMS} \
-    #     --visit ${VISITS[$i]} \
-    #     --catid ${CATID[$i]} \
-    #     --objid ${OBJID[$i]} \
-    #     $BATCHPARAMS
+    cmd=$(cat <<EOF
+gapipe-repo extract-product PfsCalibrated,PfsSingle \
+    --visit ${UNIQUE_VISITS[*]} \
+    --yes ${EXTRAPARAMS}
+EOF
+    )
+
+    run_cmd "$cmd"
+}
+
+function run_configure() {
+    i=$1
+
+    # Generate the configuration files for a given GAPIPE run
+    cmd=$(cat <<EOF
+gapipe-configure \
+    --config "./configs/gapipe/${RUN[$i]}/common.py" "./configs/gapipe/${RUN[$i]}/${PARAM_CONFIG}.py" \
+    --yes ${EXTRAPARAMS} \
+    --obs-logs ${UNIQUE_OBSLOGS} \
+    --target-lists ${UNIQUE_TARGETLISTS} \
+    --configrundir "${CONFIGRUNDIR}" \
+    --configrun "${CONFIGRUN}" \
+    --run "${RUN[$i]}" \
+    --rundir "${RUNDIR[$i]}" \
+    --garun "${GARUN[$i]}" \
+    --garundir "${GARUNDIR[$i]}" \
+    --visit ${UNIQUE_VISITS} \
+    --catid ${UNIQUE_CATIDS} \
+    --objid ${OBJID[$i]}
+EOF
+    )
+    run_cmd "$cmd"
+}
+
+function run_run() {
+    i=$1
+
+    # Run the pipeline for the given field
+        cmd=$(cat <<EOF
+gapipe-run \
+    --yes ${EXTRAPARAMS} ${BATCHPARAMS} \
+    --configrundir "${CONFIGRUNDIR}" \
+    --configrun "${CONFIGRUN}" \
+    --run "${RUN[$i]}" \
+    --rundir "${RUNDIR[$i]}" \
+    --garun "${GARUN[$i]}" \
+    --garundir "${GARUNDIR[$i]}" \
+    --visit ${UNIQUE_VISITS} \
+    --catid ${UNIQUE_CATIDS} \
+    --objid ${OBJID[$i]}
+EOF
+    )
+    run_cmd "$cmd"
+}
+
+function run_catalog() {
+    j=$1
 
     # Generate the catalog for the given field for each catId
     for catid in ${UNIQUE_CATIDS[*]}; do
         echo "Generating catalog for catID $catid"
         gapipe-catalog \
-            --config ./configs/gapipe/${RERUN[$i]}/${PIPECONFIG}.py \
+            --config "./configs/gapipe/${RUN[$j]}/common.py" "./configs/gapipe/${RUN[$j]}/${PARAM_CONFIG}.py" \
             --obs-log ${UNIQUE_OBSLOGS[*]} \
             --target-lists ${UNIQUE_TARGETLISTS[*]} \
             --assignments ${UNIQUE_ASSIGNMENTS[*]} \
+            --configrundir "${CONFIGRUNDIR}" \
+            --configrun "${CONFIGRUN}" \
+            --run "${RUN[$j]}" \
+            --rundir "${RUNDIR[$j]}" \
+            --garun "${GARUN[$j]}" \
+            --garundir "${GARUNDIR[$j]}" \
             --visit ${UNIQUE_VISITS[*]} \
             --include-missing-objects \
             --catid $catid ${EXTRAPARAMS}
     done
+}
 
-    # exit 0
+function main_loop() {
 
-done
+    echo "Starting main loop over ${#GARUN[@]} configuration entries."
+
+    # Iterate over the configuration entries and run the gapipe-config script for
+    # each catalog entry.
+    for i in "${!GARUN[@]}"; do
+
+        # # Skip entries outside the specified range
+        if [ -n "$SKIP_BEFORE" ] && [ $i -lt $SKIP_BEFORE ]; then
+            echo "Skipping entry $i before $SKIP_BEFORE"
+            continue
+        fi
+
+        if [ -n "$SKIP_AFTER" ] && [ $i -ge $SKIP_AFTER ]; then
+            echo "Skipping entry $i after $SKIP_AFTER"
+            continue
+        fi
+
+        # Limit to a single object for testing
+        # OBJID[$i]="0x0000000200003a7e"
+
+        # Get the list of unique values for each of the configuration parameters
+        UNIQUE_OBSLOGS=$(unique_array "${OBSLOGS[$i]}")
+        UNIQUE_TARGETLISTS=$(unique_array "${TARGETLISTS[$i]}")
+        UNIQUE_ASSIGNMENTS=$(unique_array "${ASSIGNMENTS[$i]}")
+        UNIQUE_VISITS=$(unique_array "${VISITS[$i]}")
+        UNIQUE_CATIDS=$(unique_array "${CATID[$i]}")
+
+        echo "Running GAPIPE for entry $i:"
+        echo "  Input directory: $GAPIPE_DATADIR/$RUNDIR"
+        echo "  Work directory: $GAPIPE_WORKDIR/$GAPIPE_RUNDIR"
+        echo "  Output directory: $GAPIPE_OUTDIR/$GAPIPE_RUNDIR"
+        echo "  PROPOSAL: ${PROPOSAL[$i]}"
+        echo "  RUN: ${RUN[$i]}"
+        echo "  RUNDIR: ${RUNDIR[$i]}"
+        echo "  CONFIGRUN: $CONFIGRUN"
+        echo "  CONFIGRUNDIR: $CONFIGRUNDIR"
+        echo "  GARUN: ${GARUN[$i]}"
+        echo "  GARUNDIR: ${GARUNDIR[$i]}"
+        echo "  VISITS: ${UNIQUE_VISITS}"
+        echo "  CATID: ${UNIQUE_CATIDS}"
+        echo "  OBJID: ${OBJID[$i]}"
+
+        if [[ $GAPIPE_USE_BUTLER -eq 1 ]]; then
+            echo "Using butler."
+            echo "  BUTLER_CONFIGDIR: $BUTLER_CONFIGDIR"
+            echo "  BUTLER_COLLECTIONS: $BUTLER_COLLECTIONS"
+
+    #     echo "The following collections are available in the butler repo:"
+    #     python <<EOF
+    # from lsst.daf.butler import Butler
+    # butler = Butler('$DATADIR/ssp/${PROPOSAL[$i]}/2d', writeable=False)
+    # print(butler.registry.queryCollections())
+    # EOF
+
+        else
+            echo "Not using butler for entry $i."
+        fi
+
+        case $PARAM_VERB in
+            "configure")
+                run_configure $i
+                ;;
+            "run"|"submit")
+                run_run $i
+                ;;
+            "catalog")
+                run_catalog $i
+                ;;
+            *)
+                echo "Invalid verb: $PARAM_VERB. Must be one of: extract, configure, run, submit, catalog."
+                exit 1
+                ;;
+        esac
+
+    done
+}
+
+set -e
+
+# Process command line arguments
+
+PARAM_VERB="$1"           # extract, configure, run, submit, catalog
+PARAM_RUN="$2"            # PIPE2D run
+PARAM_GARUN="$3"          # GAPIPE run
+PARAM_CONFIG="$4"         # Pipeline config name. Path is generated from RUN and PIPECONFIG.
+
+# Set variables that are used in the config files based on the command line arguments
+
+GAPIPE_RUN="${PARAM_RUN}"
+GAPIPE_CONFIG="${PARAM_CONFIG}"
+
+case $PARAM_VERB in
+    "extract")
+        load_script_config
+        run_extract
+        ;;
+    "configure")
+        load_script_config
+        load_gapipe_config
+        main_loop
+        ;;
+    "run")
+        load_script_config
+        load_gapipe_config
+        BATCHPARAMS=""
+        main_loop
+        ;;
+    "submit")
+        load_script_config
+        load_gapipe_config
+        main_loop
+        ;;
+    "catalog")
+        load_script_config
+        load_gapipe_config
+        main_loop
+        ;;
+    *)
+        echo "Invalid verb: $PARAM_VERB. Must be one of: extract, configure, run, submit, catalog."
+        exit 1
+        ;;
+esac
+
+set +e

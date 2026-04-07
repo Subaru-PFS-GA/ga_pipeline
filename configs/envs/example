@@ -1,32 +1,77 @@
 #!/bin/bash
 
-export GAPIPE_ROOT="~/project/ga_pipeline"
-export GAPIPE_CONDAPATH="~/miniconda3"
-export GAPIPE_CONDAENV="gapipe"
-export GAPIPE_DEBUGPORT=5678
+# Directories of the GAPIPE installation
+export GAPIPE_ROOT="~/gapipe"
+export GAPIPE_CONDAPATH="$GAPIPE_ROOT/stack/conda"
+export GAPIPE_CONDAENV="lsst-scipipe-12.1.0"
 
-export GAPIPE_WORKDIR="~/project/ga_pipeline/work"
-export GAPIPE_OUTDIR="~/project/ga_pipeline/out"
-export GAPIPE_DATADIR="~/data/edr2/"
-export GAPIPE_RERUNDIR="run15"
+# Use these settings to enable Butler for data lookup
+export GAPIPE_LSST="1"
+export GAPIPE_USE_BUTLER="1"
 
-export PFSSPEC_PFS_DATADIR="/work/datastore"
-export PFSSPEC_PFS_RERUNDIR="u/kiyoyabe/processing/./run20/20250228a"
-export PFSSPEC_PFS_RERUN="u_kiyoyabe_processing_run20_20250228a"
-export PFSSPEC_PFS_DESIGNDIR="/data/."
-export PFSSPEC_PFS_CONFIGDIR="/work/datastore/PFS/raw/./pfsConfig"
+# Uncomment this if you don't want to use Butler
+# export GAPIPE_USE_BUTLER="0"
 
-export PFSSPEC_ROOT="~/project/ga_pfsspec_all"
-export PFSSPEC_DATA="~/data/pfsspec"
+# Uncomment these if you don't want to use the LSST stack
+# export GAPIPE_LSST="0"
+# export GAPIPE_CONDAPATH="~/miniconda"
+# export GAPIPE_CONDAENV="gapipe"
 
-# Set GAPIPE_LSST="1" to use the LSST stack
-export GAPIPE_LSST="0"
+# Data root directory, this can be used in the config files
+# to make them portable across different machines with different
+# directory structures.
+export GAPIPE_DATAROOT="~/data/pfs/programs"
+
+# Data directories for temporary data (work) and final output (out)
+# You can change these to point to scratch or other fast storage when
+# running on a cluster.
+export GAPIPE_WORKDIR="$GAPIPE_ROOT/work"
+export GAPIPE_OUTDIR="$GAPIPE_ROOT/out"
+
+# Full path to the observation logs
+# For the SSP, use the git repo https://github.com/Subaru-PFS/spt_ssp_observation
+export GAPIPE_OBSLOGDIR="~/Subaru-PFS/spt_ssp_observation"
+
+# To include the targeting data in the final catalog, such as fluxes and magnitudes,
+# you need to specify the location of the targeting data. This is only relevant
+# for field prepared with the GA version of Netflow.
+export GAPIPE_TARGETINGDIR="~/data/targeting"
+
+# The remaining configuration variables are for a specific GA pipeline run
+# You tipically want to override these before executing the pipeline
+# When using the batch script, use the common.sh config file to define these
+# instead of setting them here in the global environment
+PIPE2D_RUN="S25A_November2025"
+PIPE2D_RUNDIR="$PIPE2D_RUN"
+GARUN="dSph_dra_S25A_November2025_mr"
+GARUNDIR="$GARUN"
+
+export GAPIPE_DATADIR="$GAPIPE_DATAROOT/S25A-OT02/2d"
+export GAPIPE_RUNDIR="$PIPE2D_RUNDIR"
+export GAPIPE_RUN="$PIPE2D_RUN"
+export GAPIPE_CONFIGRUNDIR="$PIPE2D_RUNDIR"
+export GAPIPE_CONFIGRUN="$PIPE2D_RUN"
+export GAPIPE_GARUNDIR="$GARUNDIR"
+export GAPIPE_GARUN="$GARUN"
+export BUTLER_CONFIGDIR="$GAPIPE_DATADIR"
+export BUTLER_COLLECTIONS="$PIPE2D_RUN"
+
+# --------------------------------------------------------
+# The remaining configuration variables are for developers
 
 # Define dependencies that are not installed as modules (conda or eups)
-# and should be added to PYTHONPATH. Also define dependencies that are to be
-# loaded from 'source'.
-export GAPIPE_MODULES="ga_pfsspec:$PFSSPEC_ROOT:python"
+# but should be added to PYTHONPATH. Also define dependencies that are to be
+# loaded from "source".
+# The format is <module_name>:<path_to_source>:<rel_path_to_module> where
+# * <module_name> is the name of the module to be imported in python
+# * <path_to_source> is the path to the root of the source code of the module
+# * <rel_path_to_module> is the relative path to the module from the root of the source code,
+#   i.e. the path to be added to PYTHONPATH, typically 'python' or 'src/python'
+# Specify multiple modules separated by new lines.
+export GAPIPE_MODULES=""
 
+# Define the debug port for remote debugging with vscode.
+export GAPIPE_DEBUGPORT=5678
+
+# Add extra modules to PYTHONPATH
 export PYTHONPATH=""
-
-export DISPLAY=localhost:22

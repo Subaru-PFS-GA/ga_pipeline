@@ -1,13 +1,19 @@
+import os
 from pfs.ga.pfsspec.core import Trace
 
-GAPIPE_ROOT = '/scratch/aszalay1/dobos/pfs/gapipe'
-RERUN = 'S25A_November2025'
+# TODO: DELETE
+# GAPIPE_ROOT = '/scratch/aszalay1/dobos/pfs/gapipe'
+# RUN = 'u_price_dobos-20260327_20260327T185911Z'
+# RUNDIR = 'u/price/dobos-20260327/20260327T185911Z'
+
+GAPIPE_ROOT = os.environ['GAPIPE_ROOT']
+ARMS = [ 'b', 'm' ]
 
 config = dict(
     workdir = f'{GAPIPE_ROOT}/work',
     outdir = f'{GAPIPE_ROOT}/out',
-    rerun = RERUN,
-    rerundir = RERUN,
+    run = '',
+    rundir = '',
     ignore_missing_files = True,
     trace_args = dict(
         plot_level = Trace.PLOT_LEVEL_INFO,
@@ -41,7 +47,7 @@ config = dict(
         }
     ),
     tempfit = dict(
-        fit_arms = [ 'm' ],
+        fit_arms = ARMS,
         require_all_arms = False,
         
         model_grid_path = f'{GAPIPE_ROOT}/data/pfsspec/models/stellar/grid/gk2025/gk2025_binned_compressed/spectra.h5',
@@ -95,31 +101,31 @@ config = dict(
                 instrument = 'hsc',
                 priority = 1,
                 filter_name = 'g_hsc',
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-g.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-g.txt',
             ),
             'r_hsc': dict(
                 instrument = 'hsc',
                 priority = 1,
                 filter_name = ['r_hsc', 'r_old_hsc'],
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-r.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-r.txt',
             ),
             'r2_hsc': dict(
                 instrument = 'hsc',
                 priority = 1,
                 filter_name = 'r2_hsc',
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-r2.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-r2.txt',
             ),
             'i_hsc': dict(
                 instrument = 'hsc',
                 priority = 1,
                 filter_name = ['i_hsc', 'i_old_hsc'],
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-i.txt',
             ),
             'i2_hsc': dict(
                 instrument = 'hsc',
                 priority = 1,
                 filter_name = 'i2_hsc',
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i2.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-i2.txt',
             ),
         },
 
@@ -222,7 +228,7 @@ config = dict(
         )
     ),
     coadd = dict(
-        coadd_arms = [ 'm' ],
+        coadd_arms = ARMS,
         trace_args = dict(
             plot_level = Trace.PLOT_LEVEL_INFO,
         ),

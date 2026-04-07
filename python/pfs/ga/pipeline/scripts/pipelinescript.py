@@ -1,4 +1,5 @@
 import os
+import argparse
 from glob import glob
 from types import SimpleNamespace
 import numpy as np
@@ -18,7 +19,10 @@ from pfs.ga.pfsspec.survey.pfs.datamodel import *
 from pfs.ga.pfsspec.survey.repo import FileSystemRepo, ButlerRepo
 from pfs.ga.pfsspec.survey.pfs import PfsGen3Repo
 from ..gapipe.config import *
-from ..repo import GAPipeWorkdirConfig, PfsGen3ButlerConfig
+from ..repo import (
+    GAPipeWorkdirConfig, PfsGen3ButlerConfig, PfsGen3FileSystemConfig,
+    PfsGAFileSystemConfig, PfsConfigOnlyConfig
+)
 from ..common import PipelineError
 
 from ..setup_logger import logger
@@ -28,47 +32,58 @@ class PipelineScript(Script):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.__products = {
-            PfsSingle: SimpleNamespace(
-                print = [ self.__print_pfsSingle ]
+        self.__repo_types = {
+            'butler_repo': dict(
+                repo_type = ButlerRepo,
+                config = PfsGen3ButlerConfig
             ),
-            PfsObject: SimpleNamespace(
-                print = [ self.__print_pfsObject ]
+            'config_repo': dict(
+                repo_type = FileSystemRepo,
+                config = PfsConfigOnlyConfig
             ),
-            PfsDesign: SimpleNamespace(
-                print = [ self.__print_pfsDesign ]
+            'input_repo': dict(
+                repo_type = FileSystemRepo,
+                config = PfsGen3FileSystemConfig
             ),
-            PfsConfig: SimpleNamespace(
-                print = [ self.__print_pfsConfig ]
+            'work_repo': dict(
+                repo_type = FileSystemRepo,
+                config = GAPipeWorkdirConfig
             ),
-            PfsMerged: SimpleNamespace(
-                print = [ self.__print_pfsMerged ]
+            'output_repo': dict(
+                repo_type = FileSystemRepo,
+                config = PfsGAFileSystemConfig
             ),
-            PfsStar: SimpleNamespace(
-                print = [ self.__print_pfsStar]
-            )
         }
 
         self.__plot_level = None
 
         self.__config = self._create_config()
-        self.__input_repo = self._create_input_repo()
-        self.__work_repo = self._create_work_repo()
+        self.__use_butler = None        # Use Butler for pfsConfig files and input files
+
+        self.__config_repo = None       # Data repository to read PfsConfig files from
+        self.__input_repo = None        # Data repository of input file
+        self.__work_repo = None         # Working data repository for intermediate files
+        self.__output_repo = None       # Data repository for output files
 
     def __get_plot_level(self):
         return self.__plot_level
 
     plot_level = property(__get_plot_level)
 
-    def __get_products(self):
-        return self.__products
+    def __get_use_butler(self):
+        return self.__use_butler
 
-    products = property(__get_products)
+    use_butler = property(__get_use_butler)
 
     def __get_config(self):
         return self.__config
     
     config = property(__get_config)
+
+    def __get_config_repo(self):
+        return self.__config_repo
+
+    config_repo = property(__get_config_repo)
 
     def __get_input_repo(self):
         return self.__input_repo
@@ -80,11 +95,37 @@ class PipelineScript(Script):
     
     work_repo = property(__get_work_repo)
 
+    def __get_output_repo(self):
+        return self.__output_repo
+
+    output_repo = property(__get_output_repo)
+
+    def _enumerate_repos(self, repo_list=None):
+        if repo_list is None:
+            repo_list = ['config', 'input', 'work', 'output']
+            
+        for i, repo_name in enumerate(repo_list):
+            yield i, getattr(self, f'{repo_name}_repo'), repo_name
+
     def _add_args(self):
         self.add_arg('--plot-level', type=str, choices=['NONE', 'INFO', 'DEBUG', 'TRACE'], help='Plot level for tracing')
+        self.add_arg("--butler", dest='use_butler', action=argparse.BooleanOptionalAction, help='Whether to use Butler for data access.')
+        # self.add_arg('--butler', action='store_true', dest='use_butler', help='Whether to use Butler for data access.')
+        # self.add_arg('--no-butler', action='store_false', dest='use_butler', help='Whether to use Butler for data access.')
 
-        self.__input_repo.add_args(self, ignore_duplicates=True)
-        self.__work_repo.add_args(self, ignore_duplicates=True)
+        # Register custom directories, these will specialize the work and output repos
+        self.add_arg('--workdir', type=str, help='Work directory for the pipeline.')
+        self.add_arg('--outdir', type=str, help='Output directory for the pipeline.')
+        self.add_arg('--configrun', type=str, help='Run name for pfsConfig files.')
+        self.add_arg('--configrundir', type=str, help='Run directory for pfsConfig files.')
+        self.add_arg('--garun', type=str, help='Run name for the GA pipeline.')
+        self.add_arg('--garundir', type=str, help='Run directory for the GA pipeline.')
+
+        # Instantiate all repo types to register their command-line arguments
+        for k in self.__repo_types:
+            r = PfsGen3Repo(**self.__repo_types[k])
+            r.add_args(self, ignore_duplicates=True)
+
         super()._add_args()
 
     def _init_from_args_pre_logging(self, args):
@@ -94,6 +135,12 @@ class PipelineScript(Script):
         #       because of this, the log file will go to the default location which
         #       is determined by the environment variables instead of any config files or
         #       command-line arguments. This needs to be fixed.
+
+        self.__use_butler = self.get_arg('use_butler', args, self.get_env('GAPIPE_USE_BUTLER', '0') in ['1', 'true', 'True'])
+        self.__config_repo = self._create_config_repo()
+        self.__input_repo = self._create_input_repo()
+        self.__work_repo = self._create_work_repo()
+        self.__output_repo = self._create_output_repo()
 
     def _init_from_args(self, args):
 
@@ -113,21 +160,15 @@ class PipelineScript(Script):
             self.__config.load(config_files, ignore_collisions=True)
 
         # Override configuration with command-line arguments
-        if self.is_arg('workdir', args):
-            self.__config.workdir = self.get_arg('workdir', args, self.get_env('GAPIPE_WORKDIR'))
-        if self.is_arg('outdir', args):
-            self.__config.outdir = self.get_arg('outdir', args, self.get_env('GAPIPE_OUTDIR'))
-        if self.is_arg('datadir', args):
-            self.__config.datadir = self.get_arg('datadir', args)
-        if self.is_arg('rerun', args):
-            self.__config.rerun = self.get_arg('rerun', args)
-        if self.is_arg('rerundir', args):
-            self.__config.rerundir = self.get_arg('rerundir', args)
+        self.__config.init_from_args(args)
 
         # Initialize the data repository, first from the configuration,
         # then from the command-line arguments
+        
+        self._init_config_repo()
         self._init_input_repo()
         self._init_work_repo()
+        self._init_output_repo()
 
         # Update the repo directories based on the config and the command-line arguments
         self._update_repo_directories(self.__config)
@@ -151,6 +192,14 @@ class PipelineScript(Script):
     def _create_config(self):
         return GAPipelineConfig()
 
+    def _create_config_repo(self):
+        if self.__use_butler:
+            repo = PfsGen3Repo(**self.__repo_types['butler_repo'])
+        else:
+            repo = PfsGen3Repo(**self.__repo_types['config_repo'])
+
+        return repo
+
     def _create_input_repo(self):
         """
         Create a data repository connector to the file system.
@@ -163,30 +212,36 @@ class PipelineScript(Script):
         #       the issue is that we need the repo before loading the config
         #       in order to register the command-line arguments
 
-        # repo = PfsGen3Repo(
-        #     repo_type = FileSystemRepo,
-        #     config = PfsGen3FileSystemConfig
-        # )
-
-        repo = PfsGen3Repo(
-            repo_type = ButlerRepo,
-            config = PfsGen3ButlerConfig
-        )
+        if self.__use_butler:
+            repo = PfsGen3Repo(**self.__repo_types['butler_repo'])
+        else:
+            repo = PfsGen3Repo(**self.__repo_types['input_repo'])
 
         return repo
 
     def _create_work_repo(self):
-        repo = PfsGen3Repo(
-            repo_type = FileSystemRepo,
-            config = GAPipeWorkdirConfig
-        )
+        repo = PfsGen3Repo(**self.__repo_types['work_repo'])
 
         return repo
+
+    def _create_output_repo(self):
+        repo = PfsGen3Repo(**self.__repo_types['output_repo'])
+
+        return repo
+
+    def _init_config_repo(self):
+        # When configured, allow for certain input files to be missing
+        # This is useful when the pipeline is run on a subset of data
+        # This setting can be overridden in the command line
+
+        self.__config_repo.ignore_missing_files = self.__config.ignore_missing_files
+        self.__config_repo.init_from_args(self)
 
     def _init_input_repo(self):
         # When configured, allow for certain input files to be missing
         # This is useful when the pipeline is run on a subset of data
         # This setting can be overridden in the command line
+
         self.__input_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__input_repo.init_from_args(self)
 
@@ -194,8 +249,21 @@ class PipelineScript(Script):
         # When configured, allow for certain input files to be missing
         # This is useful when the pipeline is run on a subset of data
         # This setting can be overridden in the command line
+
         self.__work_repo.ignore_missing_files = self.__config.ignore_missing_files
         self.__work_repo.init_from_args(self)
+        self.__work_repo.filters.run.parse([ self.__config.run ])
+        self.__work_repo.defaults.run = self.__config.run
+        self.__work_repo.filters.garun.parse([ self.__config.garun ])
+        self.__work_repo.defaults.garun = self.__config.garun
+
+    def _init_output_repo(self):
+        self.__output_repo.init_from_args(self)
+
+        self.__output_repo.ignore_missing_files = self.__config.ignore_missing_files
+        self.__output_repo.init_from_args(self)
+        self.__output_repo.filters.garun.parse([ self.__config.garun ])
+        self.__output_repo.defaults.garun = self.__config.garun
 
     def _update_repo_directories(self, config):
         """
@@ -206,35 +274,56 @@ class PipelineScript(Script):
         #   2. Configuration file
         #   3. Default values
 
-        # Override configuration with command-line arguments
-        if self.is_arg('workdir'):
-            config.workdir = self.get_arg('workdir')
-        if self.is_arg('outdir'):
-            config.outdir = self.get_arg('outdir')
-        if self.is_arg('datadir'):
-            config.datadir = self.get_arg('datadir')
-        if self.is_arg('rerundir'):
-            config.rerundir = self.get_arg('rerundir')
+        if config.datadir is None:
+            self.__config_repo.set_variable('datadir', config.datadir)
+        if config.configrundir is not None:
+            # Set the special directory for pfsConfig files which might be
+            # in a special directory for non-public data releases.
+            self.__input_repo.set_variable('configrundir', config.configrundir)
+        if config.configrun is not None:
+            # Override  the run filter for pfsConfig files which might be in
+            # a special directory for non-public data releases.
+            self.__config_repo.filters.run.parse([ config.configrun ])
 
-        # Override data store connector with configuration values
-        for repo in [self.__input_repo, self.__work_repo]:
-            if config.workdir is not None:
-                repo.set_variable('workdir', config.workdir)
-            if config.outdir is not None:
-                repo.set_variable('outdir', config.outdir)
-            # if config.datadir is not None:
-            #     repo.set_variable('datadir', config.datadir)
-            if config.rerundir is not None:
-                repo.set_variable('rerundir', config.rerundir)
-            if config.rerun is not None:
-                repo.set_variable('rerun', config.rerun)
+        if config.datadir is not None:
+            self.__input_repo.set_variable('datadir', config.datadir)
+        if config.rundir is not None:
+            self.__input_repo.set_variable('rundir', config.rundir)
+        if config.run is not None:
+            self.__input_repo.filters.run.parse([ config.run ])
+
+        if config.workdir is not None:
+            self.__work_repo.set_variable('datadir', config.workdir)
+        if config.rundir is not None:
+            self.__work_repo.set_variable('rundir', config.rundir)
+        if config.run is not None:
+            self.__work_repo.filters.run.parse([ config.run ])
+        if config.garundir is not None:
+            self.__work_repo.set_variable('garundir', config.garundir)
+        if config.garun is not None:
+            self.__work_repo.filters.garun.parse([ config.garun ])
+            self.__work_repo.defaults.garun = config.garun
+
+        if config.outdir is not None:
+            self.__output_repo.set_variable('datadir', config.outdir)
+        if config.garundir is not None:
+            self.__output_repo.set_variable('garundir', config.garundir)
+        if config.garun is not None:
+            self.__output_repo.filters.garun.parse([ config.garun ])
+            self.__output_repo.defaults.garun = config.garun
+
+    def _log_repo_variables(self):
+        for i, repo, name in self._enumerate_repos():
+            logger.info(f'{name[0].upper()}{name[1:]} repository variables:')
+            for k in repo.variables:
+                logger.info(f'  {k}: {repo.get_resolved_variable(k)}')
 
     def _set_log_file_to_workdir(self):
         # Override logging directory to use the same as the pipeline workdir
         logfile = os.path.basename(self.log_file)
         self.log_file = os.path.join(
-            self.work_repo.get_resolved_variable('workdir'),
-            self.work_repo.get_resolved_variable('rerundir'),
+            self.work_repo.get_resolved_variable('datadir'),
+            self.config.garundir,
             logfile)
 
     def _load_obs_log_files(self, obs_logs_path):
@@ -337,7 +426,7 @@ class PipelineScript(Script):
 
                 # Skip sky files because they're too large
                 if f.endswith('sky.feather'):
-                    logger.info(f'Skipping sky target list file {f} because it is too large.')
+                    logger.info(f'Skipping sky target list file {f}.')
                     continue
                 
                 logger.info(f'Loading target list from {f}.')
@@ -474,118 +563,5 @@ class PipelineScript(Script):
 
         return assignments_idx
 
-    def __print_info(self, object, filename):
-        print(f'{type(object).__name__}')
-        print(f'  Full path: {filename}')
-
-    def __print_identity(self, identity):
-        print(f'Identity')
-        d = identity.__dict__
-        for key in d:
-            # Check if pfsDesignId is in the key
-            if 'pfsdesignid' in key.lower():
-                print(f'  {key}: 0x{d[key]:016x}')
-            else:
-                print(f'  {key}: {d[key]}')
-
-    def __print_target(self, target):
-        print(f'Target')
-        d = target.__dict__
-        for key in d:
-            # Check if pfsDesignId is in the key
-            if 'objid' in key.lower() or 'pfsdesignid' in key.lower():
-                print(f'  {key}: 0x{d[key]:016x}')
-            else:
-                print(f'  {key}: {d[key]}')
-
-    def __print_observations(self, observations, s=()):
-        print(f'Observations')
-        print(f'  num: {observations.num}')
-        d = observations.__dict__
-        for key in d:
-            # Check if pfsDesignId is in the key
-            if key == 'num':
-                pass
-            elif key == 'arm':
-                print(f'  {key}: {d[key]}')
-            elif 'objid' in key.lower() or 'pfsdesignid' in key.lower():
-                v = ' '.join(f'{x:016x}' for x in d[key][s])
-                print(f'  {key}: {v}')
-            else:
-                v = ' '.join(str(x) for x in np.array(d[key])[s])
-                print(f'  {key}: {v}')
-
-    def __print_pfsDesign(self, filename):
-        pass
-
-    def __print_pfsConfig(self, product, identity, filename):
-        self.__print_info(product, filename)
-        print(f'  DesignName: {product.designName}')
-        print(f'  PfsDesignId: 0x{product.pfsDesignId:016x}')
-        print(f'  Variant: {product.variant}')
-        print(f'  Visit: {product.visit}')
-        print(f'  Date: {identity.date:%Y-%m-%d}')
-        print(f'  Center: {product.raBoresight:0.5f}, {product.decBoresight:0.5f}')
-        print(f'  PosAng: {product.posAng:0.5f}')
-        print(f'  Arms: {product.arms}')
-        print(f'  Tract: {np.unique(product.tract)}')
-        print(f'  Patch: {np.unique(product.patch)}')
-        print(f'  CatId: {np.unique(product.catId)}')
-        print(f'  ProposalId: {np.unique(product.proposalId)}')
-
-    def __print_pfsSingle(self, product, identity, filename):
-        self.__print_info(product, filename)
-
-        print(f'  nVisit: {product.nVisit}')
-        print(f'  Wavelength: {product.wavelength.shape}')
-        print(f'  Flux: {product.wavelength.shape}')
-        
-        self.__print_target(product.target)
-        self.__print_observations(product.observations, s=0)
-
-        f, id = self.input_repo.locate_product(
-            PfsConfig,
-            pfsDesignId=product.observations.pfsDesignId[0],
-            visit=product.observations.visit[0]
-        )
-        p, id, f = self.input_repo.load_product(PfsConfig, identity=id)
-        self.__print_pfsConfig(p, id, f)
-
-    def __print_pfsObject(self, product, identity, filename):
-        self.__print_info(product, filename)
-
-        print(f'  nVisit: {product.nVisit}')
-        print(f'  Wavelength: {product.wavelength.shape}')
-        print(f'  Flux: {product.wavelength.shape}')
-
-        self.__print_target(product.target)
-        self.__print_observations(product.observations, s=())
-
-    def __print_pfsMerged(self, filename):
-        merged = PfsMerged.readFits(filename)
-
-        self.__print_info(merged, filename)
-        self.__print_identity(merged.identity)
-        print(f'Arrays')
-        print(f'  Wavelength: {merged.wavelength.shape}')
-        print(f'  Flux:       {merged.wavelength.shape}')
-
-        # Try to locate the corresponding pfsConfig file
-        try:
-            filename, identity = self.input_repo.locate_pfsConfig(
-                visit = merged.identity.visit,
-                pfsDesignId = merged.identity.pfsDesignId,
-            )
-            self.__print_pfsConfig(filename=filename)
-        except Exception as e:
-            raise e
-
-    def __print_pfsStar(self, product, identity, filename):
-        self.__print_info(product, filename)
-
-        print(f'  nVisit: {product.nVisit}')
-        print(f'  Wavelength: {product.wavelength.shape}')
-        print(f'  Flux: {product.wavelength.shape}')
-
-        self.__print_target(product.target)
-        self.__print_observations(product.observations, s=())
+    def prepare(self):
+        super().prepare()

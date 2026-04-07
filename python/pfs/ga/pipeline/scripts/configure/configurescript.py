@@ -76,13 +76,16 @@ class ConfigureScript(PipelineScript, Progress):
     def prepare(self):
         super().prepare()
 
-        # Override logging directory to use the same as the pipeline workdir
-        self._set_log_file_to_workdir()
-
     def run(self):
         """
         Find all the pfsSingle or pfsConfig files that match the filters and generate a config file for each.
         """
+
+        # Override logging directory to use the same as the pipeline workdir
+        self._set_log_file_to_workdir()
+
+        # Log the resolved variables for each repository to make sure they are correct
+        self._log_repo_variables()
 
         files = ' '.join(self.config.config_files)
         logger.info(f'Using configuration template file(s) {files}.')
@@ -116,7 +119,7 @@ class ConfigureScript(PipelineScript, Progress):
         # Find the objects matching the command-line arguments. Arguments
         # are parsed by the repo object itself, so no need to pass them in here.
         logger.info('Finding objects matching the filters. This requires loading all PfsConfig files for the given visits and can take a while.')
-        pfs_configs = self.input_repo.load_pfsConfigs()
+        pfs_configs = self.config_repo.load_pfsConfigs()
 
         # Get the dictionary of object identities matching the filters, keyed by objid
         identities = self.input_repo.find_objects(pfs_configs=pfs_configs, groupby='objid')
@@ -253,12 +256,15 @@ class ConfigureScript(PipelineScript, Progress):
 
             # Try each repository in order
             found = False
-            for repo in [self.input_repo, self.work_repo]:
+            for repo in [self.config_repo, self.input_repo, self.work_repo]:
                 # Look up the product type based on its name as a string. If the
                 # product is not available in a certain repo, skip to the next one.
                 try:
                     product_type = repo.parse_product_type(product_name)
-                    found = True
+                    if repo.has_product(product_type):
+                        found = True
+                    else:
+                        continue
                 except ValueError:
                     logger.debug(f'Product type `{product_name}` not available in repo of type {type(repo.repo).__name__}.')
                     continue
@@ -272,17 +278,16 @@ class ConfigureScript(PipelineScript, Progress):
                         fn = None
 
                     if fn is None:
-                        logger.warning(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} not found.')
+                        logger.debug(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} was not found.')
                     elif not os.path.isfile(fn):
-                        logger.warning(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} not found.')
+                        logger.debug(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} was not found.')
                     else:
-                        m[i] = True
+                        m[i] |= True
 
-                break   # If we found the product in one of the repositories, we can stop looking further.
+                break
 
             if not found:
-                logger.warning(f'Required product type `{product_name}` not found in any of the repositories for object 0x{objid:x}.')
-                continue
+                raise RuntimeError(f'Required product type `{product_name}` not found in any of the repositories.')
 
             mask &= m
                 
@@ -309,13 +314,18 @@ class ConfigureScript(PipelineScript, Progress):
         # Input data directories; if not set, use the default from the config
         if 'datadir' in self.input_repo.variables:
             config.datadir = self.input_repo.get_resolved_variable('datadir')
-        if 'rerundir' in self.input_repo.variables:
-            config.rerundir = self.input_repo.get_resolved_variable('rerundir')
+        if 'rundir' in self.input_repo.variables:                               # TODO: multirepo
+            config.rundir = self.input_repo.get_resolved_variable('rundir')
+        if 'configrun' in self.config_repo.variables:
+            config.configrun = self.config_repo.get_resolved_variable('configrun')
 
         logger.debug(f'Configured data directory for object {identity}: {config.datadir}')
-        logger.debug(f'Configured rerun directory for object {identity}: {config.rerundir}')
         logger.debug(f'Configured work directory for object {identity}: {config.workdir}')
         logger.debug(f'Configured output directory for object {identity}: {config.outdir}')
+        logger.debug(f'Configured rerun directory for object {identity}: {config.rundir}')
+        logger.debug(f'Configured config run for object {identity}: {config.configrun}')
+        logger.debug(f'Configured GA run directory for object {identity}: {config.garundir}')
+        logger.debug(f'Configured GA run for object {identity}: {config.garun}')
 
         return config, filename
 
@@ -324,7 +334,7 @@ class ConfigureScript(PipelineScript, Progress):
         # Update temp fit configuration based on the obs parameters
         self.__configure_tempfit_obs_params(objid, pipeline_config, pfs_configs, obs_params)
 
-        # Update magnitudes and fluxed from the pfsConfig files
+        # Update magnitudes and fluxes from the pfsConfig files
         self.__configure_tempfit_magnitudes_pfs_config(objid, pipeline_config, pfs_configs)
 
         # Update magnitudes and fluxes from the target list files
@@ -347,6 +357,13 @@ class ConfigureScript(PipelineScript, Progress):
 
         pipeline_config.tempfit.photometry = photometry
 
+        # If only a single flux is available, disable fitting it
+        # this will also force skipping the T_eff guess step as well
+        if len(pipeline_config.tempfit.photometry) < 2:
+            if pipeline_config.tempfit.fit_photometry:
+                logger.warning(f'Only {len(pipeline_config.tempfit.photometry)} photometric fluxes available for object 0x{objid:x}, disabling fitting photometry.')
+            pipeline_config.tempfit.fit_photometry = False
+            
     def __configure_tempfit_obs_params(self, objid, pipeline_config, pfs_configs, obs_params):
         pass
 
@@ -529,7 +546,7 @@ class ConfigureScript(PipelineScript, Progress):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             pipeline_config.save(filename)
         else:
-            logger.info(f'Skipped saving configuration file `{filename}`.')
+            logger.info(f'Dry run: Would save configuration file to `{filename}`.')
 
 def main():
     script = ConfigureScript()

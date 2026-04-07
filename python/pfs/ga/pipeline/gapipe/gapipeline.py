@@ -41,8 +41,10 @@ class GAPipeline(Pipeline):
     def __init__(self, /,
                  script: Script = None,
                  config: GAPipelineConfig = None,
+                 config_repo: Repo = None,
                  input_repo: Repo = None,
                  work_repo: FileSystemRepo = None,
+                 output_repo: FileSystemRepo = None,
                  trace: GAPipelineTrace = None,
                  id: str = None):
         """
@@ -67,8 +69,10 @@ class GAPipeline(Pipeline):
         super().__init__(script=script, config=config, trace=trace)
 
         self.__id = id                          # Identity represented as string
-        self.__input_repo = input_repo
+        self.__config_repo = config_repo
+        self.__input_repo = input_repo          #### multi-repo
         self.__work_repo = work_repo
+        self.__output_repo = output_repo
        
     def reset(self):
         super().reset()
@@ -276,14 +280,18 @@ class GAPipeline(Pipeline):
         ]
     
     def get_product_workdir(self):
-        return self.__work_repo.format_dir(GAPipelineConfig,
-                                           self.config.target.identity,
-                                           variables={ 'workdir': self.config.workdir })
+        return self.__work_repo.format_dir(
+            GAPipelineConfig,
+            self.config.target.identity,
+            variables={ 'workdir': self.config.workdir }
+        )
 
     def get_product_outdir(self):
-        return self.__work_repo.format_dir(PfsStar,
-                                           self.config.target.identity,
-                                           variables={ 'datadir': self.config.outdir })
+        return self.__output_repo.format_dir(
+            PfsStar,
+            self.config.target.identity,
+            variables={ 'datadir': self.config.outdir }
+        )
 
     def get_loglevel(self):
         return self.config.loglevel
@@ -390,7 +398,7 @@ class GAPipeline(Pipeline):
             # the input repository with fall-back to the work repository, in case some of the
             # data products are already copied to the output directory.
             found = False
-            for repo in [self.__input_repo, self.__work_repo]:
+            for repo in [self.__config_repo, self.__input_repo, self.__work_repo]:
                 if not repo.has_product(product_type):
                     logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
                     continue
@@ -474,12 +482,18 @@ class GAPipeline(Pipeline):
                 if identity.objId not in self.product_cache[product][visit]:
                     found = False
                     for repo in [self.__input_repo, self.__work_repo]:
+                        if not repo.has_product(product):
+                            continue
+
                         try:
                             data, id, filename = repo.load_product(product, identity=identity)
                             data.filename = filename
                             self.product_cache[product][visit][identity.objId] = data
                             found = True
                             q += 1
+                        except FileNotFoundError:
+                            # The product file is not available in the repository, skip
+                            continue
                         except KeyError:
                             # The product type is not available in the repository, skip
                             continue
@@ -491,12 +505,18 @@ class GAPipeline(Pipeline):
                 # Data product contains multiple objects
                 if visit not in self.product_cache[product]:
                     found = False
-                    for repo in [self.__input_repo, self.__work_repo]:
+                    for repo in [self.__config_repo, self.__input_repo, self.__work_repo]:
+                        if not repo.has_product(product):
+                            continue
+
                         try:
                             data, id, filename = repo.load_product(product, identity=identity)
                             self.product_cache[product][visit] = data
                             found = True
                             q += 1
+                        except FileNotFoundError:
+                            # The product file is not available in the repository, skip
+                            continue
                         except KeyError:
                             # The product type is not available in the repository, skip
                             continue
@@ -543,16 +563,21 @@ class GAPipeline(Pipeline):
         Save the output product to the output directory.
         """
 
-        identity, filename = self.__work_repo.save_product(
-            product,
-            identity = identity,
-            variables = { 'datadir': self.config.outdir },
-            create_dir = create_dir,
-            exist_ok = exist_ok)
-    
-        logger.info(f'Output file saved to `{filename}`.')
+        for repo in [self.__work_repo, self.__output_repo]:
+            if repo.has_product(type(product)):
+                identity, filename = repo.save_product(
+                    product,
+                    identity = identity,
+                    variables = {
+                        'datadir': self.config.outdir,
+                    },
+                    create_dir = create_dir,
+                    exist_ok = exist_ok)
 
-        return identity, filename
+                logger.info(f'Output file saved to `{filename}`.')        
+                return identity, filename
+
+        raise PipelineError('No repository available for saving the output product.')
     
     def get_avail_arms(self, product):
         """

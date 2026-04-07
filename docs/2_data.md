@@ -12,20 +12,25 @@ TODO: folder names below are preliminary and currently reflect the current devel
 
 ```
 $GAPIPE_DIR/data/
-  + 2d/
-  + models/
-    + stellar/
-      + grid/
-        + <grid_name>/
-          + <model_name>/
-            + spectra.fits
-    + subaru/
-      + hsc/
-        + filters/
-          - <filter_name>.txt
-      + pfs/
-        + psf/import
-          - <psf_name>.fits
+  + instruments
+    + hsc/
+      + filters/
+        - <filter_name>.txt
+    + pfs/
+      + arms/
+      + noise/
+      + psf/
+        + import/
+          + <psf_name>/
+            - gauss.h5
+            - pca.h5
+  + pfsspec
+    + models/
+      + stellar/
+        + grid/
+          + <grid_name>/
+            + <model_name>/
+              - spectra.fits
 ```
 
 ## 2.2 Importing synthetic stellar grids
@@ -128,22 +133,70 @@ Container files are usually large and take significantly more time and I/O to lo
 
 ### 2.3.1 Using GAPIPE with Butler
 
-TBW
+GAPIPE can use Butler to find input data products. For data staging and output data management, GAPIPE currently uses the file system. Data downloaded from the Science Platform will most likely come with a `butler.yaml` configuration file and a `gen3.sqlite` database file. To use GAPIPE with Butler the following environment variables must be set:
+
+* `BUTLER_CONFIGDIR` should point to the directory where the `butler.yaml` file is located.
+* `BUTLER_COLLECTIONS` should be set to a colon-separated list of the Butler collections
+
+For example, in case of S25A-OT02, the directory structure of the data downloaded from the Science Platform looks like this:
+
+pfs/programs/S25A-OT02/2d/
+                          S25A_November2025/ 
+                          run21_June2025/
+                          run22_July2025/
+                          run23_August2025/
+                          butler.yaml
+                          gen3.sqlite3
+
+In this case, set the `BUTLER_CONFIGDIR` environment variable to point to the `2d` directory and set the `BUTLER_COLLECTIONS` environment variable to include the runs you want to use, for example:
+
+    $ export BUTLER_CONFIGDIR="$GAPIPE_DATADIR/2d"
+    $ export BUTLER_COLLECTIONS="run21_June2025:run22_July2025:run23_August2025"
+
+You can test the configuration by running the `gapipe-repo` command-line tool, which is part of GAPIPE. In the current version, you explicitly need to set the `--butler` switch for the scripts to use Butler.
+
+    $ cd $GAPIPE_ROOT
+    $ source ./bin/init
+    $ gapipe-repo info --butler
+    $ gapipe-repo find-product PfsConfig --butler
+
+The current version of GAPIPE can use a single Butler repository at a time, but multiple reduction runs can be included in the `BUTLER_COLLECTIONS` environment variable. The `gapipe-repo` command will search for the requested data products in the specified collections in the order they are listed in the `BUTLER_COLLECTIONS` variable.
 
 ### 2.3.2 Using GAPIPE without Butler
 
 When not using Butler, the observation data is accessed from the file system by sweeping the file system for files that match the expected naming convention. The following environment variables must be set to point to the directories where the observation data is stored:
 
-* `GAPIPE_DATADIR`
-* `GAPIPE_RERUN`
-* `GAPIPE_RERUNDIR`
-* `PFSSPEC_PFS_DATADIR`
-* `PFSSPEC_PFS_RERUNDIR`
-* `PFSSPEC_PFS_RERUN`
-* `PFSSPEC_PFS_DESIGNDIR`
-* `PFSSPEC_PFS_CONFIGDIR`
+* `GAPIPE_DATADIR`: points to the root directory of the data repository
+* `GAPIPE_RUN`: the name of the PIPE2D run, e.g. `run21_June2025`
+* `GAPIPE_RUNDIR`: directory relative to `PFSSPEC_PFS_DATADIR` where the data for a specific PIPE2D run is stored, e.g. `run21_June2025`. Most of the time the directory name is the same as the run name but when the path is more than one directory deep, the run name cannot contain any slashed, hence it will be different. This is important when working with date from the Hilo servers.
+* `GAPIPE_CONFIGRUN`: the name of the PIPE2D run that stored the pfsConfig files. It can be different for data repositories that are not from the Science Platform.
+* `GAPIPE_CONFIGRUNDIR`: relative path to the directory where the PfsConfig files are stored. This is important when working with data from the Hilo servers, where the PfsConfig files are stored under a different processing run, e.g. `PFS_raw_pfsConfig`.
+
+All settings above are unnecessary when using Butler.
+
+In addition to the settings above, GAPIPE requires setting the following variables:
+
+* `GAPIPE_WORKDIR`: full path to the directory where the temporary files will be stored during the processing.
+* `GAPIPE_OUTDIR`: full path to the directory where the final results of the processing will be stored.
+* `GAPIPE_GARUN`: name of the GAPIPE processing run. This use used to distinguish re-runs of the GA pipeline on the same data.
+* `GAPIPE_GARUNDIR` relative path to the `GAPIPE_OUTDIR` where the results of a specific GA pipeline run will be stored; relative to `GAPIPE_OUTDIR` and `GAPIPE_OUTDIR`.
 
 When not using Butler, objects are looked up from the `pfsConfig` files and then the file system is searched for the files that match the expected naming convention. File lookup can be tested by the `gapipe-repo` command-line tool, which is part of GAPIPE.
+
+The environmental variables above can be overwritten on the command-line of most GAPIPE commands. The corresponding command-line arguments are
+
+* `--datadir`
+* `--run`
+* `--rundir`
+* `--configrun`
+* `--workdir`
+* `--outdir`
+* `--garun`
+* `--garundir`
+
+Run the `gapipe-repo info` command to print the configuration. If using buler, test with `gapipe-repo info --butler` to verify that the Butler configuration is correct:
+
+    $ gapipe-repo info
 
 ## 2.4 Obtaining data from the science platform
 
@@ -242,7 +295,7 @@ This should return the local path to the PfsConfig file for the given visit. To 
 
 First, generate a list of PfsConfig files that you want to download. And save the list to a file. Since the paths returned by `gapipe-repo` are prefixed with the local path `$GAPIPE_DIR/data/2d`, you should use `sed` to remove the prefix and save the list of relative paths to a local file:
 
-    $ gapipe-repo find-product PfsConfig --format path | sed "s|$GAPIPE_DATADIR/2d/||g" > run21_June2025_PfsConfig.txt
+    $ gapipe-repo find-product PfsConfig --butler --format path | sed "s|$GAPIPE_DATADIR/2d/||g" > run21_June2025_PfsConfig.txt
 
 If you want to limit the visits to a particular sub-project, use the observation log files available in the `spt_ssp_observation` repository.
 
@@ -257,7 +310,7 @@ You can specify more than one collection separated by a colon in the `BUTLER_COL
 
 Then run `gapipe-repo` to find the PfsConfig files for these visits and save the list to a file:
 
-    $ gapipe-repo find-product PfsConfig --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsConfig.txt
+    $ gapipe-repo find-product PfsConfig --visit $VISITS --format path --butler | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsConfig.txt
 
 Remember to use the full path to the repository in the above command.
 
@@ -273,11 +326,11 @@ TBW: Write about how the figure out the object IDs from the targeting feather fi
 
 To get the list of objects that were observed during a specific visit, run the following command:
 
-    $ gapipe-repo find-object --visit 123317
+    $ gapipe-repo find-object --visit 123317 --butler
 
 To get the list of visits that contain a specific object, run the following command:
 
-    $ gapipe-repo find-object --visit $VISITS --objid 0x0000000600002fec
+    $ gapipe-repo find-object --visit $VISITS --objid 0x0000000600002fec --butler
 
 In the last query, it is necessary to provide the list of visits to limit the search space to the filed that have been downloaded locally, otherwise the command will try to search all the PfsConfig files in the Butler collections defined in the `BUTLER_COLLECTIONS` environment variable.
 
@@ -287,7 +340,7 @@ Note, that queries like these are slow because they require reading the PfsConfi
 
 PfsCalibrated files can be downloaded similarly to PfsConfig files. First, generate a list of PfsCalibrated files for the visits you are interested in:
 
-    $ gapipe-repo find-product PfsCalibrated --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsCalibrated.txt
+    $ gapipe-repo find-product PfsCalibrated --visit $VISITS --format path --butler | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsCalibrated.txt
 
 Then download the files using `wget`:
 
@@ -301,7 +354,7 @@ GAPIPE provides the `gapipe-repo` command-line tool to search the data repositor
 
 The following command locates the PfsCalibrated file for a given visit or list of visits:
 
-    $ gapipe-repo find-product PfsCalibrated --visit $VISIT --format path
+    $ gapipe-repo find-product PfsCalibrated --visit $VISIT --format path --butler
 
 where `$VISIT` is the visit ID or a list of visit IDs. You can get the list of visits from the `obslog` files, for example:
 
@@ -311,7 +364,7 @@ The `--format path` option specifies that the output should be the file path of 
 
 To get the available information on a specific object, you can use the `find-object` command:
 
-    $ gapipe-repo find-object --visit $VISIT --objid $OBJID
+    $ gapipe-repo find-object --visit $VISIT --objid $OBJID --butler
 
 Specify the `--format` option to get the output in a specific format, such as `table`, `json`, or `path`. The default format is `table`.
 
@@ -321,17 +374,21 @@ GAPIPE doesn't currently use Butler for output data management. Instead, it uses
 
 ### 2.6.1 Output directories
 
+TODO: review this part
+
 GAPIPE uses two output directories (and many subdirectories withing them) to store the temporary and final results of the processing:
 
 * **Work directory**: The `workdir` is used to store temporary files during the processing of each object. It is specified in the configuration file and can be overridden from the command-line. The default value is `$GAPIPE_WORKDIR` and it can be overriden from the configuration template (see below) or the `--workdir` command-line argument.
 
 * **Output directory**: The `outdir` is used to store the final results of the processing, such as the processed spectra and the final catalog files. It is specified in the configuration file and can be overridden from the command-line. The default value is `$GAPIPE_OUTDIR` and it can be overridden from the configuration template (see below) or the `--outdir` command-line argument.
 
-* **Rerun directory**: This directory refers to the Butler collections. Since GAPIPE doesn't currently use Butler for output data, a directory is created for each 2dpipe rerun under `workdir` and `outdir`. Note, that the rerun directory is not currently figured out from the Butler collections, so it must be specified manually in the configuration file or from the command-line using the `--rerundir` argument.
+* **Run directory**: This directory refers to the pipe2d processing run. Since GAPIPE doesn't currently use Butler for output data, a directory is created for each 2dpipe run under `workdir` and `outdir`. Note, that the run directory is not currently figured out from the Butler collections, so it must be specified manually in the configuration file or from the command-line using the `--rundir` argument.
 
 ### 2.6.2 GAPIPE file names
 
 Examples:
+
+TODO: update
 
 ```
 run21_June2025/pfsStarCatalog/10092/051-0x310d8290f6dc2641/pfsStarCatalog-10092-051-0x310d8290f6dc2641.fits
@@ -345,28 +402,28 @@ Note, that it is not necessary to extract the single-object data products from t
 
 Once the PfsCalibrated files are downloaded, you can extract the individual PfsSingle files using the `gapipe-repo extract-product` command. This should be done by 2dpipe processing runs, so let's define a few variables first:
 
-    $ OBSRUN="2025-05"
-    $ RERUN="run22_July2025"
-    $ BUTLER_COLLECTIONS="$RERUN"
+    $ OBSRUN="2025-03"
+    $ RUN="S25A_November2025"
+    $ BUTLER_COLLECTIONS="$RUN"
     $ VISITS="$(cat spt_ssp_observation/runs/$OBSRUN/obslog/*.csv | grep SSP_GA | cut -d ',' -f 1)"
 
 To extract all PfsSingle files for a specific visit and catId, run:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 125950 --catid 10092 --rerundir $RERUN --log-level DEBUG
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit 122805 --catid 10092 --rundir $RUN --log-level DEBUG
 
 Extract all the PfsSingle files from PfsCalibrated for a given list of visits and a catalog ID by running.
 
     $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID
 
-This command will write the PfsSingle files to the `workdir/rerundir` directory specified in the configuration file. The list of objects can further be filtered by target type, spectrograph arm, obcode, etc. For example, to extract only the PfsSingle files for science targets, you can run:
+This command will write the PfsSingle files to the `workdir/rundir` directory specified in the configuration file. The list of objects can further be filtered by target type, spectrograph arm, obcode, etc. For example, to extract only the PfsSingle files for science targets, you can run:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --targettype SCIENCE --rerundir $RERUN
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --targettype SCIENCE --rundir $RUN
 
 Similarly, you can extract FLUXSTD targets by setting `--targettype FLUXSTD`.
 
 PfsSingle files for all visits of a single objects can be extracted by running:
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --objid "$OBJID" --rerundir $RERUN
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --objid "$OBJID" --rundir $RUN
 
 To get some progress information during the extraction, use the `--log-level DEBUG` option or try `--progress`.
 
@@ -376,7 +433,7 @@ Please note that extracting files for a large number of objects and visits can t
 
 Extracting lots of PfsSingle files can take a long time, especially when the number of visits is large. To parallelize the process, you can schedule a batch job for each visit to extract the PfsSingle files from PfsCalibrated. This can be done by using the `--batch` option with the `gapipe-repo extract-product` command.
 
-    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --rerundir $RERUN --batch slurm --partition v100 --cpus 2 --memory 8G
+    $ gapipe-repo extract-product PfsCalibrated,PfsSingle --visit $VISITS --catid $CATID --rundir $RUN --batch slurm --partition v100 --cpus 2 --memory 8G
 
 Here the `--batch slurm` option specifies that the extraction should be run as a batch job on the SLURM scheduler, and the `--partition` option specifies the SLURM partition to use. The `gapipe-repo` command will generate a batch script for each visit and submit it to the SLURM scheduler.
 

@@ -72,7 +72,7 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_arms,
             context.state.tempfit_grids)
 
-        # Load the filter curves to fit extinction, if needed
+        # Load the filter curves to fit broadband fluxes
         context.state.tempfit_synthmag_filters, context.state.tempfit_synthmag_grids = self.__tempfit_load_filters(context)
         
         # Initialize the TempFit object
@@ -346,6 +346,10 @@ class TempFitStep(PipelineStep):
                 else:
                     raise ValueError(f'No filter path specified for band `{band}` in photometry config.')
 
+        # TODO: here we automatically try to figure out which model grid to use for
+        #       calculating synthetic magnitudes based on the filter wavelength coverage.
+        #       We could add an option to the config to specify the grid paths for each filter instead.
+
         # For each filter, look up the model grid that covers the filter wavelength range
         grids = defaultdict(dict)
         for instrument in filters:
@@ -392,6 +396,11 @@ class TempFitStep(PipelineStep):
     #region Preprocess
 
     def preprocess(self, context):
+
+        # TODO: We can do heliocentric correction here but this is supposed to be done
+        #       by the 2d pipeline. Extend it to allow for reading velocities from the
+        #       config file to combine spectra of binary stars from different epochs.
+
         vcorr = context.config.tempfit.vcorr
 
         if vcorr is not None and vcorr.from_frame is not None and vcorr.to_frame is not None:
@@ -449,23 +458,39 @@ class TempFitStep(PipelineStep):
     #region Run
 
     def guess(self, context):
+        # Guess initial parameter in two steps. First guess initial RV by cross-correlating
+        # with a fixed template, then, if broadband fluxes are available, guess T_eff
+
         # Generate the initial state for the fitting and guess the unknown parameters
         context.state.tempfit_state = context.state.tempfit.init_state(
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes)
 
-        context.state.tempfit_state, _, _ = context.state.tempfit.guess_ml(
+        # Guess RV using a fixed template
+        self.__guess_rv(context)
+
+        # Guess T_eff is broadband photometry is available
+        if context.config.tempfit.fit_photometry and context.state.tempfit_fluxes is not None:
+            self.__guess_T_eff(context)
+
+        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def __guess_rv(self, context):
+        # Guess initial RV with a fixed template.
+
+        context.state.tempfit_state, _, _ = context.state.tempfit.guess_rv_ml(
             context.state.tempfit_state,
             method='max')
 
         # Update the initial parameters to the best guess
         if context.state.tempfit_state.rv_guess is not None:
             context.state.tempfit_state.rv_0 = context.state.tempfit_state.rv_guess
-        if context.state.tempfit_state.params_guess is not None:
-            context.state.tempfit_state.params_0 = context.state.tempfit_state.params_guess
+        # if context.state.tempfit_state.params_guess is not None:
+        #     context.state.tempfit_state.params_0 = context.state.tempfit_state.params_guess
 
         # Limit the rv range around the best guess
         # TODO: bring out this parameter to config
+        #       50 km/s is a good choice for PFS
         if context.state.tempfit_state.rv_guess is not None:
             rv_min = context.state.tempfit_state.rv_guess - 50
             rv_max = context.state.tempfit_state.rv_guess + 50
@@ -475,12 +500,43 @@ class TempFitStep(PipelineStep):
                 rv_max = min(rv_max, context.state.tempfit_state.rv_bounds[1])
             context.state.tempfit_state.rv_bounds = (rv_min, rv_max)
 
-        return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+    def __guess_T_eff(self, context):
+        # Guess T_eff using the broadband fluxes.
+
+        context.state.tempfit_state, _, _ = \
+            context.state.tempfit.guess_T_eff_ml(
+                context.state.tempfit_state,
+                method='max')
+        
+        # Update the initial parameters to the best guess
+        if context.state.tempfit_state.params_guess is not None and \
+            'T_eff' in context.state.tempfit_state.params_guess and \
+            context.state.tempfit_state.params_guess['T_eff'] is not None:
+            
+            T_eff_guess = context.state.tempfit_state.params_guess['T_eff']
+
+            # Do not go too low in temperature
+            # TODO: check if this works well for M dwarfs
+            context.state.tempfit_state.params_0['T_eff'] = min(4250, T_eff_guess)
     
     def run(self, context):
-        # Run the maximum likelihood fitting
+        # TODO: add parameters to config to control the fitting procedure
         # TODO: add MCMC
+
+        # Run the maximum likelihood fitting with the Nelder-Mead method first
         context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.run_ml(
+            context.state.tempfit_state,
+            method='Nelder-Mead')
+
+        # Run the maximum likelihood fitting with the gradient method
+        context.state.tempfit_state.rv_0 = context.state.tempfit_results.rv_fit
+        context.state.tempfit_state.params_0 = context.state.tempfit_results.params_fit
+        context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.run_ml(
+            context.state.tempfit_state,
+            method='gradient')
+        
+        # Polish the result with further optimizing as a function of RV only
+        context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.polish_rv_ml(
             context.state.tempfit_state)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
