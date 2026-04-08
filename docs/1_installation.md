@@ -1,6 +1,6 @@
 # 1 Installation and configuration
 
-GAPIPE can be installed on a vanila Anaconda (Miniconda) installation or on top of the Rubin (LSST) software stack. In the former case, LSST components such as Butler data access, won't be available, others, such as the PFS `datamodel` package will be installed directly from the github source.
+GAPIPE can be installed on a vanila Anaconda (Miniconda) installation or on top of the Rubin (LSST) software stack. In the former case, LSST components such as Butler data access, won't be available, others, such as the PFS `datamodel` package will be installed directly from the github source. The default is to use the LSST stack.
 
 GAPIPE depends on the PFSSPEC Python packages as well as on a set of data files that includes configuration files and sythetic stellar libraries. The data files are distributed separately.
 
@@ -20,9 +20,14 @@ To install GAPIPE in a fresh environment, clone the github repository from `http
     $ git clone git@github.com:Subaru-PFS-GA/ga_pipeline.git
     $ cd ga_pipeline
     $ export GAPIPE_DIR=<path_to_gapipe_installation>
-    $ ./setup/install.sh -d $GAPIPE_DIR --lsst
+    $ ./setup/install.sh --dir $GAPIPE_DIR --tag w.2026.15
 
 This will install the complete LSST stack, PFS pipe2d stack and GAPIPE under the selected directory. Tha installation is fully automated and will ask no questions. The full process will take approximately five minutes without displaying any status information while installing Miniconda, so be patient.
+
+GAPIPE depends of a collection of data files and a stellar template library. We won't cover the stellar template library here. The data files can be downloaded from a google drive folder, the URL is available on request. Download `gapipe-data.tar`.gz to `GAPIPE_DIR` and decompress its contents:
+
+    $ cd $GAPIPE_DIR
+    $ tar -xvzf gapipe-data.tar.gz
 
 ## 1.1.2 Configuring the GAPIPE installation
 
@@ -32,12 +37,23 @@ GAPIPE stores a handful of settings in environmental variables, such as the loca
 
 Environment variables not listed here are already configure by their correct value by the install script and must not be changed.
 
-* `GAPIPE_DATADIR` when not using the LSST stack with Butler, this path must point to the directory with observation data. Please refer to Section 2 for details.
-* `GAPIPE_RUN` must be the name of the run to be processed. This is just a default value that can be overriden from the command-line when GAPIPE is executed. This variable is not used when GAPIPE is installed on top of the LSST stack and Butler is available.
-* `GAPIPE_RUNDIR` must be path to the run files to be processed. This is just a default value that can be overriden from the command-line when GAPIPE is executed. This variable is not used when GAPIPE is installed on top of the LSST stack and Butler is available.
+* `GAPIPE_DATAROOT` must point to the root of the data directory, which stores data files donwloaded from the Science Platform or elsewhere.
 * `GAPIPE_WORKDIR` must point to an existing directory which will be used for data staging during GAPIPE execution.
 * `GAPIPE_OUTDIR` must point to an existing directory which will be used to write the GAPIPE output files such as the results of processing of the spectrum of each object and the final catalog files.
-* `PFSSPEC_DATA`  must point to the data directory where model files such as synthetic stellar grids are stored. Please refer to Section 2 for details.
+* `GAPIPE_OBSLOGDIR`
+* `GAPIPE_TARGETINGDIR`
+
+For processing a particular run from PIPE2D, set also the following variables.
+
+* `GAPIPE_DATADIR`
+* `GAPIPE_RUNDIR`
+* `GAPIPE_RUN`
+* `GAPIPE_CONFIGRUNDIR`
+* `GAPIPE_CONFIGRUN`
+* `GAPIPE_GARUNDIR`
+* `GAPIPE_GARUN`
+
+Please refer to the documentation on the batch script to learn more about environmental variables defining paths to data products for GAPIPE.
 
 When running on top of the LSST stack and Butler is available, the following variables must also be set.
 
@@ -46,6 +62,7 @@ When running on top of the LSST stack and Butler is available, the following var
 
 When not using Butler, the following variables must be set to find data products by sweeping the file system.
 
+* `PFSSPEC_DATA`  must point to the data directory where model files such as synthetic stellar grids are stored. Please refer to Section 2 for details.
 * `PFSSPEC_PFS_DATADIR` must point to the root of the observation data directory (datastore).
 * `PFSSPEC_PFS_RUNDIR` must be the name of the run as it appears in the name of the data files.
 * `PFSSPEC_PFS_RUN` must be the name out the gapipe run that will be the name out the output directory
