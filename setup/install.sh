@@ -1,8 +1,14 @@
 #!/bin/bash
 
 # This script is used to install the PFS GA Pipeline software stack.
-# Example usage:
+#
+# Usage example:
+#
 #   ./setup/install.sh --debug -d /path/to/install/dir --source
+#
+# To successfully run this script, you have to have ssh access to github.com with an ssh
+# key served by an ssh agent to avoid entering passwords multiple times during the installation.
+# Please refer to https://docs.github.com/en/authentication/connecting-to-github-with-ssh
 
 # TODO: allow installing gapipe as package (conda and/or eups)
 # TODO: write generated files into the log
@@ -14,26 +20,26 @@ GAPIPE_DEBUG=0                                  # 1 for debugging
 GAPIPE_UPGRADE=0                                # 1 for upgrading an existing installation
 GAPIPE_LOGLEVEL=3                               # Console log level
 GAPIPE_FORCE=0                                  # Force installation
-GAPIPE_ROOT="$(realpath "${HOME}")/pfsgapipe"   # Installation directory, can be overridden by command-line argument
+GAPIPE_ROOT="$(realpath "${HOME}")/pfs/gapipe"  # Installation directory, can be overridden by command-line argument
 GAPIPE_TAG="master"                             # Git tag/branch to install
 GAPIPE_PACKAGE="SOURCE"                         # Install from source instead of package
 GAPIPE_CONDA_DIR="./stack/conda"                # Conda installation directory, relative to GAPIPE_ROOT
 GAPIPE_CONDA_ENV="gapipe"                       # Conda environment name, when not using LSST
 GAPIPE_CONDA_ENV_FILE="gapipe.yaml"             # Conda environment file to install additional dependencies.
 GAPIPE_LSST=1                                   # 1 for installing on the LSST stack
-LSST_VERSION="w.2025.52"                        # LSST version to install, if GAPIPE_LSST is set to 1
+LSST_VERSION="w.2026.14"                        # LSST version to install, if GAPIPE_LSST is set to 1
 LSST_DIR="./stack"                              # LSST installation directory, relative to GAPIPE_ROOT
 LSST_CONDA_DIR="./conda"                        # LSST conda installation directory, relative to LSST_DIR
 LSST_CONDA_ENV=""                               # LSST conda environment name, if GAPIPE_LSST is set to 1
 LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file to install additional dependencies.
 LSST_PIP_REQ_FILE='lsst_requirements.txt'       # Pip requirements file for additional dependencies to install in the LSST conda environment
-PFS_PIPE2D_VERSION="w.2025.52"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
+PFS_PIPE2D_VERSION="w.2026.14"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
 PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
 
 # Observation data locations
 # Set these variables before running the installer. This will be the default
 # values that are written to your environment configuration script.
-GAPIPE_DATAROOT="/pfs/data/programs"
+GAPIPE_DATAROOT="$(realpath "${HOME}")/pfs/data/programs"
 GAPIPE_OBSLOGDIR="$(realpath "${HOME}")/pfs/Subaru-PFS/spt_ssp_observation"
 GAPIPE_TARGETINGDIR="$(realpath "${HOME}")/pfs/targeting"
 
@@ -90,7 +96,7 @@ function parse_args() {
             shift
             ;;
         -d|--dir)
-            GAPIPE_ROOT="$2"
+            GAPIPE_ROOT="$(realpath "$2")"
             shift 2
             ;;
         -t|--tag)
@@ -309,6 +315,17 @@ function download_file() {
     run_cmd \
         "curl -sOL \"${url}\" -o \"${target_file}\"" \
         "download.log"
+}
+
+function ensure_command() {
+    # Check if a command is available, and exit with an error message if not
+
+    cmd="$1"
+
+    if ! command -v "${cmd}" &> /dev/null; then
+        log_error "Command ${cmd} is not available. Please install it and try again."
+        exit 1
+    fi
 }
 
 function ensure_github_ssh() {
@@ -809,7 +826,7 @@ function install_pfsspec_source() {
 
         # Check out each submodule to the HEAD of the current branch
         log_info "Checking out submodules for pfsspec."
-        run_cmd "bash ./bin/checkout" "checkout_pfsspec.log"
+        run_cmd "bash ./bin/checkout ${PFSSPEC_GIT_TAG}" "checkout_pfsspec.log"
 
         # Initialize the pfsspec environment in a new shell in order to generate the symlinks
         log_info "Initializing the pfsspec environment."
@@ -1046,6 +1063,12 @@ if [[ $NUMTHREADS -lt 1 ]]; then
 fi
 export OMP_NUM_THREADS=1
 export PYTHONHTTPSVERIFY=0                      # Disable SSL verification for Python HTTPS requests
+
+# Ensure some fundamental unix commands are available
+ensure_command "curl"
+ensure_command "git"
+ensure_command "patch"
+ensure_command "tar"
 
 # Check if github access is configured, if required
 if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
