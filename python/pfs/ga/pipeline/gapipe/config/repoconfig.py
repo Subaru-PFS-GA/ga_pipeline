@@ -18,6 +18,11 @@ class RepoConfig(PipelineConfig):
         self.garundir = self._get_env('GAPIPE_GARUNDIR')            # Directory for the GA data processing run
         self.garun = self._get_env('GAPIPE_GARUN')                  # Name of GA data processing run
 
+        # Directory of the Butler configuration
+        self.butlerconfigdir = self._get_env('GAPIPE_BUTLERCONFIGDIR')
+        # Colon-separated list of Butler collections to use
+        self.butlercollections = self._get_env('GAPIPE_BUTLERCOLLECTIONS')
+
         self.ignore_missing_files = False                           # Ignore missing data files
 
     def init_from_args(self, args):

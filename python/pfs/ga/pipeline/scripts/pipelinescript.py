@@ -274,12 +274,19 @@ class PipelineScript(Script):
         #   2. Configuration file
         #   3. Default values
 
-        if config.datadir is None:
+        if config.butlerconfigdir is not None:
+            self.__config_repo.set_variable('butlerconfigdir', config.butlerconfigdir)
+            self.__input_repo.set_variable('butlerconfigdir', config.butlerconfigdir)
+        if config.butlercollections is not None:
+            self.__config_repo.set_variable('butlercollections', config.butlercollections)
+            self.__input_repo.set_variable('butlercollections', config.butlercollections)
+
+        if config.datadir is not None:
             self.__config_repo.set_variable('datadir', config.datadir)
         if config.configrundir is not None:
             # Set the special directory for pfsConfig files which might be
             # in a special directory for non-public data releases.
-            self.__input_repo.set_variable('configrundir', config.configrundir)
+            self.__config_repo.set_variable('configrundir', config.configrundir)
         if config.configrun is not None:
             # Override  the run filter for pfsConfig files which might be in
             # a special directory for non-public data releases.
