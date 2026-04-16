@@ -517,7 +517,7 @@ class CatalogScript(PipelineScript, Progress):
         flags_index = np.where(obj.measurementFlags.method == 'tempfit')[0]
         if flags_index.size == 1:
             catalog_table.tempfitflag.append(obj.measurementFlags.flag[flags_index[0]])
-            catalog_table.tempfitstatus.append(obj.measurementFlags.status[flags_index[0]])
+            catalog_table.tempfitstatus.append(obj.measurementFlags.status[flags_index[0]].replace(' ', '|'))
         else:
             catalog_table.tempfitflag.append(False)
             catalog_table.tempfitstatus.append('')
