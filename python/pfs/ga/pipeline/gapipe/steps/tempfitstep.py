@@ -466,12 +466,12 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_spectra,
             fluxes=context.state.tempfit_fluxes)
 
-        # Guess RV using a fixed template
-        self.__guess_rv(context)
-
         # Guess T_eff is broadband photometry is available
         if context.config.tempfit.fit_photometry and context.state.tempfit_fluxes is not None:
             self.__guess_T_eff(context)
+
+        # Guess RV
+        self.__guess_rv(context)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
@@ -515,9 +515,15 @@ class TempFitStep(PipelineStep):
             
             T_eff_guess = context.state.tempfit_state.params_guess['T_eff']
 
-            # Do not go too low in temperature
-            # TODO: check if this works well for M dwarfs
-            context.state.tempfit_state.params_0['T_eff'] = min(4250, T_eff_guess)
+            context.state.tempfit_state.params_0['T_eff'] = T_eff_guess
+
+            # Set some reasonable bounds
+            # TODO: bring out slack values as parameter
+            context.state.tempfit_state.params_bounds['T_eff'] = (T_eff_guess - 250, T_eff_guess + 250)
+
+            # # Do not go too low in temperature
+            # # TODO: check if this works well for M dwarfs
+            # context.state.tempfit_state.params_0['T_eff'] = min(4250, T_eff_guess)
     
     def run(self, context):
         # TODO: add parameters to config to control the fitting procedure
