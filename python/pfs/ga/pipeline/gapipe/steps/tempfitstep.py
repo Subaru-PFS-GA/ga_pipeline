@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+import numpy as np
 import astropy.units as u
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation
@@ -318,6 +319,17 @@ class TempFitStep(PipelineStep):
                 wave = grids[arm].wave
             else:
                 raise NotImplementedError()
+
+            # Update the kernel size based on the resolution of the model grid
+            # Gauss PSF uses sigma internally, grid resolution is l / dl
+            if context.config.tempfit.model_grid_resolution is not None and \
+                arm in context.config.tempfit.model_grid_resolution and \
+                context.config.tempfit.model_grid_resolution[arm] is not None:
+
+                R = context.config.tempfit.model_grid_resolution[arm]
+                gauss_psf.apply_template_resolution(R)
+
+                logger.info(f'Assuming a template resolution of `{R}` for arm `{arm}`.')
 
             s = gauss_psf.get_optimal_size(wave)
             logger.info(f'Optimal kernel size for PSF in arm `{arm}` is {s}.')

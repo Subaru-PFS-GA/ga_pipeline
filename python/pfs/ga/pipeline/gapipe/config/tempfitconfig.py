@@ -18,6 +18,8 @@ class TempFitConfig(Config):
         Require all arms to run the fitting. If False, a subset of the arms can be used.
     model_grid_path: str
         Path to the model grid files. Use {arm} for wildcard.
+    model_grid_resolution: float or dict
+        If float, the resolution to use for all arms. If dict, a dictionary of arm
     model_grid_args: dict
         Extra arguments to pass to the model grid. Use this to limit the parameter space.
     model_grid_mmap: bool
@@ -64,6 +66,9 @@ class TempFitConfig(Config):
         # Template grid path, str or dict, use {arm} for wildcard
         self.model_grid_path = None               
         
+        # Model grid resolution, float or dict, use {arm} for wildcard
+        self.model_grid_resolution = None
+
         # Extra arguments to model grid, such as parameter limits
         self.model_grid_args = None               
         
