@@ -406,6 +406,7 @@ class GAPipeline(Pipeline):
                 try:
                     repo.locate_product(product_type, **identity.__dict__)
                     found = True
+                    logger.debug(f'Product type `{product_name}` found in repository of type {type(repo).__name__}.')
                     break
                 except KeyError:
                     # The product type is not available in the repository, skip
@@ -413,7 +414,7 @@ class GAPipeline(Pipeline):
                     continue
                 except FileNotFoundError:
                     # The product file is not available in the repository, skip
-                    logger.warning(f'{product_name} file for identity `{identity}` not available in repository of type {type(repo).__name__}.')
+                    logger.debug(f'{product_name} file for identity `{identity}` not available in repository of type {type(repo).__name__}.')
                     continue
 
             if not found:

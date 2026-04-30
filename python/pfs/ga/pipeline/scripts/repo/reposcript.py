@@ -282,27 +282,44 @@ class RepoScript(PipelineScript, Batch, Progress):
         self.__validate_extract_product(product, filename)
         filenames, identities = self.__get_extract_product_filenames(product, filename)
 
+        logger.info(f'Found {len(filenames)} files matching the filters. Scheduling for batch submission.')
+
+        if not self.yes:
+            answer = input(f'Proceed to submit {len(filenames)} jobs to the batch system? [y/N]: ')
+            if answer.lower() != 'y':
+                logger.info('Aborting batch submission.')
+                return
+
         # Submit a job for each product matching the filters
         for i, fn in enumerate(self._wrap_in_progressbar(filenames, total=len(filenames), logger=logger)):
             command = f'python -m pfs.ga.pipeline.scripts.repo.reposcript extract-product {fn}'
             
-            # Add the repo filters
+            # Add the repo filters to the command
             for key, filter in self.input_repo.object_filters.__dict__.items():
                 args = filter.render(lower=True)
                 if args is not None:
                     command += f' {args}'
 
-            # TODO: Add other command-line arguments
             command += ' --log-to-console'
-
-            # TODO: filter out wrong arguments instead
-            raise NotImplementedError()
         
-            for a in ['workdir', 'outdir', 'datadir', 'run', 'rundir']:
-                if self.is_arg(a, args):
-                    command += f' --{a} {self.get_arg(a, args)}'
+            # TODO: Copy remaining arguments from the original command line
+            #       This is only necessary if anything is overriden from the command-line
+            #       Figure out how to do this
+            #       The arguments that aren't among repo filters are
+            #       --butler | --no-butler
+            #       --workdir --outdir --configrun --configrundir
+            #       --garun --garundir --ignore-missing-files --butlerconfigdir
+            #       --butlercollections --run --datadir --rundir
+            #       The arguments that we don't need to copy are
+            #       --nvisit --pfsvisithash --debug --profile
+            #       --log-file LOG_FILE --log-to-console --no-log-to-console --log-level
+            #       --dry-run --top --progress
+            #       --yes --batch --partition --cpus CPUS --memory MEMORY --time TIME
+            # for a in ['workdir', 'outdir', 'datadir', 'run', 'rundir']:
+            #     if self.is_arg(a, args):
+            #         command += f' --{a} {self.get_arg(a, args)}'
             
-            self._submit_job(command, fn)
+            self._submit_job(command, fn, f'extract-{i}')
 
             if self.top is not None and i >= self.top:
                 logger.info(f'Stop after processing {self.top} objects.')

@@ -209,7 +209,7 @@ class ConfigureScript(PipelineScript, Progress):
         visit_mask = self.__locate_required_products(objid, id)
 
         if visit_mask.sum() == 0:
-            logger.error(f'No required products found for object {objid}, skipping.')
+            logger.error(f'No required products found for object {objid:016x}, skipping.')
             return None
 
         target = GATargetConfig(

@@ -131,16 +131,19 @@ class PipelineScript(Script):
     def _init_from_args_pre_logging(self, args):
         super()._init_from_args_pre_logging(args)
 
-        # TODO: repo variables are not updated based on the command-line arguments yet
-        #       because of this, the log file will go to the default location which
-        #       is determined by the environment variables instead of any config files or
-        #       command-line arguments. This needs to be fixed.
-
         self.__use_butler = self.get_arg('use_butler', args, self.get_env('GAPIPE_USE_BUTLER', '0') in ['1', 'true', 'True'])
+        
         self.__config_repo = self._create_config_repo()
         self.__input_repo = self._create_input_repo()
         self.__work_repo = self._create_work_repo()
         self.__output_repo = self._create_output_repo()
+
+        # Force parsing the command-line arguments to set the exact location of the
+        # data repositories. This is required to write the log file to the correct
+        # work directory. These locations might be updated later in case a specific
+        # config yaml file is read that overrides the data locations.
+        self.config.init_from_args(args)
+        self._update_repo_directories(self.config)
 
     def _init_from_args(self, args):
 
