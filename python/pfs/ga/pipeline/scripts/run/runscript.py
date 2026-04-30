@@ -66,22 +66,23 @@ class RunScript(PipelineScript, Batch, Progress):
         # search filters using the data store connector.
         if self.__config_files is not None:
             config_files = self.__config_files
+            identities = None
         else:
             logger.info('No config files provided on the command-line. Searching for config files in the work repository.')
-            config_files, _ = self.work_repo.find_product(GAPipelineConfig)
+            config_files, identities = self.work_repo.find_product(GAPipelineConfig)
 
         if len(config_files) == 0:
             logger.warning('No config files found matching the filters.')
             return []
 
-        return config_files
+        return config_files, identities
 
     def __submit(self):
         """
         Submit a batch job for each config file or object matching the filters.
         """
 
-        config_files = self.__get_config_files()
+        config_files, identities = self.__get_config_files()
 
         logger.info(f'Found {len(config_files)} config files matching the filters. Scheduling for batch submission.')
 
@@ -93,6 +94,11 @@ class RunScript(PipelineScript, Batch, Progress):
 
         # Submit a job for each config file
         for i, config_file in enumerate(self._wrap_in_progressbar(config_files, total=len(config_files), logger=logger)):
+            if identities is not None:
+                job_name = f'{identities.objId[i]:016x}'
+            else:
+                job_name = f'gapipe-run-{i}'
+
             item = os.path.splitext(os.path.basename(config_file))[0]
             log_dir = os.path.dirname(config_file)
             log_file = os.path.splitext(config_file)[0] + '.log'
@@ -102,7 +108,7 @@ class RunScript(PipelineScript, Batch, Progress):
             command += f' --no-log-to-console'
             command += f' --log-file {log_file}'
 
-            self._submit_job(command, item, output_dir=log_dir)
+            self._submit_job(command, item, job_name, output_dir=log_dir)
 
             if self.top is not None and i >= self.top:
                 logger.info(f'Stop after processing {self.top} objects.')
@@ -113,7 +119,7 @@ class RunScript(PipelineScript, Batch, Progress):
         Execute the pipeline in-process for each config file or object matching the filters.
         """
         
-        config_files = self.__get_config_files()
+        config_files, identities = self.__get_config_files()
 
         # Create the pipeline and the trace object
         self.__trace = GAPipelineTrace()
