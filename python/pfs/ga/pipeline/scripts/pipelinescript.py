@@ -483,7 +483,8 @@ class PipelineScript(Script):
 
         # Find other targets with matching __target_idx
         secondary_targets = []
-        for secondary_target in np.where(target_list['__target_idx'] == target_idx)[0]:
+        mask = (~target_list['__target_idx'].isna()) & (target_list['__target_idx'] == target_idx)
+        for secondary_target in np.where(mask)[0]:
             # Skip primary target because we will use it to override other targets
             if secondary_target == primary_target:
                 continue
