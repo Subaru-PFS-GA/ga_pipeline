@@ -141,7 +141,8 @@ GAPIPE can use Butler to find input data products. For data staging and output d
 For example, in case of S25A-OT02, the directory structure of the data downloaded from the Science Platform looks like this:
 
 pfs/programs/S25A-OT02/2d/
-                          S25A_November2025/ 
+                          S25A_November2025/
+                          S25A_April2026/
                           run21_June2025/
                           run22_July2025/
                           run23_August2025/
@@ -150,7 +151,7 @@ pfs/programs/S25A-OT02/2d/
 
 In this case, set the `BUTLER_CONFIGDIR` environment variable to point to the `2d` directory and set the `BUTLER_COLLECTIONS` environment variable to include the runs you want to use, for example:
 
-    $ export BUTLER_CONFIGDIR="$GAPIPE_DATADIR/2d"
+    $ export BUTLER_CONFIGDIR="$GAPIPE_DATADIR"
     $ export BUTLER_COLLECTIONS="run21_June2025:run22_July2025:run23_August2025"
 
 You can test the configuration by running the `gapipe-repo` command-line tool, which is part of GAPIPE. In the current version, you explicitly need to set the `--butler` switch for the scripts to use Butler.
@@ -217,7 +218,7 @@ After signing in to the Science Platform and use the direct file access link to 
 
     $ export PFS_PROGRAM="S25A-OT02"
     $ export PFSSP_TOKEN="<your_application_password>"
-    $ mkdir -p $GAPIPE_DATADIR/2d && cd $GAPIPE_DATADIR/2d
+    $ mkdir -p $GAPIPE_DATADIR && cd $GAPIPE_DATADIR
     $ wget --header="Authorization: Bearer $PFSSP_TOKEN" "https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/butler.yaml" -O butler.yaml
     $ wget --header="Authorization: Bearer $PFSSP_TOKEN" "https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/gen3.sqlite3" -O gen3.sqlite3
 
@@ -225,9 +226,19 @@ After signing in to the Science Platform and use the direct file access link to 
 
 Once the Butler database is downloaded, GAPIPE must be configured to use it. This is done by setting the `BUTLER_CONFIGDIR` environment variable to point to the directory where the Butler configuration file (`butler.yaml`) is located.
 
-    $ export BUTLER_CONFIGDIR="$GAPIPE_DATADIR/2d"
+    $ export BUTLER_CONFIGDIR="$GAPIPE_DATADIR"
 
 You should also update the environment file `$GAPIPE_ROOT/configs/envs/default` to set this variable, so that it is set automatically when GAPIPE is initialized.
+
+To get a list of available collections, run the following python script:
+
+```butler_collections.py
+import os
+from lsst.daf.butler import Butler
+butler = Butler(os.environ['BUTLER_CONFIGDIR'])
+collections = butler.registry.queryCollections()
+print(collections)
+```
 
 On the Science Platform, you can find the list of the directories, referring  to the observation runs such as `run21_June2025`, `run22_July2025` etc. These need to be added to the `$BUTLER_COLLECTIONS` environment variable, which is a colon-separated list of the paths relative to `$BUTLER_CONFIGDIR`. For example, if you want to use the aforementioned runs, you would set:
 
@@ -247,8 +258,10 @@ S25A-OT02   2025-03       run21_June2025                  runs/2025-03/obslog/*.
             2025-06       run23_July2025                                                    preview 
             2025-06       run23_August2025                runs/2025-06/obslog/*.csv
             2025-0[3-6]   S25A_November2025               runs/2025-0[3-6]/obslog/*.csv     all runs
+            2025-0[3-6]   S25A_April2026                  runs/2025-0[3-6]/obslog/*.csv     all runs
 S25B-OT02   2025-09       run24_November2025              runs/2025-09/obslog/*.csv
             2025-11       run25_November2025              runs/2025-11/obslog/*.csv
+            2025-[09-11]  run25_February2026              runs/2025-[09-11]/obslog/*.csv    two runs!
             2026-01
 ```
 
@@ -279,6 +292,7 @@ S25B-OT02  2025-09     run24  0x100000100000000        M31 E0
                               0x50000000000            MW outerdisk_l180_b16
                               0x51000000000            MW outerdisk_l180_b17
            2026-01     run26  0x0700000000             Sextans dSph
+           2026-03     run27     --- unsuccessful run due to weather ---
 ```
 
 Test the configuration by activating GAPIPE and running `gapipe-repo`:
@@ -295,7 +309,7 @@ This should return the local path to the PfsConfig file for the given visit. To 
 
 First, generate a list of PfsConfig files that you want to download. And save the list to a file. Since the paths returned by `gapipe-repo` are prefixed with the local path `$GAPIPE_DIR/data/2d`, you should use `sed` to remove the prefix and save the list of relative paths to a local file:
 
-    $ gapipe-repo find-product PfsConfig --butler --format path | sed "s|$GAPIPE_DATADIR/2d/||g" > run21_June2025_PfsConfig.txt
+    $ gapipe-repo find-product PfsConfig --butler --format path | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_PfsConfig.txt
 
 If you want to limit the visits to a particular sub-project, use the observation log files available in the `spt_ssp_observation` repository.
 
@@ -316,7 +330,7 @@ Remember to use the full path to the repository in the above command.
 
 Once the list is generated, you can download the PfsConfig files using `wget`:
 
-    $ wget -i run21_June2025_GA_PfsConfig.txt --header="Authorization: Bearer $PFSSP_TOKEN" --base https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/ -P $GAPIPE_DATADIR/ --no-host-directories --cut-dirs=5 -x
+    $ wget -i run21_June2025_GA_PfsConfig.txt --header="Authorization: Bearer $PFSSP_TOKEN" --base https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PFS_PROGRAM}/2d/ -P $GAPIPE_DATADIR --no-host-directories --cut-dirs=5 -x -c
 
 ### 2.4.4 Find individual objects
 
@@ -326,11 +340,11 @@ TBW: Write about how the figure out the object IDs from the targeting feather fi
 
 To get the list of objects that were observed during a specific visit, run the following command:
 
-    $ gapipe-repo find-object --visit 123317 --butler
+    $ gapipe-repo find-object --visit 123317
 
 To get the list of visits that contain a specific object, run the following command:
 
-    $ gapipe-repo find-object --visit $VISITS --objid 0x0000000600002fec --butler
+    $ gapipe-repo find-object --visit $VISITS --objid 0x0000000600002fec
 
 In the last query, it is necessary to provide the list of visits to limit the search space to the filed that have been downloaded locally, otherwise the command will try to search all the PfsConfig files in the Butler collections defined in the `BUTLER_COLLECTIONS` environment variable.
 
@@ -340,7 +354,7 @@ Note, that queries like these are slow because they require reading the PfsConfi
 
 PfsCalibrated files can be downloaded similarly to PfsConfig files. First, generate a list of PfsCalibrated files for the visits you are interested in:
 
-    $ gapipe-repo find-product PfsCalibrated --visit $VISITS --format path --butler | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsCalibrated.txt
+    $ gapipe-repo find-product PfsCalibrated --visit $VISITS --format path | sed "s|$GAPIPE_DATADIR/||g" > run21_June2025_GA_PfsCalibrated.txt
 
 Then download the files using `wget`:
 
