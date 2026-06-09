@@ -65,19 +65,19 @@ config = dict(
             'g_ps1': dict(
                 instrument = 'ps1',
                 priority = 2,
-                filter_name = 'g_ps1',
+                filter_name = ['g_ps1', 'ps1_g'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.g.dat',
             ),
             'r_ps1': dict(
                 instrument = 'ps1',
                 priority = 2,
-                filter_name = 'r_ps1',
+                filter_name = ['r_ps1', 'ps1_r'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.r.dat',
             ),
             'i_ps1': dict(
                 instrument = 'ps1',
                 priority = 2,
-                filter_name = 'i_ps1',
+                filter_name = ['i_ps1', 'ps1_i'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.i.dat',
             ),
             'gaia_g': dict(
