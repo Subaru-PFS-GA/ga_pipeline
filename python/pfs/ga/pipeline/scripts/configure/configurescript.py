@@ -426,7 +426,6 @@ class ConfigureScript(PipelineScript, Progress):
 
         # TODO: verify if magnitudes are consistent because some fluxes in PfsConfig are wrong
 
-
     def __configure_tempfit_magnitudes_target_list(self, objid, pipeline_config, pfs_configs, target_list):
         # Look up fluxes in the target list files and set the photometric fluxes to constrain template fitting
         # The configuration template has a list of magnitudes that can be used. Match these
@@ -452,13 +451,13 @@ class ConfigureScript(PipelineScript, Progress):
         # Update the magnitudes and fluxes from secondary targets. These values
         # might be overwritten by the primary target values.
         for secondary_target in secondary_targets:
-            self.__update_magnitdes_from_target_list(objid, pipeline_config, target_list, secondary_target)
+            self.__update_magnitudes_from_target_list(objid, pipeline_config, target_list, secondary_target)
 
         # Update the magnitudes and fluxes for the primary target as well,
         # these values will override the ones from pfsConfig and everything else
-        self.__update_magnitdes_from_target_list(objid, pipeline_config, target_list, primary_target)
+        self.__update_magnitudes_from_target_list(objid, pipeline_config, target_list, primary_target)
 
-    def __update_magnitdes_from_target_list(self, objid, pipeline_config, target_list, idx):
+    def __update_magnitudes_from_target_list(self, objid, pipeline_config, target_list, idx):
         # Check if any magnitudes with filter curves are defined in the config template
         # and if so, try to match them to the filters available in pfsConfig
 

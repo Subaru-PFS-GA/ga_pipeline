@@ -453,6 +453,16 @@ class PipelineScript(Script):
             target_list.drop_duplicates(inplace=True)
             logger.info(f'Found {len(target_list)} unique entries in target list files.')
 
+            # Some very early target lists might contain duplicate targetids where
+            # the magnitudes are NaN in some columns. Try to merge these duplicate
+            # rows first by keeping the non-NaN values and then drop duplicates
+            mask = target_list.duplicated(subset=['targetid'], keep=False)
+            if mask.sum() > 0:
+                logger.warning(f'Found {mask.sum()} duplicate entries in target list based on targetid only, '
+                            'trying to merge them by keeping non-NaN values.')
+
+                target_list = target_list.groupby('targetid', as_index=False).first()
+
         return target_list
 
     def _find_matching_targets(self, target_list, obcode, objid, max_separation=0.1):
@@ -520,7 +530,7 @@ class PipelineScript(Script):
                     # ~np.isnan(target_list.loc[primary_target, f'{filter_name}_flux']):
                     flux = target_list.loc[idx, f'{filter_name}_flux'].item()
                     flux_err = target_list.loc[idx, f'{filter_name}_flux_err'].item()
-                    flux_found = True
+                    flux_found = flux is not None and np.isfinite(flux)
                 else:
                     for cc in [ c for c in target_list.columns if c.startswith('filter_')]:
                         if target_list.loc[idx, cc] == filter_name:
@@ -528,14 +538,17 @@ class PipelineScript(Script):
                             filter = cc[len('filter_'):]
                             flux = target_list.loc[idx, f'psf_flux_{filter}'].item()
                             flux_err = target_list.loc[idx, f'psf_flux_error_{filter}'].item()
-                            flux_found = True
+                            flux_found = flux is not None and np.isfinite(flux)
 
                 if flux_found:
                     break
 
-            if flux_found and flux is not None and flux_err is not None and \
-                np.isfinite(flux) and np.isfinite(flux_err):
+            if flux_found and flux is not None and  np.isfinite(flux):
 
+                if flux_err is None or np.isnan(flux_err):
+                    logger.warning(f'Flux error for filter {filter} is missing or NaN, setting it to sqrt(flux).')
+                    flux_err = np.sqrt(flux)
+                
                 yield filter, config, flux, flux_err
 
     def _find_magnitudes_in_target_list(self, photometry, target_list, idx, magnitudes=None, force_update=False):
