@@ -17,6 +17,10 @@ export GAPIPE_USE_BUTLER="1"
 # export GAPIPE_CONDAPATH="~/miniconda"
 # export GAPIPE_CONDAENV="gapipe"
 
+# PFS Science Platform access token, see https://hscpfs.mtk.nao.ac.jp/portal/
+# Only required to download data from the Science Platform directly.
+export PFSSP_TOKEN="********"
+
 # Data root directory, this can be used in the config files
 # to make them portable across different machines with different
 # directory structures.
