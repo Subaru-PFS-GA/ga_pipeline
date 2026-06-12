@@ -31,6 +31,7 @@ export GAPIPE_DATAROOT="~/data/pfs/programs"
 # running on a cluster.
 export GAPIPE_WORKDIR="$GAPIPE_ROOT/work"
 export GAPIPE_OUTDIR="$GAPIPE_ROOT/out"
+export GAPIPE_EXPORTDIR="$GAPIPE_ROOT/export"
 
 # Full path to the observation logs
 # For the SSP, use the git repo https://github.com/Subaru-PFS/spt_ssp_observation
