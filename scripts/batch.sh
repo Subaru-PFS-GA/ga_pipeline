@@ -4,15 +4,15 @@
 #
 # Usage:
 #
-#   ./scripts/batch.sh <VERB> <PARAM_RUN> <PARAM_GARUN> <PARAM_CONFIG>
+#   ./scripts/batch.sh <VERB> <PARAM_RUN> <PARAM_GARUN> --config <PARAM_CONFIG[0]> [<PARAM_CONFIG[1]> ...]
 #
 # Example:
 #
-#   ./scripts/batch.sh download S25A_April2026 dSph_dra_2025-03 b_mr
-#   ./scripts/batch.sh extract S25A_April2026 dSph_dra_2025-03 b_mr
-#   ./scripts/batch.sh configure S25A_April2026 dSph_dra_2025-03 b_mr
-#   ./scripts/batch.sh submit S25A_April2026 dSph_dra_2025-03 b_mr
-#   ./scripts/batch.sh catalog S25A_April2026 dSph_dra_2025-03 b_mr
+#   ./scripts/batch.sh download S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh extract S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh configure S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh submit S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh catalog S25A_April2026 dSph_dra_2025-03 --config b_mr
 #
 #   This command will load the common config from
 #       ./configs/gapipe/S25A_April2026/common.sh,
@@ -34,7 +34,7 @@
 #       match the directory name in ./configs/gapipe/<PARAM_RUN>/common.sh
 #   <PARAM_GARUN>: The name of the GAPIPE run to create. This should match the
 #       file name in ./configs/gapipe/<PARAM_RUN>/garuns/<PARAM_GARUN>.sh
-#   <PARAM_CONFIG>: The configuration template to use for the gapipe-configure command.
+#   <PARAM_CONFIG>: The configuration templates to use for the gapipe-configure command.
 #       This should match the file name in ./configs/gapipe/<PARAM_CONFIG>.py
 #       Not used with the "extract" verb.
 
@@ -58,7 +58,7 @@
 
 
 # Skip processing entries
-SKIP_BEFORE=1
+SKIP_BEFORE=
 SKIP_AFTER=
 
 # Run in slurm, only applies to the gapipe-run command, only used with the "submit" verb
@@ -91,6 +91,15 @@ function unique_array() {
         fi
     done
     printf '%s\n' "${unique_array[@]}" | sort | tr '\n' ' '
+}
+
+function get_config_files() {
+    i=$1
+    local config_files="./configs/gapipe/${RUN[$i]}/common.py"
+    for config in "${PARAM_CONFIG[@]}"; do
+        config_files="${config_files} ./configs/gapipe/${RUN[$i]}/${config}.py"
+    done
+    echo "$config_files"
 }
 
 function run_cmd() {
@@ -133,6 +142,9 @@ function run_extract() {
 
     UNIQUE_VISITS=($(unique_array "${ALL_VISITS[@]}"))
     echo "Found ${#UNIQUE_VISITS[@]} unique visits in the obs logs."
+
+    # TODO: rewrite this to generate file list and sbatch script
+    #       instead of submit jobs from python
 
     # TODO: limit extract to certain catIDs or objIDs
     # TODO: limit extract to certain visits
@@ -177,7 +189,7 @@ gapipe-repo find-product PfsConfig \
     --butler \
     --format path \
     | sed "s|${GAPIPE_DATADIR}/||g" \
-    > "${GARUN[$i]}_pfsConfig.txt"
+    > "run/${GARUN[$i]}_pfsConfig.txt"
 EOF
     )
     run_cmd "$cmd"
@@ -186,7 +198,7 @@ EOF
 
     cmd=$(cat <<EOF
 wget \
-    -i "${GARUN[$i]}_pfsConfig.txt" \
+    -i "run/${GARUN[$i]}_pfsConfig.txt" \
     --header="Authorization: Bearer ${PFSSP_TOKEN}" \
     --base "https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PROPOSAL[$i]}/2d/" \
     -P ${GAPIPE_DATADIR} \
@@ -206,14 +218,14 @@ gapipe-repo find-product PfsCalibrated \
     --butler \
     --format path \
     | sed "s|${GAPIPE_DATADIR}/||g" \
-    > "${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.txt"
+    > "run/${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.txt"
 EOF
     )
     run_cmd "$cmd"
 
     # Generate the sbatch script for downloading the pfsCalibrated files in parallel
 
-    cat > "${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh" <<EOF
+    cat > "run/${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh" <<EOF
 #!/bin/bash
 #SBATCH --job-name=gapipe_download
 #SBATCH --output=logs/%x-%A_%a.out
@@ -222,9 +234,9 @@ EOF
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4G
 
-# run it as sbatch --array=0-7 ${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh
+# run it as sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh
 
-FILELIST="${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.txt"
+FILELIST="run/${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.txt"
 TASK_ID="\$SLURM_ARRAY_TASK_ID"
 NUM_TASKS="\$SLURM_ARRAY_TASK_COUNT"
 
@@ -249,12 +261,12 @@ while read -r url; do
 done < "\${FILELIST}"
 EOF
 
-    echo "${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh" " has been generated."
+    echo "run/${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh" " has been generated."
 
     # Submit the batch job array for downloading the pfsCalibrated files
 
     cmd=$(cat <<EOF
-sbatch --array=0-7 ${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh
+sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_pfsCalibrated.sh
 EOF
     )
     # run_cmd "$cmd"
@@ -263,10 +275,11 @@ EOF
 function run_configure() {
     i=$1
 
-    # Generate the configuration files for a given GAPIPE run
+    config_files="$(get_config_files $i)"
+    
     cmd=$(cat <<EOF
 gapipe-configure \
-    --config "./configs/gapipe/${RUN[$i]}/common.py" "./configs/gapipe/${RUN[$i]}/${PARAM_CONFIG}.py" \
+    --config ${config_files} \
     --yes ${EXTRAPARAMS} \
     --obs-logs ${UNIQUE_OBSLOGS} \
     --target-lists ${UNIQUE_TARGETLISTS} \
@@ -305,14 +318,95 @@ EOF
     run_cmd "$cmd"
 }
 
+function run_submit() {
+    i=$i
+
+    file_list="run/${GARUN[$i]}_${CATID[$i]}_GAPipelineConfig.txt"
+    sbatch_script="run/run_${GARUN[$i]}_${CATID[$i]}.sh"
+
+    # Look up the pipeline config yaml files and submit them as an array of batch jobs
+    cmd=$(cat <<EOF
+gapipe-repo find-product GAPipelineConfig \
+    --yes ${EXTRAPARAMS} \
+    --configrundir "${CONFIGRUNDIR}" \
+    --configrun "${CONFIGRUN}" \
+    --run "${RUN[$i]}" \
+    --rundir "${RUNDIR[$i]}" \
+    --garun "${GARUN[$i]}" \
+    --garundir "${GARUNDIR[$i]}" \
+    --catid ${UNIQUE_CATIDS} \
+    --objid ${OBJID[$i]} \
+    --format path \
+    > "${file_list}"
+EOF
+    )
+    run_cmd "$cmd"
+
+    echo "Pipeline config file list generated: ${file_list}"
+
+    # Generate the sbatch script for downloading the pfsCalibrated files in parallel
+
+    cat > "${sbatch_script}" <<EOF
+#!/bin/bash
+#SBATCH --job-name=gapipe_run
+#SBATCH --output=logs/%x-%A_%a.out
+#SBATCH --time=02:00:00
+#SBATCH --partition=${BATCH_PARTITION}
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=12G
+
+# run it as sbatch --array=0-7 ${sbatch_script}
+
+set -e
+
+FILELIST="${file_list}"
+TASK_ID="\$SLURM_ARRAY_TASK_ID"
+NUM_TASKS="\$SLURM_ARRAY_TASK_COUNT"
+
+echo "Task \$TASK_ID of \$NUM_TASKS starting"
+
+# Read file list with line numbers
+lineno=0
+while read -r path; do
+    lineno=\$((lineno + 1))
+
+    # Replace the extension in path from .yaml to .log
+    logpath=\${path%.yaml}.log
+
+    # Check if this line belongs to this task
+    mod=\$(( (lineno - 1) % NUM_TASKS ))
+    if [[ \$mod -eq \$TASK_ID ]]; then
+        echo "Task \$TASK_ID running line \$lineno: \$path"
+        gapipe-run \\
+            --config \$path \\
+            --no-log-to-console \\
+            --log-file \$logpath
+    fi
+
+done < "\${FILELIST}"
+EOF
+
+    echo "${sbatch_script}" " has been generated."
+
+    # Submit the batch job array
+
+    cmd=$(cat <<EOF
+sbatch --array=0-1023 ${sbatch_script}
+EOF
+    )
+    run_cmd "$cmd"
+}
+
 function run_catalog() {
     j=$1
+
+    config_files="$(get_config_files $j)"
 
     # Generate the catalog for the given field for each catId
     for catid in ${UNIQUE_CATIDS[*]}; do
         echo "Generating catalog for catID $catid"
         gapipe-catalog \
-            --config "./configs/gapipe/${RUN[$j]}/common.py" "./configs/gapipe/${RUN[$j]}/${PARAM_CONFIG}.py" \
+            --config ${config_files} \
             --obs-log ${UNIQUE_OBSLOGS[*]} \
             --target-lists ${UNIQUE_TARGETLISTS[*]} \
             --assignments ${UNIQUE_ASSIGNMENTS[*]} \
@@ -326,6 +420,42 @@ function run_catalog() {
             --include-missing-objects \
             --catid $catid ${EXTRAPARAMS}
     done
+}
+
+function run_export() {
+    i=$1
+
+    file_list="run/${GARUN[$i]}_pfsStarCatalog.txt"
+
+    cmd=$(cat <<EOF
+gapipe-repo find-product PfsStarCatalog \
+    --yes ${EXTRAPARAMS} \
+    --configrundir "${CONFIGRUNDIR}" \
+    --configrun "${CONFIGRUN}" \
+    --run "${RUN[$i]}" \
+    --rundir "${RUNDIR[$i]}" \
+    --garun "${GARUN[$i]}" \
+    --garundir "${GARUNDIR[$i]}" \
+    --catid ${UNIQUE_CATIDS} \
+    --objid ${OBJID[$i]} \
+    --format path \
+    > "${file_list}"
+EOF
+    )
+    run_cmd "$cmd"
+
+    echo "Catalog file list generated: ${file_list}"
+
+    while read -r path; do
+        # Get the path to the file relative to $GAPIPE_OUTDIR
+        relpath=${path#"$GAPIPE_OUTDIR/"}
+        dir=$(dirname "$relpath")
+
+        mkdir -p "${GAPIPE_EXPORTDIR}/${dir}"
+        cp "$path" "${GAPIPE_EXPORTDIR}/${dir}/"
+
+        echo "Exported catalog from $relpath"
+    done < "${file_list}"
 }
 
 function main_loop() {
@@ -395,11 +525,17 @@ function main_loop() {
             "configure")
                 run_configure $i
                 ;;
-            "run"|"submit")
+            "run")
                 run_run $i
+                ;;
+            "submit")
+                run_submit $i
                 ;;
             "catalog")
                 run_catalog $i
+                ;;
+            "export")
+                run_export $i
                 ;;
             *)
                 echo "Invalid verb: $PARAM_VERB. Must be one of: extract, configure, run, submit, catalog."
@@ -414,15 +550,42 @@ set -e
 
 # Process command line arguments
 
-PARAM_VERB="$1"           # extract, configure, run, submit, catalog
-PARAM_RUN="$2"            # PIPE2D run
-PARAM_GARUN="$3"          # GAPIPE run
-PARAM_CONFIG="$4"         # Pipeline config name. Path is generated from RUN and PIPECONFIG.
+PARAM_VERB="$1" && shift
+PARAM_RUN="$1" && shift
+PARAM_GARUN="$1" && shift
+PARAM_CONFIG=()
+
+# Parse positional and prefixed arguments
+arg_index=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config)
+            shift
+            while [[ $# -gt 0 ]] && [[ "$1" != --* ]]; do
+                PARAM_CONFIG+=("$1")
+                shift
+            done
+            continue
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 # Set variables that are used in the config files based on the command line arguments
 
 GAPIPE_RUN="${PARAM_RUN}"
-GAPIPE_CONFIG="${PARAM_CONFIG}"
+GAPIPE_CONFIG="${PARAM_CONFIG[0]}"
+
+echo "PARAM_VERB=${PARAM_VERB}"
+echo "PARAM_RUN=${PARAM_RUN}"
+echo "PARAM_GARUN=${PARAM_GARUN}"
+echo "PARAM_CONFIG=${PARAM_CONFIG[@]}"
+echo "GAPIPE_RUN=${GAPIPE_RUN}"
+echo "GAPIPE_CONFIG=${GAPIPE_CONFIG}"
 
 case $PARAM_VERB in
     "download")
@@ -443,7 +606,7 @@ case $PARAM_VERB in
     "run")
         load_script_config
         load_gapipe_config
-        BATCH_PARAMS=""
+        # BATCH_PARAMS=""
         main_loop
         ;;
     "submit")
@@ -458,6 +621,11 @@ case $PARAM_VERB in
         main_loop
         ;;
     "catalog")
+        load_script_config
+        load_gapipe_config
+        main_loop
+        ;;
+    "export")
         load_script_config
         load_gapipe_config
         main_loop

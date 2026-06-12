@@ -1,5 +1,7 @@
 .vscode
 temp
+logs
+run
 slurm-*.out
 ./*.json
 ./*.sh
