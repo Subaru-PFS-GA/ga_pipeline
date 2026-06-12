@@ -1,0 +1,161 @@
+# <proposal> <obs_date>         <id_prefix>              <target>
+# S25B-OT02  2025-09     run24  0x100000100000000        M31 E0
+#                               0x100000200000000        M31 W0
+#                               0x100000300000000        M31 GSS0
+#                               0x100000400000000        M31 NWS0
+
+###############
+# SSP_GA_m31_E0
+
+OBSDATE="2025-09"
+FIELDPREFIX="m31_E0"
+OBSPREFIX="SSP_GA_m31_E0"
+
+# Science targets
+
+PROPOSAL[0]="S25B-OT02"
+RUN[0]="${GAPIPE_RUN}"
+RUNDIR[0]="${GAPIPE_RUNDIR}"
+CONFIGRUN[0]="${GAPIPE_CONFIGRUN}"
+CONFIGRUNDIR[0]="${GAPIPE_CONFIGRUNDIR}"
+GARUN[0]="${FIELDPREFIX}_${OBSDATE}_${GAPIPE_RUN}_${GAPIPE_CONFIG}"
+GARUNDIR[0]="${GARUN[0]}"
+OBSLOGS[0]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[0]="${GAPIPE_TARGETINGDIR}/m31/m31_E0_SSP/netflow/m31_E0_1_SSP_004/m31_targets_*.feather"
+ASSIGNMENTS[0]="${GAPIPE_TARGETINGDIR}/m31/m31_E0_SSP/netflow/m31_E0_1_SSP_004/m31_assignments_all.feather"
+VISITS[0]="$(cat ${OBSLOGS[0]} | grep ${OBSPREFIX} | cut -d ',' -f 1)"
+CATID[0]="10092"                        # GA science
+OBJID[0]="0x100000100000000-0x1000001FFFFFFFF"
+
+# Flux standards of the same visits
+
+PROPOSAL[1]=${PROPOSAL[0]}
+RUN[1]=${RUN[0]}
+RUNDIR[1]=${RUNDIR[0]}
+CONFIGRUN[1]="${CONFIGRUN[0]}"
+CONFIGRUNDIR[1]="${CONFIGRUNDIR[0]}"
+GARUN[1]="${GARUN[0]}"
+GARUNDIR[1]="${GARUNDIR[0]}"
+OBSLOGS[1]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[1]="${TARGETLISTS[0]}"
+ASSIGNMENTS[1]=${ASSIGNMENTS[0]}
+VISITS[1]=${VISITS[0]}
+CATID[1]="3006"                         # Flux standards
+OBJID[1]=""
+
+###############
+# SSP_GA_m31_W0
+
+OBSDATE="2025-09"
+FIELDPREFIX="m31_W0"
+OBSPREFIX="SSP_GA_m31_W0"
+
+# Science targets
+
+PROPOSAL[2]="S25B-OT02"
+RUN[2]="${GAPIPE_RUN}"
+RUNDIR[2]="${GAPIPE_RUNDIR}"
+CONFIGRUN[2]="${GAPIPE_CONFIGRUN}"
+CONFIGRUNDIR[2]="${GAPIPE_CONFIGRUNDIR}"
+GARUN[2]="${FIELDPREFIX}_${OBSDATE}_${GAPIPE_RUN}_${GAPIPE_CONFIG}"
+GARUNDIR[2]="${GARUN[2]}"
+OBSLOGS[2]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[2]="${GAPIPE_TARGETINGDIR}/m31/m31_W0_SSP/netflow/m31_W0_1_SSP_004/m31_targets_*.feather"
+ASSIGNMENTS[2]="${GAPIPE_TARGETINGDIR}/m31/m31_W0_SSP/netflow/m31_W0_1_SSP_004/m31_assignments_all.feather"
+VISITS[2]="$(cat ${OBSLOGS[2]} | grep ${OBSPREFIX} | cut -d ',' -f 1)"
+CATID[2]="10092"                        # GA science
+OBJID[2]="0x100000200000000-0x1000002FFFFFFFF"
+
+# Flux standards of the same visits
+
+PROPOSAL[3]=${PROPOSAL[2]}
+RUN[3]=${RUN[2]}
+RUNDIR[3]=${RUNDIR[2]}
+CONFIGRUN[3]="${CONFIGRUN[2]}"
+CONFIGRUNDIR[3]="${CONFIGRUNDIR[2]}"
+GARUN[3]="${GARUN[2]}"
+GARUNDIR[3]="${GARUNDIR[2]}"
+OBSLOGS[3]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[3]="${TARGETLISTS[2]}"
+ASSIGNMENTS[3]=${ASSIGNMENTS[2]}
+VISITS[3]=${VISITS[2]}
+CATID[3]="3006"                         # Flux standards
+OBJID[3]=""
+
+###############
+# SSP_GA_m31_GSS0
+
+OBSDATE="2025-09"
+FIELDPREFIX="m31_GSS0"
+OBSPREFIX="SSP_GA_m31_GSS0"
+
+# Science targets
+
+PROPOSAL[4]="S25B-OT02"
+RUN[4]="${GAPIPE_RUN}"
+RUNDIR[4]="${GAPIPE_RUNDIR}"
+CONFIGRUN[4]="${GAPIPE_CONFIGRUN}"
+CONFIGRUNDIR[4]="${GAPIPE_CONFIGRUNDIR}"
+GARUN[4]="${FIELDPREFIX}_${OBSDATE}_${GAPIPE_RUN}_${GAPIPE_CONFIG}"
+GARUNDIR[4]="${GARUN[4]}"
+OBSLOGS[4]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[4]="${GAPIPE_TARGETINGDIR}/m31/m31_GSS0_SSP/netflow/m31_GSS0_1_SSP_004/m31_targets_*.feather"
+ASSIGNMENTS[4]="${GAPIPE_TARGETINGDIR}/m31/m31_GSS0_SSP/netflow/m31_GSS0_1_SSP_004/m31_assignments_all.feather"
+VISITS[4]="$(cat ${OBSLOGS[4]} | grep ${OBSPREFIX} | cut -d ',' -f 1)"
+CATID[4]="10092"                        # GA science
+OBJID[4]="0x100000300000000-0x1000003FFFFFFFF"
+
+# Flux standards of the same visits
+
+PROPOSAL[5]=${PROPOSAL[4]}
+RUN[5]=${RUN[4]}
+RUNDIR[5]=${RUNDIR[4]}
+CONFIGRUN[5]="${CONFIGRUN[4]}"
+CONFIGRUNDIR[5]="${CONFIGRUNDIR[4]}"
+GARUN[5]="${GARUN[4]}"
+GARUNDIR[5]="${GARUNDIR[4]}"
+OBSLOGS[5]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[5]="${TARGETLISTS[4]}"
+ASSIGNMENTS[5]=${ASSIGNMENTS[4]}
+VISITS[5]=${VISITS[4]}
+CATID[5]="3006"                         # Flux standards
+OBJID[5]=""
+
+###############
+# SSP_GA_m31_NWS0
+
+OBSDATE="2025-09"
+FIELDPREFIX="m31_NWS0"
+OBSPREFIX="SSP_GA_m31_NWS0"
+
+# Science targets
+
+PROPOSAL[6]="S25B-OT02"
+RUN[6]="${GAPIPE_RUN}"
+RUNDIR[6]="${GAPIPE_RUNDIR}"
+CONFIGRUN[6]="${GAPIPE_CONFIGRUN}"
+CONFIGRUNDIR[6]="${GAPIPE_CONFIGRUNDIR}"
+GARUN[6]="${FIELDPREFIX}_${OBSDATE}_${GAPIPE_RUN}_${GAPIPE_CONFIG}"
+GARUNDIR[6]="${GARUN[6]}"
+OBSLOGS[6]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[6]="${GAPIPE_TARGETINGDIR}/m31/m31_NWS0_SSP/netflow/m31_NWS0_1_SSP_004/m31_targets_*.feather"
+ASSIGNMENTS[6]="${GAPIPE_TARGETINGDIR}/m31/m31_NWS0_SSP/netflow/m31_NWS0_1_SSP_004/m31_assignments_all.feather"
+VISITS[6]="$(cat ${OBSLOGS[6]} | grep ${OBSPREFIX} | cut -d ',' -f 1)"
+CATID[6]="10092"                        # GA science
+OBJID[6]="0x100000400000000-0x1000004FFFFFFFF"
+
+# Flux standards of the same visits
+
+PROPOSAL[7]=${PROPOSAL[6]}
+RUN[7]=${RUN[6]}
+RUNDIR[7]=${RUNDIR[6]}
+CONFIGRUN[7]="${CONFIGRUN[6]}"
+CONFIGRUNDIR[7]="${CONFIGRUNDIR[6]}"
+GARUN[7]="${GARUN[6]}"
+GARUNDIR[7]="${GARUNDIR[6]}"
+OBSLOGS[7]="${GAPIPE_OBSLOGDIR}/runs/${OBSDATE}/obslog/*.csv"
+TARGETLISTS[7]="${TARGETLISTS[6]}"
+ASSIGNMENTS[7]=${ASSIGNMENTS[6]}
+VISITS[7]=${VISITS[6]}
+CATID[7]="3006"                         # Flux standards
+OBJID[7]=""

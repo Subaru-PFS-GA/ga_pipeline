@@ -1,13 +1,14 @@
+import os
 from pfs.ga.pfsspec.core import Trace
 
-GAPIPE_ROOT = '/scratch/aszalay1/dobos/pfs/gapipe'
-RERUN = 'run24_November2025'
+GAPIPE_ROOT = os.environ['GAPIPE_ROOT']
+ARMS = [ 'b', 'm' ]
 
 config = dict(
     workdir = f'{GAPIPE_ROOT}/work',
     outdir = f'{GAPIPE_ROOT}/out',
-    rerun = RERUN,
-    rerundir = RERUN,
+    run = '',
+    rundir = '',
     ignore_missing_files = True,
     trace_args = dict(
         plot_level = Trace.PLOT_LEVEL_INFO,
@@ -41,10 +42,16 @@ config = dict(
         }
     ),
     tempfit = dict(
-        fit_arms = [ 'b', 'r', 'm' ],
+        fit_arms = ARMS,
         require_all_arms = False,
         
-        model_grid_path = f'{GAPIPE_ROOT}/data/pfsspec/models/stellar/grid/gk2025/gk2025_binned_compressed/spectra.h5',
+        # model_grid_path = f'{GAPIPE_ROOT}/data/pfsspec/models/stellar/grid/gk2025/gk2025_binned_compressed/spectra.h5',
+        model_grid_path = f'{GAPIPE_ROOT}/data/pfsspec/models/stellar/grid/gk2025/gk2025_cm_conv_compressed/spectra.h5',
+        model_grid_resolution = {
+            'b': 15000,
+            'm': 15000,
+            'r': 15000,
+        },
         model_grid_mmap = False,
         model_grid_preload = False,
         # model_grid_path = {
@@ -57,35 +64,90 @@ config = dict(
         photometry = {
             'g_ps1': dict(
                 instrument = 'ps1',
-                filter_name = 'g_ps1',
+                priority = 2,
+                filter_name = ['g_ps1', 'ps1_g'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.g.dat',
             ),
             'r_ps1': dict(
                 instrument = 'ps1',
-                filter_name = 'r_ps1',
+                priority = 2,
+                filter_name = ['r_ps1', 'ps1_r'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.r.dat',
             ),
             'i_ps1': dict(
                 instrument = 'ps1',
-                filter_name = 'i_ps1',
+                priority = 2,
+                filter_name = ['i_ps1', 'ps1_i'],
                 filter_path = f'{GAPIPE_ROOT}/data/instruments/ps1/filters/PAN-STARRS_PS1.i.dat',
+            ),
+            'gaia_g': dict(
+                instrument = 'gaia',
+                priority = 3,
+                filter_name = 'gaia_g',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/gaia/filters/GAIA_GAIA3.G.dat',
+            ),
+            'bp_gaia': dict(
+                instrument = 'gaia',
+                priority = 3,
+                filter_name = 'bp_gaia',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/gaia/filters/GAIA_GAIA3.Gbp.dat',
+            ),
+            'rp_gaia': dict(
+                instrument = 'gaia',
+                priority = 3,
+                filter_name = 'rp_gaia',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/gaia/filters/GAIA_GAIA3.Grp.dat',
             ),
             'g_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = 'g_hsc',
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-g.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-g.txt',
+            ),
+            'r_hsc': dict(
+                instrument = 'hsc',
+                priority = 1,
+                filter_name = ['r_hsc', 'r_old_hsc'],
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-r.txt',
+            ),
+            'r2_hsc': dict(
+                instrument = 'hsc',
+                priority = 1,
+                filter_name = 'r2_hsc',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-r2.txt',
             ),
             'i_hsc': dict(
                 instrument = 'hsc',
+                priority = 1,
                 filter_name = ['i_hsc', 'i_old_hsc'],
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i.txt',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-i.txt',
             ),
             'i2_hsc': dict(
                 instrument = 'hsc',
-                filter_name = ['i2_hsc'],
-                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/HSC-i2.txt',
+                priority = 1,
+                filter_name = 'i2_hsc',
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/hsc/filters/fHSC-i2.txt',
+            ),
+            'g_cfht': dict(
+                instrument = 'cfht',
+                priority = 2,
+                filter_name = ['g_cfht', 'cfht_g'],
+                # pre-2015 filter
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/megacam/filters/CFHT_MegaCam.g_1.dat',
+            ),
+            'i_cfht': dict(
+                instrument = 'cfht',
+                priority = 2,
+                filter_name = ['i_cfht', 'cfht_i'],
+                # pre-2015 filter
+                filter_path = f'{GAPIPE_ROOT}/data/instruments/megacam/filters/CFHT_MegaCam.i_1.dat',
             ),
         },
+
+        # vcorr = dict(
+        #     from_frame = 'observed',
+        #     to_frame = 'heliocentric',
+        # ),
         
         psf_path = f'{GAPIPE_ROOT}/data/instruments/pfs/psf/import/{{arm}}.real/gauss.h5',
         mask_flags = [
@@ -152,22 +214,27 @@ config = dict(
             amplitude_per_exp = True,
 
             M_H = [ -5.0, 0.5 ],
-            M_H_dist = [ "normal", -1.5, 0.5 ],
+            M_H_dist = [ "normal", -1.5, 1.0 ],
+            
             T_eff = [ 3500, 8000 ],
-            T_eff_dist = [ "normal", 5500, 500 ],
+            T_eff_dist = [ "normal", 5500, 1000 ],
+            
             log_g = [ 0.0, 5.0 ],
-            log_g_dist = [ "normal", 2.5, 2.0 ],
+            log_g_dist = [ "normal", 1.5, 2.5 ],
 
-            ebv = [0.005, 0.015],
-            ebv_dist = [ "normal", 0.01, 0.005 ],
+            rv = [ -750, 750 ],
+            rv_step = 20,
+
+            ebv = [0.000, 0.015],
+            ebv_dist = [ "normal", 0.01, 0.01 ],
 
             # Roman's grid
             # a_M = 0.0,
-            C = 0.0,
+            # C = 0.0,
             
             a_M = [ -1.2, 0.8 ],
             a_M_dist = [ "normal", 0.0, 0.5 ],
-            # C = [ -0.2, 0.2 ],
+            C = [ -0.2, 0.2 ],
 
             # PHOENIX grid
             # a_M = 0.0,
@@ -177,7 +244,7 @@ config = dict(
         )
     ),
     coadd = dict(
-        coadd_arms = [ 'b', 'm', 'r' ],
+        coadd_arms = ARMS,
         trace_args = dict(
             plot_level = Trace.PLOT_LEVEL_INFO,
         ),
