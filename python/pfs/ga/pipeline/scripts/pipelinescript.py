@@ -453,16 +453,6 @@ class PipelineScript(Script):
             target_list.drop_duplicates(inplace=True)
             logger.info(f'Found {len(target_list)} unique entries in target list files.')
 
-            # Some very early target lists might contain duplicate targetids where
-            # the magnitudes are NaN in some columns. Try to merge these duplicate
-            # rows first by keeping the non-NaN values and then drop duplicates
-            mask = target_list.duplicated(subset=['targetid'], keep=False)
-            if mask.sum() > 0:
-                logger.warning(f'Found {mask.sum()} duplicate entries in target list based on targetid only, '
-                            'trying to merge them by keeping non-NaN values.')
-
-                target_list = target_list.groupby('targetid', as_index=False).first()
-
         return target_list
 
     def _find_matching_targets(self, target_list, obcode, objid, max_separation=0.1):
@@ -483,22 +473,20 @@ class PipelineScript(Script):
             # This is probably a calibration target
             mask = (target_list['targetid'] == objid)
         else:
-            # Science targets always have a valid obcode
+            # Science targets always have a valid obcode but they can also be duplicates
+            # so look up them by obcode and objid, but then verify the matches by looking up
+            # other targets with the same targetid
             mask = (target_list['obcode'] == obcode) & (target_list['__target_idx'] == (objid & 0xFFFFFFFF))
 
-        primary_target = np.where(mask)[0].item()
+
+        primary_target = np.where(mask)[0][0]
         target_idx = target_list.loc[primary_target, '__target_idx']
         primary_ra = target_list.loc[primary_target, 'RA']
         primary_dec = target_list.loc[primary_target, 'Dec']
 
-        # Find other targets with matching __target_idx
         secondary_targets = []
-        mask = (~target_list['__target_idx'].isna()) & (target_list['__target_idx'] == target_idx)
-        for secondary_target in np.where(mask)[0]:
-            # Skip primary target because we will use it to override other targets
-            if secondary_target == primary_target:
-                continue
 
+        def is_matching_target(primary_target, secondary_target):
             # Calculate the separation between the primary and secondary target
             # and skip if they are too far apart because they are likely wrong matches
             secondary_ra = target_list.loc[secondary_target, 'RA']
@@ -509,9 +497,29 @@ class PipelineScript(Script):
             separation = primary_coord.separation(secondary_coord)
             if separation.arcsec > max_separation:
                 logger.warning(f'Separation between primary and secondary target with __target_idx {target_idx} is {separation.arcsec:.2f} arcsec, which is larger than the threshold. Skipping secondary target.')
-                continue
+                return False
+            else:
+                return True
 
-            secondary_targets.append(secondary_target)
+        # Find secondary targets with the same targetid as the primary target.
+        # This can happen when the same object is added with different obcodes but
+        # for some reason the aren't merged. This can happen with older target lists.
+        objid = target_list.loc[mask, 'targetid'].iloc[0]
+        mask = (target_list['targetid'] == objid)
+        for secondary_target in np.where(mask)[0]:
+            if secondary_target == primary_target:
+                continue
+            elif is_matching_target(primary_target, secondary_target):
+                secondary_targets.append(secondary_target)
+
+        # Find other targets with matching __target_idx
+        mask = (~target_list['__target_idx'].isna()) & (target_list['__target_idx'] == target_idx)
+        for secondary_target in np.where(mask)[0]:
+            # Skip primary target because we will use it to override other targets
+            if secondary_target == primary_target:
+                continue
+            elif is_matching_target(primary_target, secondary_target):
+                secondary_targets.append(secondary_target)
 
         return primary_target, secondary_targets
 
