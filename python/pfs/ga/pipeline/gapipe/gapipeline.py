@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -362,38 +363,103 @@ class GAPipeline(Pipeline):
                         f.writelines(tracebacks[i])
                         f.write('\n')
 
-    def locate_data_products(self, product_type, required=True):
+    def __get_product_cache_keys(self, product_type, identity):
+        if product_type is tuple and issubclass(product_type[-1], PfsFiberArray):
+            # e.g. PfsSingle within PfsCalibrated
+            return product_type[-1], identity.visit, identity.objId
+        elif issubclass(product_type, PfsFiberArray):
+            # Data product contains a single object
+            return product_type, identity.visit, identity.objId
+        elif product_type is PfsArm:
+            # Specialcase of PfsArm which is by arm and by spectrograph
+            if hasattr(identity, 'arm') and hasattr(identity, 'spectrograph'):
+                return product_type, identity.visit, (identity.arm, identity.spectrograph)
+            else:
+                return product_type, identity.visit, None
+        elif issubclass(product_type, PfsFiberArraySet):
+            # Data product contains multiple objects
+            return product_type, identity.visit, None
+        elif issubclass(product_type, PfsDesign):
+            return product_type, identity.visit, None
+        else:
+            raise NotImplementedError('Product type not recognized.')
+
+    def __is_in_product_cache(self, product_type, identity):
+        """
+        Check if the product is already in the cache. If so, return it, otherwise return None.
+        """
+
+        product_type, visit, key = self.__get_product_cache_keys(product_type, identity)
+
+        return self.product_cache is not None and product_type in self.product_cache and \
+            visit in self.product_cache[product_type] and \
+            key in self.product_cache[product_type][visit]
+
+    def add_product_to_cache(self, product, identity, data):
+        pr, v, k = self.__get_product_cache_keys(product, identity)
+
+        if pr not in self.product_cache:
+            self.product_cache[pr] = {}
+
+        if k is None:
+            self.product_cache[pr][v] = data
+        else:
+            if v not in self.product_cache[pr]:
+                self.product_cache[pr][v] = {}
+            self.product_cache[pr][v][k] = data
+
+    def get_product_from_cache(self, product, identity):
+        pr, v, k = self.__get_product_cache_keys(product, identity)
+
+        if k is None:
+            return self.product_cache[pr][v]
+        else:
+            return self.product_cache[pr][v][k]
+
+    def locate_data_products(self, product_type, arms=None, required=True):
         """
         Try to look up each data product, first in the product cache, then
         in the data repositories. If `required` is `True`, raise an error if the
         product is not found in any of the repositories.
         """
 
+        # TODO: consider merging this function with ConfigureScript.__locate_required_products
+
         product_name = ','.join([p.__name__ for p in product_type]) if isinstance(product_type, tuple) else product_type.__name__
 
-        for i, visit, identity in self.config.enumerate_visits():
+        for i, visit, identity, observation in self.config.enumerate_visits():
+
+            # Iterate over the arms if loading a product that stores spectra by arm
+            if arms is not None:
+                ids = []
+                for arm in arms:
+                    if arm in observation.arms:
+                        id = deepcopy(identity)
+                        id.arm = arm
+                        id.spectrograph = observation.spectrograph
+                        ids.append(id)
+            else:
+                ids = [ deepcopy(identity) ]
+
+            # No product to locate
+            if len(ids) == 0:
+                continue
+
             # Try to look up the product in the cache first
-            if self.product_cache is not None and product_type in self.product_cache:
-                if product_type is tuple and issubclass(product_type[-1], PfsFiberArray):
-                    # e.g. PfsSingle within PfsCalibrated
-                    if visit in self.product_cache[product_type[-1]]:
-                        if identity.objId in self.product_cache[product_type[-1]][visit]:
-                            # Product is already in the cache, skip
-                            return
-                elif issubclass(product_type, PfsFiberArray):
-                    # Data product contains a single object
-                    if visit in self.product_cache[product_type]:
-                        if identity.objId in self.product_cache[product_type][visit]:
-                            # Product is already in the cache, skip
-                            return
-                elif issubclass(product_type, PfsFiberArraySet):
-                    # Data product contains multiple objects
-                    if visit in self.product_cache[product_type]:
-                        # Product is already in the cache, skip
-                        return
+            all_found = True
+            for id in ids:
+                if self.__is_in_product_cache(product_type, id):
+                    pass
                 else:
-                    raise NotImplementedError('Product type not recognized.')
-                    
+                    all_found = False
+                    break
+
+            if all_found:
+                logger.debug(f'Product `{product_name}` for identity `{id}` found in cache.')
+                return
+            else:
+                logger.debug(f'Product `{product_name}` for identity `{id}` not found in cache, looking up in repositories.')
+
             # Product not found in cache of cache is empty, look up the file location using
             # the input repository with fall-back to the work repository, in case some of the
             # data products are already copied to the output directory.
@@ -403,28 +469,37 @@ class GAPipeline(Pipeline):
                     logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
                     continue
 
-                try:
-                    repo.locate_product(product_type, **identity.__dict__)
+                all_found = True
+                for id in ids:
+                    try:
+                        repo.locate_product(product_type, **id.__dict__)
+                        logger.debug(f'Product type `{product_name}` found in repository of type {type(repo).__name__}.')
+                        continue
+                    except KeyError:
+                        # The product type is not available in the repository, skip
+                        all_found = False
+                        logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
+                        break
+                    except FileNotFoundError:
+                        # The product file is not available in the repository, skip
+                        all_found = False
+                        logger.debug(f'{product_name} file for identity `{id}` not available in repository of type {type(repo).__name__}.')
+                        break
+
+                if not all_found:
+                    continue
+                else:
                     found = True
-                    logger.debug(f'Product type `{product_name}` found in repository of type {type(repo).__name__}.')
                     break
-                except KeyError:
-                    # The product type is not available in the repository, skip
-                    logger.debug(f'Product type `{product_name}` not available in repository of type {type(repo).__name__}.')
-                    continue
-                except FileNotFoundError:
-                    # The product file is not available in the repository, skip
-                    logger.debug(f'{product_name} file for identity `{identity}` not available in repository of type {type(repo).__name__}.')
-                    continue
 
             if not found:
-                msg = f'{product_name} file for identity `{identity}` not available.'
+                msg = f'{product_name} file for identity `{id}` not available.'
                 if required:
                     raise PipelineError(msg)
                 else:
                     logger.warning(msg)
 
-    def load_input_products(self, product):
+    def load_input_products(self, product, arms=None):
         """
         Load the source data product for each visit, if it's not already available.
 
@@ -449,13 +524,27 @@ class GAPipeline(Pipeline):
         product_name = ','.join([p.__name__ for p in product]) if isinstance(product, tuple) else product.__name__
 
         q = 0
-        for i, visit, identity in self.config.enumerate_visits():
+        for i, visit, identity, observation in self.config.enumerate_visits():
+            
+            # Iterate over the arms if loading a product that stores spectra by arm
+            if arms is not None:
+                ids = []
+                for arm in arms:
+                    if arm in observation.arms:
+                        id = deepcopy(identity)
+                        id.arm = arm
+                        id.spectrograph = observation.spectrograph
+                        ids.append(id)
+            else:
+                ids = [ deepcopy(identity) ]
+
+            # No product to load
+            if len(ids) == 0:
+                continue
+            
             if isinstance(product, tuple) and issubclass(product[-1], PfsFiberArray):
                 # e.g. PfsSingle within PfsCalibrated
-                if visit not in self.product_cache[product[-1]]:
-                    self.product_cache[product[-1]][visit] = {}
-
-                if identity.objId not in self.product_cache[product[-1]][visit]:
+                if not self.__is_in_product_cache(product, identity):
                     found = False
                     for repo in [self.__input_repo, self.__work_repo]:
                         try:
@@ -465,7 +554,7 @@ class GAPipeline(Pipeline):
                             for data, id, filename in results:
                                 break
                             data.filename = filename
-                            self.product_cache[product[-1]][visit][identity.objId] = data
+                            self.add_product_to_cache(product, identity, data)
                             found = True
                             q += 1
                         except KeyError:
@@ -476,11 +565,8 @@ class GAPipeline(Pipeline):
                         msg = f'{product} file for identity `{identity}` not available.'
                         raise FileNotFoundError(msg)
             elif issubclass(product, PfsFiberArray):
-                # Data product contains a single object
-                if visit not in self.product_cache[product]:
-                    self.product_cache[product][visit] = {}
-                
-                if identity.objId not in self.product_cache[product][visit]:
+                # Data product containing a single object                
+                if not self.__is_in_product_cache(product, identity):
                     found = False
                     for repo in [self.__input_repo, self.__work_repo]:
                         if not repo.has_product(product):
@@ -489,7 +575,7 @@ class GAPipeline(Pipeline):
                         try:
                             data, id, filename = repo.load_product(product, identity=identity)
                             data.filename = filename
-                            self.product_cache[product][visit][identity.objId] = data
+                            self.add_product_to_cache(product, identity, data)
                             found = True
                             q += 1
                         except FileNotFoundError:
@@ -503,24 +589,33 @@ class GAPipeline(Pipeline):
                         msg = f'{product_name} file for identity `{identity}` not available.'
                         raise FileNotFoundError(msg)
             elif issubclass(product, (PfsFiberArraySet, PfsTargetSpectra, PfsConfig)):
-                # Data product contains multiple objects
+                # Data product containing multiple objects
                 if visit not in self.product_cache[product]:
                     found = False
                     for repo in [self.__config_repo, self.__input_repo, self.__work_repo]:
                         if not repo.has_product(product):
                             continue
 
-                        try:
-                            data, id, filename = repo.load_product(product, identity=identity)
-                            self.product_cache[product][visit] = data
+                        all_found = True
+                        for id in ids:
+                            try:
+                                data, id, filename = repo.load_product(product, identity=id)
+                                self.add_product_to_cache(product, id, data)
+                                q += 1
+                            except FileNotFoundError:
+                                # The product file is not available in the repository, skip
+                                all_found = False
+                                continue
+                            except KeyError:
+                                # The product type is not available in the repository, skip
+                                all_found = False
+                                continue
+
+                        if not all_found:
+                            continue
+                        else:
                             found = True
-                            q += 1
-                        except FileNotFoundError:
-                            # The product file is not available in the repository, skip
-                            continue
-                        except KeyError:
-                            # The product type is not available in the repository, skip
-                            continue
+                            break
 
                     if not found:
                         msg = f'{product_name} file for identity `{identity}` not available.'
@@ -530,19 +625,95 @@ class GAPipeline(Pipeline):
                
         logger.info(f'A total of {q} {product_name} data files loaded successfully for {self.__id}.')
 
-    def get_product_from_cache(self, product, visit, identity):
+    def validate_input_products(self, product, arms=None):
+
+        target = None
+
+        for i, visit, identity, observation in self.config.enumerate_visits():
+
+            # Iterate over the arms if loading a product that stores spectra by arm
+            if arms is not None:
+                ids = []
+                for arm in arms:
+                    if arm in observation.arms:
+                        id = deepcopy(identity)
+                        id.arm = arm
+                        id.spectrograph = observation.spectrograph
+                        ids.append(id)
+            else:
+                ids = [ deepcopy(identity) ]
+
+            for id in ids:
+                data = self.get_product_from_cache(product, id)
+                
+                # Expand if it is a container type
+                if isinstance(product, tuple):
+                    product = product[-1]
+                
+                if issubclass(product, PfsFiberArray):
+                    # Make sure that targets are the same
+                    if target is None:
+                        target = data.target
+                    elif target != data.target:
+                        raise PipelineError(f'Target information in PfsSingle files do not match.')
+                elif issubclass(product, PfsFiberArraySet):
+                    pass
+                elif issubclass(product, PfsTargetSpectra):
+                    pass
+                elif issubclass(product, PfsDesign):
+                    pass
+                else:
+                    raise NotImplementedError('Product type not recognized.')
+
+                self.validate_input_product(product, visit, data)
+
+        # TODO: Count spectra per arm and write report to log
+
+    def validate_input_product(self, product, visit, data):       
+        identity = self.get_product_identity(data)
+
+        # Expand if it is a container type
         if isinstance(product, tuple):
-            return self.product_cache[product[-1]][visit][identity.objId]
-        elif issubclass(product, PfsFiberArray):
-            return self.product_cache[product][visit][identity.objId]
+            product = product[-1]
+
+        if issubclass(product, PfsFiberArray):
+            # Verify that it is a single visit and not a co-add
+            if data.nVisit != 1:
+                raise PipelineError(f'More than one visit found in `{product.__name__}` for `{identity}`.')
+            
+            # Verify that visit numbers match
+            if visit not in data.observations.visit:
+                raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
+            
+            if data.target.catId != self.config.target.identity.catId:
+                raise PipelineError(f'catId in config `{self.config.target.catId}` does not match catID in `{product.__name__}` for `{identity}`.')
+
+            if data.target.objId != self.config.target.identity.objId:
+                raise PipelineError(f'objId in config `{self.config.target.objId}` does not match objID in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsFiberArraySet):
-            return self.product_cache[product][visit]
+            if visit != data.identity.visit:
+                raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsTargetSpectra):
-            return self.product_cache[product][visit]
+            # Verify that visit numbers match
+            if visit != data[list(data.keys())[0]].observations.visit[0]:
+                raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
         elif issubclass(product, PfsDesign):
-            return self.product_cache[product][visit]
+            if issubclass(product, PfsConfig):
+                # Verify that visit numbers match
+                if visit != data.visit:
+                    raise PipelineError(f'Visit does not match visit ID found in `{product.__name__}` for `{identity}`.')
+                
+            if self.config.target.identity.catId not in data.catId:
+                raise PipelineError(f'catId in config `{self.config.target.identity.catId}` does not match catID in `{product.__name__}` for `{identity}`.')
+            
+            if self.config.target.identity.objId not in data.objId:
+                raise PipelineError(f'objId in config `{self.config.target.identity.objId}` does not match objID in `{product.__name__}` for `{identity}`.')
         else:
             raise NotImplementedError('Product type not recognized.')
+        
+        # TODO: compare flags and throw a warning if bits are not the same in every file
+
+        # TODO: write log message
 
     def get_product_identity(self, data):
         found = False
@@ -587,14 +758,18 @@ class GAPipeline(Pipeline):
 
         avail_arms = set()
 
-        for i, visit, identity in self.config.enumerate_visits():
+        for i, visit, identity, observation in self.config.enumerate_visits():
+            data = self.get_product_from_cache(product, identity)
+
             if issubclass(product, PfsFiberArray):
-                arms = self.product_cache[product][visit][identity.objId].observations.arm[0]
+                arms = data.observations.arm[0]
+            elif product is PfsArm:
+                # In this specal case, the data is a dict indexed by (arm, spectrograph)
+                arms = ''.join([ a for a, _ in data ])
             elif issubclass(product, PfsFiberArraySet):
-                arms = self.product_cache[product][visit].identity.arm
+                arms = data.identity.arm
             elif issubclass(product, PfsTargetSpectra):
-                data = self.product_cache[product][visit]
-                arms = data[list(self.product_cache[product][visit].keys())[0]].observations.arm[0]
+                arms = data[list(data.keys())[0]].observations.arm[0]
             else:
                 arms = ''
                     
@@ -622,26 +797,26 @@ class GAPipeline(Pipeline):
                 t = t[-1]
 
             if issubclass(t, PfsConfig):
-                data = self.product_cache[t][visit]
+                data = self.get_product_from_cache(t, identity)
                 if reader.is_available(data, arm=arm, objid=identity.objId):
                     reader.read_from_pfsConfig(data, spec, arm=arm, objid=identity.objId)
                 else:
                     return False, None
         
         for t in products:
+            data = self.get_product_from_cache(t, identity)
+            
             # If it is a container type, use the last element
             if isinstance(t, tuple):
                 t = t[-1]
                 
             if issubclass(t, PfsFiberArray):            # PfsSingle etc
-                data = self.product_cache[t][visit][identity.objId]
                 if reader.is_available(data, arm=arm):
                     reader.read_from_pfsFiberArray(data, spec, arm=arm, wave_limits=wave_limits)
                     found = True
                 else:
                     return False, None
-            elif issubclass(t, PfsFiberArraySet):       # PfsMerged, etc
-                data = self.product_cache[t][visit]
+            elif issubclass(t, PfsFiberArraySet):       # PfsMerged, PfsArm, etc
                 if reader.is_available(data, arm=arm):
                     reader.read_from_pfsFiberArraySet(data, spec, arm=arm,
                                                       fiberid=spec.fiberid,
@@ -650,7 +825,6 @@ class GAPipeline(Pipeline):
                 else:
                     return False, None
             elif issubclass(t, PfsTargetSpectra):       # PfsCalibrated etc
-                data = self.product_cache[t][visit]
                 if reader.is_available(data, arm=arm, objid=identity.objId):
                     reader.read_from_pfsTargetSpectra(data, spec, arm=arm,
                                                       objid=identity.objId,
@@ -679,10 +853,13 @@ class GAPipeline(Pipeline):
 
         spectra = { arm: {} for arm in arms }
 
-        for i, visit, identity in self.config.enumerate_visits():
+        for i, visit, identity, observation in self.config.enumerate_visits():
             for arm in arms:
                 wave_limits = self.config.arms[arm]['wave']
-                found, spec = self.__read_spectrum(products, reader, visit, arm, identity, wave_limits)
+                id = deepcopy(identity)
+                id.arm = arm
+                id.spectrograph = observation.spectrograph
+                found, spec = self.__read_spectrum(products, reader, visit, arm, id, wave_limits)
 
                 if found:
                     spectra[arm][visit] = spec

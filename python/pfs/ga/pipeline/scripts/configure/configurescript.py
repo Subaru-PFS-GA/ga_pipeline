@@ -199,43 +199,43 @@ class ConfigureScript(PipelineScript, Progress):
             identity.exptime = np.array([np.nan] * len(identity.visit), dtype=float)
             identity.seeing = np.array([np.nan] * len(identity.visit), dtype=float)
 
-    def __create_target_config(self, objid, id):
+    def __create_target_config(self, objid, identity):
         """
         Return the configuration section objects for each target
         """
 
         # Look up the necessary input files from the list of observations and
         # make sure they exists. If the don't, exclude them from the list.
-        visit_mask = self.__locate_required_products(objid, id)
+        visit_mask = self.__locate_required_products(objid, identity)
 
         if visit_mask.sum() == 0:
             logger.error(f'No required products found for object {objid:016x}, skipping.')
             return None
 
         target = GATargetConfig(
-            proposalId = id.proposalId[0],
-            targetType = id.targetType[0],
+            proposalId = identity.proposalId[0],
+            targetType = identity.targetType[0],
             identity = GAObjectIdentityConfig(
-                catId = id.catId[0],
-                tract = id.tract[0],
-                patch = id.patch[0],
+                catId = identity.catId[0],
+                tract = identity.tract[0],
+                patch = identity.patch[0],
                 objId = objid,
-                nVisit = wraparoundNVisit(len(id.visit[visit_mask])),
-                pfsVisitHash = calculatePfsVisitHash(id.visit[visit_mask]),
+                nVisit = wraparoundNVisit(len(identity.visit[visit_mask])),
+                pfsVisitHash = calculatePfsVisitHash(identity.visit[visit_mask]),
             ),
             observations = GAObjectObservationsConfig(
-                visit = id.visit[visit_mask],
-                arms = id.arms[visit_mask],
-                spectrograph = id.spectrograph[visit_mask],
-                pfsDesignId = id.pfsDesignId[visit_mask],
-                fiberId = id.fiberId[visit_mask],
-                fiberStatus = id.fiberStatus[visit_mask],
-                obsTime = id.obstime[visit_mask],
-                expTime = id.exptime[visit_mask],
-                seeing = id.seeing[visit_mask],
+                visit = identity.visit[visit_mask],
+                arms = identity.arms[visit_mask],
+                spectrograph = identity.spectrograph[visit_mask],
+                pfsDesignId = identity.pfsDesignId[visit_mask],
+                fiberId = identity.fiberId[visit_mask],
+                fiberStatus = identity.fiberStatus[visit_mask],
+                obsTime = identity.obstime[visit_mask],
+                expTime = identity.exptime[visit_mask],
+                seeing = identity.seeing[visit_mask],
             ),
-            ra = id.ra[0],
-            dec = id.dec[0]
+            ra = identity.ra[0],
+            dec = identity.dec[0]
         )
 
         return target
@@ -270,19 +270,41 @@ class ConfigureScript(PipelineScript, Progress):
                     continue
 
                 for i in range(len(identity.visit)):
-                    id = { k: v[i] for k, v in identity.__dict__.items() }
+                    # If the product has an arm parameter, we need to check for each arm separately
+                    # otherwise, we can just check for the product with the given identity.
 
-                    try:
-                        fn, _ = repo.locate_product(product_type, **id)
-                    except FileNotFoundError:
-                        fn = None
-
-                    if fn is None:
-                        logger.debug(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} was not found.')
-                    elif not os.path.isfile(fn):
-                        logger.debug(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} was not found.')
+                    if hasattr(repo.config.products[product_type].params, 'arm'):
+                        ids = []
+                        for arm in self.config.tempfit.fit_arms:
+                            id = { k: v[i] for k, v in identity.__dict__.items() }
+                            id['arm'] = arm
+                            ids.append(id)
                     else:
-                        m[i] |= True
+                        ids = [ { k: v[i] for k, v in identity.__dict__.items() } ]
+
+                    all_found = True
+                    any_found = False
+
+                    for id in ids:
+                        try:
+                            fn, _ = repo.locate_product(product_type, **id)
+                        except FileNotFoundError:
+                            fn = None
+
+                        if fn is None:
+                            logger.debug(f'Required product `{product_name}` for object 0x{objid:x}, visit {identity.visit[i]} was not found.')
+                            all_found &= False
+                        elif not os.path.isfile(fn):
+                            logger.debug(f'Required file {fn} for product `{product_name}` for object {objid:x}, visit {identity.visit[i]} was not found.')
+                            all_found &= False
+                        else:
+                            any_found |= True
+
+                    # TODO: there is some conflict with the require_all_arms parameter in the config.
+                    # If it is set to True, we should require all arms to be present, otherwise we can
+                    # accept any arm. This needs to be implemented here.
+                            
+                    m[i] |= all_found
 
                 break
 

@@ -140,7 +140,11 @@ class TempFitStep(PipelineStep):
         # Create the correction model which determines if we apply flux correction to
         # the templates or continuum-normalize the observations.
         correction_model = CORRECTION_MODELS[context.config.tempfit.correction_model]()
-        extinction_model = EXTINCTION_MODELS[context.config.tempfit.extinction_model]()
+
+        if context.config.tempfit.extinction_model is not None:
+            extinction_model = EXTINCTION_MODELS[context.config.tempfit.extinction_model]()
+        else:
+            extinction_model = None
         
         # Create the template fit object that will perform the RV fitting
         tempfit = ModelGridTempFit(
@@ -160,7 +164,8 @@ class TempFitStep(PipelineStep):
         # Initialize the components from the configuration
         tempfit.init_from_args(None, None, context.config.tempfit.tempfit_args)
         tempfit.correction_model.init_from_args(None, None, context.config.tempfit.correction_model_args)
-        tempfit.extinction_model.init_from_args(None, None, context.config.tempfit.extinction_model_args)
+        if tempfit.extinction_model is not None:
+            tempfit.extinction_model.init_from_args(None, None, context.config.tempfit.extinction_model_args)
 
         return tempfit, trace
     
@@ -179,7 +184,7 @@ class TempFitStep(PipelineStep):
     
         spectra = { arm: {} for arm in use_arms }
         for arm in use_arms:
-            for i, visit, identity in context.config.enumerate_visits():
+            for i, visit, identity, observation in context.config.enumerate_visits():
                 spec = input_spectra[arm][visit]
                 if spec is not None:
                     # Calculate mask bits
@@ -205,7 +210,7 @@ class TempFitStep(PipelineStep):
                 spectra[arm][visit] = spec
 
         # Remove all None visits
-        for i, visit, identity in context.config.enumerate_visits():
+        for i, visit, identity, observation in context.config.enumerate_visits():
             non_zero = False
             for arm in use_arms:
                 if spectra[arm][visit] is not None:
@@ -448,7 +453,7 @@ class TempFitStep(PipelineStep):
 
         velocity_correction = {}
 
-        for i, visit, identity in context.config.enumerate_visits():
+        for i, visit, identity, observation in context.config.enumerate_visits():
             t0 = Time(obs_time[visit], format='isot', scale='utc')
             from_correction = eval_vcorr(context.config.tempfit.vcorr.from_frame, t0)
             to_correction = eval_vcorr(context.config.tempfit.vcorr.to_frame, t0)

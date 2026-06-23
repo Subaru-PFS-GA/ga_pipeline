@@ -121,15 +121,20 @@ class ValidateStep(PipelineStep):
         # Verify that input data files are available or the input products
         # are already in the cache
         for t in context.state.required_product_types:
-            self.__validate_input_data_product(context, t)
+            if t in [ PfsArm ]:
+                arms = context.config.tempfit.fit_arms
+            else:
+                arms = None
 
-    def __validate_input_data_product(self, context, product, required=True):
+            self.__validate_input_data_product(context, t, arms=arms)
+
+    def __validate_input_data_product(self, context, product, arms=None, required=True):
         # Check the availability of the required data products. They're either
         # already in the product cache on the pipeline level, or they must be
         # available in the data repository. We only identify the products here,
         # do no load them.
 
-        context.pipeline.locate_data_products(product, required=required)
+        context.pipeline.locate_data_products(product, arms=arms, required=required)
     
     def __validate_libs(self, context):
         # TODO: write code to validate library versions and log git hash for each when available

@@ -48,3 +48,17 @@ class GATargetConfig(Config):
             identity['pfsVisitHash'] = calculatePfsVisitHash(visit)
 
         return identity
+    
+    def get_observation(self, visit):
+        """Return an observation dictionary similar to PFS datamodel."""
+
+        observation = {}
+
+        idx = self.observations.visit.index(visit)
+
+        for k in self.observations.__dict__.keys():
+            values = getattr(self.observations, k)
+            if isinstance(values, Iterable):
+                observation[k] = values[idx]
+
+        return observation

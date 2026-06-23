@@ -197,4 +197,5 @@ class GAPipelineConfig(RepoConfig):
 
         for i, visit in enumerate(sorted(self.target.observations.visit)):
             identity = SimpleNamespace(**self.target.get_identity(visit))
-            yield i, visit, identity
+            observation = SimpleNamespace(**self.target.get_observation(visit))
+            yield i, visit, identity, observation
