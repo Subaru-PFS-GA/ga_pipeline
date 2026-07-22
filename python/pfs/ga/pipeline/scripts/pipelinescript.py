@@ -478,6 +478,8 @@ class PipelineScript(Script):
             # other targets with the same targetid
             mask = (target_list['obcode'] == obcode) & (target_list['__target_idx'] == (objid & 0xFFFFFFFF))
 
+        if np.sum(mask) == 0:
+            raise Exception(f'No matching target found for obCode {obcode} and objId {objid}.')
 
         primary_target = np.where(mask)[0][0]
         target_idx = target_list.loc[primary_target, '__target_idx']

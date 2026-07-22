@@ -627,6 +627,10 @@ class CatalogScript(PipelineScript, Progress):
         if target_lists is not None:
             primary_target_idx, secondary_target_idx = self._find_matching_targets(target_lists, obcode, objid)
 
+            # Skip if the primary target is not found in the target lists, since we cannot look up the magnitudes
+            if primary_target_idx is None:
+                return
+
             # Look up the broad-band magnitudes in the original target lists
             magnitudes = self._find_magnitudes_in_target_list(
                 self.config.tempfit.photometry,
