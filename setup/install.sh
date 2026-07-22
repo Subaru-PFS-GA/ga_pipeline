@@ -62,7 +62,7 @@ DATAMODEL_GITHUB="Subaru-PFS/datamodel"
 DATAMODEL_GIT_TAG="tickets/DAMD-162"
 GACOMMON_GITHUB="Subaru-PFS-GA/ga_common"
 GACOMMON_GIT_TAG="$GAPIPE_TAG"
-PFSSPEC_GITHUB="Subaru-PFS-GA/ga_pfsspec_all"
+PFSSPEC_GITHUB="Subaru-PFS-GA/ga_pfsspec"
 PFSSPEC_GIT_TAG="$GAPIPE_TAG"
 GAPIPE_GITHUB="Subaru-PFS-GA/ga_pipeline"
 GAPIPE_GIT_TAG="$GAPIPE_TAG"
@@ -799,7 +799,7 @@ export PYTHONPATH=""
 export PFSSPEC_LSST="${GAPIPE_LSST}"
 export PFSSPEC_CONDAPATH="${conda_dir}"
 export PFSSPEC_CONDAENV="${GAPIPE_CONDA_ENV}"
-export PFSSPEC_ROOT="${GAPIPE_ROOT}/src/ga_pfsspec_all"
+export PFSSPEC_ROOT="${GAPIPE_ROOT}/src/ga_pfsspec"
 export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
 
 # Register the dependencies that are installed from source
@@ -809,16 +809,16 @@ EOF
 }
 
 function install_pfsspec_source() {
-    # Clone and check out the ga_pfsspec_all repository and generate
+    # Clone and check out the ga_pfsspec repository and generate
     # the environment configuration file to initilize PFSSPEC
     # Assume we are already in the src directory
 
     log_info "Installing and configuring pfsspec from source."
 
-    if [[ ! -d "ga_pfsspec_all" ]]; then
-        git_clone "${PFSSPEC_GITHUB}" ga_pfsspec_all 1
+    if [[ ! -d "ga_pfsspec" ]]; then
+        git_clone "${PFSSPEC_GITHUB}" ga_pfsspec 1
 
-        run_cmd "pushd ga_pfsspec_all > /dev/null"
+        run_cmd "pushd ga_pfsspec > /dev/null"
         git_checkout "${PFSSPEC_GIT_TAG}"
 
         # Generate the default pfsspec environment
@@ -837,10 +837,10 @@ function install_pfsspec_source() {
 
         run_cmd "popd > /dev/null"
         log_info "Finished installing pfsspec."
-    elif [[ -d "ga_pfsspec_all" && $GAPIPE_UPGRADE -eq 1 ]]; then
+    elif [[ -d "ga_pfsspec" && $GAPIPE_UPGRADE -eq 1 ]]; then
         log_info "pfsspec repository already exists, but --upgrade option is set. Proceeding with upgrade."
 
-        run_cmd "pushd ga_pfsspec_all > /dev/null"
+        run_cmd "pushd ga_pfsspec > /dev/null"
         git_checkout_or_update "${PFSSPEC_GIT_TAG}"
 
         # Check out each submodule to the HEAD of the current branch
@@ -942,7 +942,7 @@ export BUTLER_COLLECTIONS="${BUTLER_COLLECTIONS}"
 
 # pfsspec library settings
 
-export PFSSPEC_ROOT="${GAPIPE_ROOT}/src/ga_pfsspec_all"
+export PFSSPEC_ROOT="${GAPIPE_ROOT}/src/ga_pfsspec"
 export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
 
 # Define dependencies that are not installed as modules (conda or eups)
@@ -956,7 +956,7 @@ export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
 # Specify multiple modules separated by new lines.
 export GAPIPE_MODULES="datamodel:$GAPIPE_ROOT/src/datamodel:python
 ga_common:$GAPIPE_ROOT/src/ga_common:python
-ga_pfsspec:$GAPIPE_ROOT/src/ga_pfsspec_all:python
+ga_pfsspec:$GAPIPE_ROOT/src/ga_pfsspec:python
 gapipe:$GAPIPE_ROOT/src/ga_pipeline:python
 gapipe-test:${GAPIPE_ROOT}/src/ga_pipeline:tests"
 
@@ -991,7 +991,7 @@ function install_gapipe_source() {
     elif [[ -d "ga_pipeline" && $GAPIPE_UPGRADE -eq 1 ]]; then
         log_info "gapipe repository already exists, but --upgrade option is set. Proceeding with upgrade."
 
-        run_cmd "pushd ga_pfsspec_all > /dev/null"
+        run_cmd "pushd ga_pfsspec > /dev/null"
         git_checkout_or_update "${PFSSPEC_GIT_TAG}"
 
         run_cmd "popd > /dev/null"
