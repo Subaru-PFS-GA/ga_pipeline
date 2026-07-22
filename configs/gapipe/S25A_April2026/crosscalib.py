@@ -3,9 +3,27 @@ from pfs.ga.pfsspec.core import Trace
 
 GAPIPE_ROOT = os.environ['GAPIPE_ROOT']
 ARMS = [ 'b', 'm' ]
+WAVE_INCLUDE = [
+    [7000, 7150],
+    [7325, 7580],
+    [7700, 8100],
+    [8480, 8900],
+]
 
 config = dict(
     trace_args = dict(
+        plot_level = Trace.PLOT_LEVEL_DEBUG,
+        plot_exposures = True,
+        plot_exposures_spec = {
+            'pfsGA-exposures-full-{id}': dict(
+                plot_flux=True,
+                plot_flux_err=True,
+                plot_mask=True,
+                print_snr=True,
+                normalize_cont=True,
+                wave_include=WAVE_INCLUDE
+            )
+        },
         plot_coadd_spec = {
             # Additional plots of RVFit results
             'pfsGA-coadd-best-700nm-{id}': dict(
@@ -43,12 +61,7 @@ config = dict(
         required_products = [ 'PfsConfig', 'PfsArm' ],
 
         # RV fitting wavelength ranges
-        wave_include = [
-            [7000, 7150],
-            [7325, 7580],
-            [7700, 8100],
-            [8480, 8900],
-        ],
+        wave_include = WAVE_INCLUDE,
 
         # In case of unfluxed spectra, exclude strong absorption bands
         # wave_exclude = [[7100.0, 7350.0],
@@ -70,8 +83,8 @@ config = dict(
             amplitude_per_exp = True,
 
             M_H = [ -1.5, 0.0 ],
-            M_H_dist = [ "normal", -0.0, 1.0 ],
-            T_eff = [ 5500, 7000 ],
+            M_H_dist = [ "normal", 0.0, 1.0 ],
+            T_eff = [ 4000, 7500 ],
             T_eff_dist = [ "normal", 5000, 350 ],
             
             log_g = [ 0.0, 5.0 ],
