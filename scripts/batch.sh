@@ -62,15 +62,17 @@ SKIP_BEFORE=
 SKIP_AFTER=
 
 # Run in slurm, only applies to the gapipe-run command, only used with the "submit" verb
-# BATCH_PARTITION="cpu"
-BATCH_PARTITION="v100"
+BATCH_PARTITION="cpu"
+# BATCH_PARTITION="v100"
 BATCH_PARAMS="--batch slurm --partition ${BATCH_PARTITION} --cpus 4 --mem 12G"
 BATCH_ARRAY_PARAMS="--array 0-1023"
 
 # This is the input product to the pipeline
 # TODO: move this to the config files, use pfsCalibrated as default
-# PRODUCT="pfsCalibrated"
-PRODUCT="pfsArm"
+# DATA_PRODUCT="pfsCalibrated"
+# DATA_PRODUCT="pfsMerged"
+# DATA_PRODUCT="pfsArm"
+DATA_PRODUCT="detectorMap"
 
 ### End of user config section
 
@@ -215,24 +217,24 @@ EOF
     )
     run_cmd "$cmd"
 
-    # Query the database for the $PRODUCT files
+    # Query the database for the $DATA_PRODUCT files
 
     cmd=$(cat <<EOF
-gapipe-repo find-product $PRODUCT \
+gapipe-repo find-product $DATA_PRODUCT \
     --visit ${UNIQUE_VISITS[@]} \
     --catid ${CATID[$i]} \
     --objid ${OBJID[$i]} \
     --butler \
     --format path \
     | sed "s|${GAPIPE_DATADIR}/||g" \
-    > "run/${GARUN[$i]}_${CATID[$i]}_${PRODUCT}.txt"
+    > "run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.txt"
 EOF
     )
     run_cmd "$cmd"
 
-    # Generate the sbatch script for downloading the $PRODUCT files in parallel
+    # Generate the sbatch script for downloading the $DATA_PRODUCT files in parallel
 
-    cat > "run/${GARUN[$i]}_${CATID[$i]}_${PRODUCT}.sh" <<EOF
+    cat > "run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.sh" <<EOF
 #!/bin/bash
 #SBATCH --job-name=gapipe_download
 #SBATCH --output=logs/%x-%A_%a.out
@@ -241,9 +243,9 @@ EOF
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4G
 
-# run it as sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_${PRODUCT}.sh
+# run it as sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.sh
 
-FILELIST="run/${GARUN[$i]}_${CATID[$i]}_${PRODUCT}.txt"
+FILELIST="run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.txt"
 TASK_ID="\$SLURM_ARRAY_TASK_ID"
 NUM_TASKS="\$SLURM_ARRAY_TASK_COUNT"
 
@@ -262,18 +264,18 @@ while read -r url; do
             "https://hscpfs.mtk.nao.ac.jp/fileaccess/pfs/programs/${PROPOSAL[$i]}/2d/\$url" \\
             -P "${GAPIPE_DATADIR}/" \\
             --no-host-directories \\
-            --cut-dirs=5 -x -c
+            --cut-dirs=5 -x -c --tries 42
     fi
 
 done < "\${FILELIST}"
 EOF
 
-    echo "run/${GARUN[$i]}_${CATID[$i]}_${PRODUCT}.sh" " has been generated."
+    echo "run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.sh" " has been generated."
 
-    # Submit the batch job array for downloading the $PRODUCT files
+    # Submit the batch job array for downloading the $DATA_PRODUCT files
 
     cmd=$(cat <<EOF
-sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_${PRODUCT}.sh
+sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.sh
 EOF
     )
     # run_cmd "$cmd"
