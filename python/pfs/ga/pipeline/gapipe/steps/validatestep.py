@@ -87,8 +87,18 @@ class ValidateStep(PipelineStep):
                         logger.info(f'Using PSF file `{fn}` for arm `{arm}`.')
 
     def __validate_chemfit_input_files(self, context):
-        if context.config.run_chemfit:
-            raise NotImplementedError()
+
+        # TODO: extend this to cover all necessary input files for chemfit
+        # TODO: for localfit, we don't need the grid but we need the location of "restart" files
+
+        if context.config.run_chemfit and context.config.chemfit.settings is not None:
+            if 'grid_filename' in context.config.chemfit.settings \
+                and context.config.chemfit.settings['grid_filename'] is not None \
+                and not os.path.isfile(context.config.chemfit.settings['grid_filename']):
+                raise FileNotFoundError(f'ChemFit model grid `{context.config.chemfit.settings["grid_filename"]}` not found.')
+            
+            if 'scratch' in context.config.chemfit.settings and not os.path.isdir(context.config.chemfit.settings['scratch']):
+                raise FileNotFoundError(f'ChemFit scratch directory `{context.config.chemfit.settings["scratch"]}` not found.')
 
     def __validate_input_data_products(self, context):
 
@@ -96,9 +106,6 @@ class ValidateStep(PipelineStep):
         
         if context.config.run_tempfit:
             required_products.update(context.config.tempfit.required_products)
-
-        if context.config.run_chemfit:
-            required_products.update(context.config.chemfit.required_products)
 
         # Compile the list of required input data products. The data products
         # are identified by their type. The class definitions are located in pfs.datamodel

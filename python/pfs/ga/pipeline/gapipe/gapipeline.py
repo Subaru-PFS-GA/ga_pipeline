@@ -263,8 +263,20 @@ class GAPipeline(Pipeline):
             {
                 'type': ChemFitStep,
                 'name': 'chemfit',
-                'func': ChemFitStep.run,
-                'critical': False
+                'func': ChemFitStep.init,
+                'critical': True,
+                'substeps': [
+                    {
+                        'name': 'chemfit_run',
+                        'func': ChemFitStep.run,
+                        'critical': True,
+                    },
+                    {
+                        'name': 'chemfit_cleanup',
+                        'func': ChemFitStep.cleanup,
+                        'critical': True,
+                    },
+                ]
             },
             {
                 'type': SaveStep,
@@ -654,7 +666,7 @@ class GAPipeline(Pipeline):
                     # Make sure that targets are the same
                     if target is None:
                         target = data.target
-                    elif target != data.target:
+                    elif target.catId != data.target.catId or target.objId != data.target.objId:
                         raise PipelineError(f'Target information in PfsSingle files do not match.')
                 elif issubclass(product, PfsFiberArraySet):
                     pass

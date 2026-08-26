@@ -52,29 +52,29 @@ class TempFitConfig(Config):
             vcorr: VCorrConfig = VCorrConfig(),
         ):
 
-        # TempFIT global parameters
+        # TempFit global parameters
         
         # List of arms to attempt to fit
         self.fit_arms = [ 'b', 'm', 'n' ]
 
         # Require all arms to run fit
-        self.require_all_arms = True              
+        self.require_all_arms = True
         
         # Map log likelihood over the model grid, expensive but useful for debugging
         self.map_log_L = False
 
         # Template grid path, str or dict, use {arm} for wildcard
-        self.model_grid_path = None               
+        self.model_grid_path = None
         
         # Model grid resolution, float or dict, use {arm} for wildcard
         self.model_grid_resolution = None
 
         # Extra arguments to model grid, such as parameter limits
-        self.model_grid_args = None               
+        self.model_grid_args = None
         
         # Memory map model grid files (only on supported file systems)
         # Only works with uncompressed HDF5 files, falls back to lazy-loading if mmap fails
-        self.model_grid_mmap = True               
+        self.model_grid_mmap = True
         
         # Preload model grids into memory (requires large memory, not worth it)
         self.model_grid_preload = False
@@ -119,6 +119,7 @@ class TempFitConfig(Config):
         self.correction_model = None
         self.correction_model_args = {}
 
+        # TODO: add different masks for rest-frame and observed-frame fitting
         self.wave_include = None
         self.wave_exclude = None
 

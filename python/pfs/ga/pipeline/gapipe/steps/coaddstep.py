@@ -24,7 +24,7 @@ class CoaddStep(PipelineStep):
             return PipelineStepResults(success=True, skip_remaining=True, skip_substeps=True)
         elif not context.config.run_coadd:
             logger.info('Spectrum stacking is disabled, skipping step.')
-            return PipelineStepResults(success=True, skip_remaining=True, skip_substeps=True)
+            return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=True)
             
         # We can only coadd arms that have been used for RV fitting
         context.state.coadd_arms = set(context.config.coadd.coadd_arms).intersection(context.state.tempfit_spectra.keys())
@@ -40,8 +40,12 @@ class CoaddStep(PipelineStep):
         input_spectra, no_data_bit, no_continuum_bit, exclude_bits, mask_flags = self.__load_spectra(context)
             
         # Stack the exposures for each arm separately
-        coadd_spectra = self.__stack_spectra(context, input_spectra,
+        coadd_spectra = self.__coadd_spectra(context, input_spectra,
                                              no_data_bit, no_continuum_bit, exclude_bits)
+
+        # Fit the stacked spectra with the same model as used for tempfit,
+        # to get the best-fit parameters and continuum
+        coadd_spectra = self.__fit_coadd_spectra(context, coadd_spectra)
 
         # Combine the single arm spectra into a single spectrum
         merged_spectrum = self.__merge_spectra(context, coadd_spectra)
@@ -74,7 +78,7 @@ class CoaddStep(PipelineStep):
                 if s is not None:
                     s.mask_flags.update(flags)
 
-    def __stack_spectra(self, context, input_spectra, no_data_bit, no_continuum_bit, exclude_bits):
+    def __coadd_spectra(self, context, input_spectra, no_data_bit, no_continuum_bit, exclude_bits):
         # Initialize the stacker algorithm for each arm separately
         stackers = {}
         for arm in context.state.coadd_arms:
@@ -88,34 +92,41 @@ class CoaddStep(PipelineStep):
         #       and correct weighting with the errors is done by the stacker
 
         # Generate the stacked spectra
-        stacked_spectra = {}
+        coadd_spectra = {}
         for arm, stacker in stackers.items():
             spec = stacker.stack([s for s in input_spectra[arm] if s is not None])
-            stacked_spectra[arm] = [spec]
+            coadd_spectra[arm] = [spec]
 
-        # TODO: move everything below to the stacker class
+        return coadd_spectra
+
+    def __fit_coadd_spectra(self, context, coadd_spectra):
+
+        # TODO: add option to keep parameters taken from the original fit
+        #       and only update the flux correction
 
         # Evaluate the best fit model, continuum, etc that might be interesting
         tempfit = context.state.tempfit
         tempfit.reset()
 
-        state = tempfit.init_state(
-            stacked_spectra,
+        tempfit_state = tempfit.init_state(
+            coadd_spectra,
+            rv_fixed=context.state.tempfit_state.rv_fixed,
+            params_fixed=context.state.tempfit_state.params_fixed,
             fluxes=context.state.tempfit_fluxes)
+
+        # Copy best fit parameters from likelihood stacking results        
+        tempfit_state.rv_fit = context.state.tempfit_results.rv_fit
+        tempfit_state.params_fit = context.state.tempfit_results.params_fit.copy()
+        tempfit_state.a_fit = context.state.tempfit_results.a_fit
         
         # Append the flux correction model to the coadded spectra
-
-        # TODO: this won't work if the arms are different from the arms
-        #       used for tempfit, unless the models are initialized for
-        #       the new arms as well
-
-        tempfit.init_correction_models(state.pp_spec, force=True)
-        tempfit.init_extinction_curves(state.pp_spec, force=True)
+        tempfit.init_correction_models(tempfit_state.pp_spec, force=True)
+        tempfit.init_extinction_curves(tempfit_state.pp_spec, force=True)
 
         # Append the flux correction model to the coadded spectra
-        stacked_spectra, _ = tempfit.append_corrections_and_templates(
-            state,
-            stacked_spectra, None,
+        coadd_spectra, _ = tempfit.append_corrections_and_templates(
+            tempfit_state,
+            coadd_spectra, None,
             context.state.tempfit_results.rv_fit,
             context.state.tempfit_results.params_fit,
             a_fit=None,
@@ -123,9 +134,21 @@ class CoaddStep(PipelineStep):
             apply_correction=True,
         )
 
+        # Calculate the Jacobian, if needed for the downstream ChemFit step
+        # TODO: probably move it to the chemfit step but reuse the tempfit object
+        if context.config.run_chemfit:
+            tempfit_results, tempfit_state = context.state.tempfit.calculate_jac_ml(
+                tempfit_state,
+                normalize_continuum=context.config.chemfit.normalize_continuum)
+        else:
+            tempfit_results = None
+
+        context.state.coadd_tempfit_state = tempfit_state
+        context.state.coadd_tempfit_results = tempfit_results
+
         # TODO: call the trace hook at this point but from the stacker class
 
-        return stacked_spectra
+        return coadd_spectra
 
     def __merge_spectra(self, context, coadd_spectra):
         # Merge the single arm spectra into a single spectrum

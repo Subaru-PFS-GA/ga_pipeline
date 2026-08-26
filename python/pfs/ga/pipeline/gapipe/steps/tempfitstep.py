@@ -210,6 +210,9 @@ class TempFitStep(PipelineStep):
                 spectra[arm][visit] = spec
 
         # Remove all None visits
+        # TODO: after this, the spectra from the same visits won't be aligned
+        #       in the lists anymore. Make sure this is taken into account whenever
+        #       any logic is used to access spectra by visit id.
         for i, visit, identity, observation in context.config.enumerate_visits():
             non_zero = False
             for arm in use_arms:
@@ -585,6 +588,12 @@ class TempFitStep(PipelineStep):
         context.state.tempfit_results, context.state.tempfit_state = \
             context.state.tempfit.finish_ml(context.state.tempfit_state)
 
+        # Append the correction model to the spectra and apply the correction to
+        # the observed flux (pull the observations to the templates). This will add
+
+        # TODO: maybe bring out parameters for 'match' and 'apply_correction' to make them configurable
+        #       or just let applying the correction in the coadd step.
+
         context.state.tempfit_spectra, _ = context.state.tempfit.append_corrections_and_templates(
             context.state.tempfit_state,
             context.state.tempfit_spectra, None,
@@ -592,7 +601,7 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_results.params_fit,
             context.state.tempfit_results.a_fit,
             match='template',                       # Pull flux to templates instead of pulling templates to observations
-            apply_correction=False,
+            apply_correction=False
         )
 
         if context.trace is not None:
