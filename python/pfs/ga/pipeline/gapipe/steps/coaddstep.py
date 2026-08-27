@@ -2,11 +2,17 @@ import numpy as np
 from types import SimpleNamespace
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
+from pfs.ga.pfsspec.core import Physics
 from pfs.ga.pfsspec.core.obsmod.resampling import Binning
 from pfs.ga.pfsspec.core.obsmod.psf import GaussPsf, PcaPsf
 from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
 from pfs.ga.pfsspec.stellar.grid import ModelGrid
-from pfs.ga.pfsspec.stellar.tempfit import TempFit, ModelGridTempFit, ModelGridTempFitTrace, CORRECTION_MODELS
+from pfs.ga.pfsspec.stellar.tempfit import (
+    TempFit, ModelGridTempFit,
+    ModelGridTempFitTrace,
+    ModelGridTempFitResults,
+    CORRECTION_MODELS
+)
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
 from pfs.ga.pfsspec.survey.pfs.utils import *
 
@@ -119,7 +125,8 @@ class CoaddStep(PipelineStep):
         tempfit_state.params_fit = context.state.tempfit_results.params_fit.copy()
         tempfit_state.a_fit = context.state.tempfit_results.a_fit
         
-        # Append the flux correction model to the coadded spectra
+        # Initialize the correction models and extinction curves to match
+        # the wavelength grid of the coadded spectra
         tempfit.init_correction_models(tempfit_state.pp_spec, force=True)
         tempfit.init_extinction_curves(tempfit_state.pp_spec, force=True)
 
@@ -134,17 +141,17 @@ class CoaddStep(PipelineStep):
             apply_correction=True,
         )
 
-        # Calculate the Jacobian, if needed for the downstream ChemFit step
-        # TODO: probably move it to the chemfit step but reuse the tempfit object
-        if context.config.run_chemfit:
-            tempfit_results, tempfit_state = context.state.tempfit.calculate_jac_ml(
-                tempfit_state,
-                normalize_continuum=context.config.chemfit.normalize_continuum)
-        else:
-            tempfit_results = None
+        for arm in coadd_spectra:
+            for s in coadd_spectra[arm]:
+                if s is not None:
+                    s.ext = context.state.tempfit_results.params_fit.get('ebv', None)
+                    s.redshift, s.redshift_err = Physics.vel_to_z(
+                        context.state.tempfit_results.rv_fit,
+                        context.state.tempfit_results.rv_err
+                    )
 
         context.state.coadd_tempfit_state = tempfit_state
-        context.state.coadd_tempfit_results = tempfit_results
+        context.state.coadd_tempfit_results = ModelGridTempFitResults.from_state(tempfit_state)
 
         # TODO: call the trace hook at this point but from the stacker class
 
