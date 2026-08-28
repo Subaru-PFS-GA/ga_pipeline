@@ -15,7 +15,7 @@ except ImportError as e:
     LocalGrid = None
 
 from pfs.ga.pfsspec.stellar import StellarSpectrum
-from pfs.ga.common.util.astro import vel_to_z
+from pfs.ga.pfsspec.core import Physics
 from ...chemfit import ChemFitResults
 from ...common import Pipeline, PipelineError, PipelineStep, PipelineStepResults
 from ..config import GAPipelineConfig
@@ -131,13 +131,14 @@ class ChemFitStep(PipelineStep):
         return jac, jac_params
 
     def __convert_spectra(self, context):
+        chemfit_spectra = {}
         wl = {}
         flux = {}
         ivar = {}
         for arm in context.state.chemfit_arms:
             # Coadds have a single spectrum only for each arm
             s = context.state.coadd_results.coadd_spectra[arm][0].copy()
-            z = vel_to_z(context.state.tempfit_results.rv_fit)
+            z = Physics.vel_to_z(context.state.tempfit_results.rv_fit)
             
             # Create a mask to pass in good pixels only. ChemFit cannot take a
             # simple bitmask, so we will simply set the flux to NaN for the masked
@@ -164,8 +165,8 @@ class ChemFitStep(PipelineStep):
 
             # Normalize the observed spectrum with the continuum, when available
             if context.config.chemfit.normalize_continuum and s.line is not None:
-                flux[arm] = np.where(mask, s.line[mask], np.nan)
-                ivar[arm] = 1.0 / np.where(mask, s.line[mask], np.nan) ** 2 if s.line is not None else None
+                flux[arm] = np.where(mask, s.line, np.nan)
+                ivar[arm] = 1.0 / np.where(mask, s.line, np.nan) ** 2 if s.line is not None else None
             elif context.config.chemfit.normalize_continuum and s.cont is not None:
                 flux[arm] = np.where(mask, s.flux / s.cont, np.nan)
                 ivar[arm] = 1.0 / np.where(mask, s.flux_err / s.cont, np.nan) ** 2 if s.flux_err is not None else None
@@ -175,7 +176,16 @@ class ChemFitStep(PipelineStep):
                 flux[arm] = np.where(mask, s.flux, np.nan)
                 ivar[arm] = 1.0 / np.where(mask, s.flux_err, np.nan) ** 2 if s.flux_err is not None else None
 
-        return wl, flux, ivar
+            # Create a new spectrum object that's going to be returned by the pipeline step
+            # Make sure nothing is inherited from tempfit
+            s.copy()
+
+            s.flux_model = None
+            s.line_model = None
+
+            chemfit_spectra[arm] = [ s ]
+
+        return chemfit_spectra, wl, flux, ivar
 
     def __convert_tempfit_params(self, context):
         gridfit_params = {}
@@ -217,6 +227,69 @@ class ChemFitStep(PipelineStep):
 
         return gridfit_results
 
+    def __extract_results(
+        self,
+        context,
+        localfit,
+        chemfit_spectra,
+        gridfit_results,
+        localfit_results
+    ):
+
+        """
+        Extract the results from the ChemFit localfit output and update the
+        state of the pipeline.
+        """
+        
+        sorted_arms = sorted(list(context.state.chemfit_arms))
+        for arm in gridfit_results['localfit']['wl']:
+            s = chemfit_spectra[arm][0]
+            arm_mask = localfit_results['extra']['arm_index'] == sorted_arms.index(arm)
+            flux = localfit_results['extra']['model']['flux'][arm_mask]
+            cont = localfit_results['extra']['model']['cont'][arm_mask]     # This is not the model continuum
+        
+            if context.config.chemfit.normalize_continuum:
+                s.line_model = flux
+            else:
+                s.flux_model = flux * cont
+                s.cont = cont
+
+                # Since we passed an extinction-corrected spectrum to ChemFit, now apply it to
+                # the model to match the non-corrected flux
+                ebv = context.state.tempfit_results.params_fit.get('ebv', None)
+                if ebv is not None:
+                    s.apply_extinction(ebv=ebv)
+
+        # Figure out the free parameters for the covariance matrix
+        cov_params = []
+        for p in localfit_results['extra']['dof']:
+            if p in self.CHEMFIT_PARAM_MAP:
+                # It's an atmospheric parameter
+                cov_params.append(self.CHEMFIT_PARAM_MAP[p])
+            else:
+                # It's an abundance, get name of element from [Xx/H] notation
+                cov_params.append(p[1:p.index('/')])
+
+        # TODO: flag params on the edge, etc
+        
+        chemfit_results = ChemFitResults(
+            params_free = [ self.CHEMFIT_PARAM_MAP[p] for p in localfit.settings['gridfit_offsets'] ],
+            params_fit = { localfit_results['fit'][p] for p in localfit.settings['gridfit_offsets'] },
+            params_err = { localfit_results['errors'][p] for p in localfit.settings['gridfit_offsets'] },
+
+            abund_free = [ p for p in localfit.settings['elements'] ],
+            abund_fit = { p: localfit_results['fit'][f'[{p}/H]'] for p in localfit.settings['elements'] },
+            abund_err = { p: localfit_results['errors'][f'[{p}/H]'] for p in localfit.settings['elements'] },
+
+            jac = localfit_results['extra']['jac'],
+            jac_params = cov_params,
+            
+            cov = localfit_results['extra']['cov'],
+            cov_params = cov_params,
+        )
+
+        return chemfit_results
+
     def run(self, context):
         # ChemFit.localfit expects the Jacobian of the flux with respect to the
         # atmospheric parameters. Tempfit does not, by default, provide it becase
@@ -224,7 +297,7 @@ class ChemFitStep(PipelineStep):
         jac, jac_params = self.__calculate_jacobian(context)
 
         # Convert pfsspec spectra to chemfit format
-        wl, flux, ivar = self.__convert_spectra(context)
+        chemfit_spectra, wl, flux, ivar = self.__convert_spectra(context)
 
         # Convert the best-fit TempFit parameters to ChemFit parameters
         gridfit_params = self.__convert_tempfit_params(context)
@@ -242,6 +315,12 @@ class ChemFitStep(PipelineStep):
         # Initialize a localfit object using the settings from the gapipe config
         localfit = LocalFit()
         localfit.settings = context.config.chemfit.settings
+
+        # Override the mask because it is already applied to the spectra
+        localfit.settings['mask'] = []
+        localfit.settings['fit_normalized'] = context.config.chemfit.normalize_continuum
+        # localfit.settings['cont_pix']
+        # localfit.settings['spline_order']
 
         # Create the LocalGrid object that runs ATLAS on the fly
         # TODO: pass in the model grid wrapper to reuse the pfsspec interpolator
@@ -264,7 +343,7 @@ class ChemFitStep(PipelineStep):
         # TODO: remove this after debugging
         # Override element list to speed up the test.
         # Keep all settings derived from the element list in sync.
-        elements = ['Mg', 'Si', 'Ca']
+        elements = ['Mg', 'Ca']
         localfit.settings['virtual_dof'] = {
             elem: localfit.settings['virtual_dof'][elem]
             for elem in elements
@@ -293,86 +372,8 @@ class ChemFitStep(PipelineStep):
         # Run abundance fitting
         localfit_results = localfit.localfit(**gridfit_results['localfit'], level = 1)
 
-        # TODO: extract results
-
-        # localfit_results['fit']['teff'] etc
-        # localfit_results['fit']['[Mg/H]']
-        # localfit_results['fit']['[Ca/H]'] etc.
-
-        # localfit_results['errors']['[Mg/H]']
-        # localfit_results['errors']['[Ca/H]'] etc.
-
-        # localfit_results['extra']['dof']
-        # localfit_results['extra']['cov'] # includes jac_dof and the fitted elements
-
-        # localfit_results['extra']['observed'] # original spectrum
-        # localfit_results['extra']['mask'] # will be all true
-        # localfit_results['extra']['arm_index'] # 0, 1, 2... for each arm in flux array
-
-        # localfit_results['extra']['intermediate'] = [{'[Mg/H]': np.float64(-2.9126888299705067), '[Si/H]': np.float64(-2.9126888299705067), '[Ca/H]': np.float64(-2.912688829970468)}]
-        
-        # Get the best fit chemfit model
-
-        # localfit_results['extra']['model']['wl']
-        # localfit_results['extra']['model']['flux'] -- this is the model flux but it's not scaled to the observed spectrum
-        # localfit_results['extra']['model']['cont'] -- this is the fitted continuum, not the model continuum
-        #                                               flux * cont seems to be the best fit to the data
-
-        # Extract the best fit abundances and errors
-        # 
-
-        chemfit_spectra = {}
-        sorted_arms = sorted(list(context.state.chemfit_arms))
-        for arm in gridfit_results['localfit']['wl']:
-            arm_mask = localfit_results['extra']['arm_index'] == sorted_arms.index(arm)
-            flux = localfit_results['extra']['model']['flux'][arm_mask]
-            cont = localfit_results['extra']['model']['cont'][arm_mask]     # This is not the model continuum
-        
-            s = StellarSpectrum()
-            s.wave = context.state.coadd_results.coadd_spectra[arm][0].wave.copy()
-            s.flux_model = flux * cont
-            # s.cont = 
-            # s.line_model =
-
-            # Since we passed an extinction-corrected spectrum to ChemFit, now apply it to
-            # the model to match the non-corrected flux
-            s.apply_extinction(
-                curve = context.state.coadd_results.coadd_spectra[arm][0].flux_ext,
-                ebv = context.state.tempfit_results.params_fit['ebv']
-            )
-
-            chemfit_spectra[arm] = [s]
-
-        # Figure out the free parameters for the covariance matrix
-        cov_params = []
-        for p in localfit_results['extra']['dof']:
-            if p in self.CHEMFIT_PARAM_MAP:
-                # It's an atmospheric parameter
-                cov_params.append(self.CHEMFIT_PARAM_MAP[p])
-            else:
-                # It's an abundance, get name of element from [Xx/H] notation
-                cov_params.append(p[1:p.index('/')])
-        
-        chemfit_results = ChemFitResults(
-            params_free = [ self.CHEMFIT_PARAM_MAP[p] for p in localfit.settings['gridfit_offsets'] ],
-            params_fit = { localfit_results['fit'][p] for p in localfit.settings['gridfit_offsets'] },
-            params_err = { localfit_results['errors'][p] for p in localfit.settings['gridfit_offsets'] },
-
-            abund_free = [ p for p in localfit.settings['elements'] ],
-            abund_fit = { p: localfit_results['fit'][f'[{p}/H]'] for p in localfit.settings['elements'] },
-            abund_err = { p: localfit_results['errors'][f'[{p}/H]'] for p in localfit.settings['elements'] },
-
-            jac = localfit_results['extra']['jac'],
-            jac_params = [],
-            
-            cov = localfit_results['extra']['cov'],
-            cov_params = cov_params,
-        )
-
-        # TODO: flag params on the edge, etc
-
-        # Store results
-        context.state.chemfit_results = chemfit_results
+        # Extract results
+        context.state.chemfit_results = self.__extract_results(context, localfit, chemfit_spectra, gridfit_results, localfit_results)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 

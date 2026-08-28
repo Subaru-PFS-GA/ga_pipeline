@@ -27,7 +27,7 @@ class ChemfitConfig(Config):
         self.fit_arms = [ 'b', 'm' ]
 
         # Fit the continuum-normalized spectrum
-        self.normalize_continuum = False
+        self.normalize_continuum = True
 
         # Require all arms to run fit
         self.require_all_arms = True
