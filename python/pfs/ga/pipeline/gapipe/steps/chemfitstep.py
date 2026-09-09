@@ -189,6 +189,7 @@ class ChemFitStep(PipelineStep):
 
     def __convert_tempfit_params(self, context):
         gridfit_params = {}
+
         for key in context.state.tempfit_results.params_fit:
             if key in self.TEMPFIT_PARAM_MAP:
                 value = context.state.tempfit_results.params_fit[key]
@@ -210,6 +211,8 @@ class ChemFitStep(PipelineStep):
         """
         
         gridfit_results = {
+            'fit': gridfit_params,
+            'errors': {},
             'localfit': {
                 'wl': wl,
                 'flux': flux,
@@ -241,6 +244,7 @@ class ChemFitStep(PipelineStep):
         state of the pipeline.
         """
         
+        # Append the best localfit model to the spectra
         sorted_arms = sorted(list(context.state.chemfit_arms))
         for arm in gridfit_results['localfit']['wl']:
             s = chemfit_spectra[arm][0]
@@ -251,6 +255,10 @@ class ChemFitStep(PipelineStep):
             if context.config.chemfit.normalize_continuum:
                 s.line_model = flux
             else:
+
+                # TODO: verify this branch
+                raise NotImplementedError("Non-normalized continuum branch not implemented")
+
                 s.flux_model = flux * cont
                 s.cont = cont
 
@@ -260,32 +268,119 @@ class ChemFitStep(PipelineStep):
                 if ebv is not None:
                     s.apply_extinction(ebv=ebv)
 
-        # Figure out the free parameters for the covariance matrix
+        abund_free = [ p for p in localfit.settings['elements'] ]
+        abund_fit = {}
+        abund_err = {}
+        abund_flags = {}
+
+        # Figure out the free parameters
+        params_free = [ self.CHEMFIT_PARAM_MAP[p] for p in localfit.settings['gridfit_offsets'] ]
+        params_fit = {}
+        params_err = {}
+        params_flags = {}
         cov_params = []
+
+        def is_valid_error(params_err, p):
+            return (params_err is not None and
+                self.CHEMFIT_PARAM_MAP[p] in params_err and
+                params_err[self.CHEMFIT_PARAM_MAP[p]] is not None and
+                not np.isnan(params_err[self.CHEMFIT_PARAM_MAP[p]]))
+
+        def get_error(params_err, p):
+            return params_err[self.CHEMFIT_PARAM_MAP[p]]
+
+        def is_param_edge(params_bounds, p, value, tol=1e-5):
+            return (self.CHEMFIT_PARAM_MAP[p] in params_bounds and
+                np.any(np.abs(np.array(params_bounds[self.CHEMFIT_PARAM_MAP[p]]) - localfit_results['fit'][p]) < tol))
+
+        def is_abund_edge(params_bounds, p, value, tol=1e-5):
+            np.any(np.abs(np.array(params_bounds[p]) - value) < tol)
+        
+        # Add free parameters
         for p in localfit_results['extra']['dof']:
             if p in self.CHEMFIT_PARAM_MAP:
                 # It's an atmospheric parameter
+                if p in localfit_results['fit']:
+                    value = localfit_results['fit'][p]
+                    error = None
+                    flag = ChemFitFlag.OK
+
+                    if (p in localfit_results['errors'] and
+                        localfit_results['errors'][p] is not None and
+                        not np.isnan(localfit_results['errors'][p])):
+
+                        error = localfit_results['errors'][p]
+                    elif is_valid_error(context.state.coadd_tempfit_results.params_err, p):
+                        error = get_error(context.state.coadd_tempfit_results.params_err, p)
+                    elif is_valid_error(context.state.tempfit_results.params_err, p):
+                        error = get_error(context.state.tempfit_results.params_err, p)
+                    else:
+                        error = np.nan
+                        flag |= ChemFitFlag.BADERROR
+
+                # Flag params on the edge, etc
+                # Note that these params are inherited from GridFit
+                if is_param_edge(context.state.tempfit_state.params_bounds, p, value):
+                    flag |= ChemFitFlag.PARAMEDGE
+
+                params_fit[self.CHEMFIT_PARAM_MAP[p]] = value
+                params_err[self.CHEMFIT_PARAM_MAP[p]] = error
+                params_flags[self.CHEMFIT_PARAM_MAP[p]] = flag
+
                 cov_params.append(self.CHEMFIT_PARAM_MAP[p])
             else:
                 # It's an abundance, get name of element from [Xx/H] notation
-                cov_params.append(p[1:p.index('/')])
+                p = p[1:p.index('/')]
 
-        # TODO: flag params on the edge, etc
+                value = localfit_results['fit'][f'[{p}/H]']
+                error = localfit_results['errors'][f'[{p}/H]']
+                flag = ChemFitFlag.OK
+
+                if is_abund_edge(localfit.settings['virtual_dof'], p, value):
+                    flag |= ChemFitFlag.PARAMEDGE
+
+                abund_fit[p] = value
+                abund_err[p] = error
+                abund_flags[p] = flag
+
+                cov_params.append(p)
+
+        # Include parameters that come from GridFit (or TempFit)
+        for p in gridfit_results['localfit']['gridfit']:
+            if p in self.CHEMFIT_PARAM_MAP and p not in params_fit:
+                params_fit[self.CHEMFIT_PARAM_MAP[p]] = gridfit_results['localfit']['gridfit'][p][0]
+                params_err[self.CHEMFIT_PARAM_MAP[p]] = gridfit_results['localfit']['gridfit'][p][1]
+                params_flags[self.CHEMFIT_PARAM_MAP[p]] = ChemFitFlag.OK
+
+        # Global flags
+        # TODO: test and review when chemfit fails
+        flags = ChemFitFlag.OK
         
         chemfit_results = ChemFitResults(
-            params_free = [ self.CHEMFIT_PARAM_MAP[p] for p in localfit.settings['gridfit_offsets'] ],
-            params_fit = { localfit_results['fit'][p] for p in localfit.settings['gridfit_offsets'] },
-            params_err = { localfit_results['errors'][p] for p in localfit.settings['gridfit_offsets'] },
+            rv_fit = None,
+            rv_err = None,
+            rv_mcmc = None,
+            rv_flags = None,
 
-            abund_free = [ p for p in localfit.settings['elements'] ],
-            abund_fit = { p: localfit_results['fit'][f'[{p}/H]'] for p in localfit.settings['elements'] },
-            abund_err = { p: localfit_results['errors'][f'[{p}/H]'] for p in localfit.settings['elements'] },
+            abund_free = abund_free,
+            abund_fit = abund_fit,
+            abund_err = abund_err,
+            abund_mcmc = None,
+            abund_flags = abund_flags,
+
+            params_free = params_free,
+            params_fit = params_fit,
+            params_err = params_err,
+            params_mcmc = None,
+            params_flags = params_flags,
 
             jac = localfit_results['extra']['jac'],
             jac_params = cov_params,
             
             cov = localfit_results['extra']['cov'],
             cov_params = cov_params,
+
+            flags = flags
         )
 
         return chemfit_results
@@ -316,6 +411,13 @@ class ChemFitStep(PipelineStep):
         localfit = LocalFit()
         localfit.settings = context.config.chemfit.settings
 
+        # Remove unused arms from settings
+        localfit.settings['arms'] = {
+            arm: v
+            for arm, v in localfit.settings['arms'].items()
+            if arm in context.config.chemfit.fit_arms
+        }
+
         # Override the mask because it is already applied to the spectra
         localfit.settings['mask'] = []
         localfit.settings['fit_normalized'] = context.config.chemfit.normalize_continuum
@@ -328,17 +430,6 @@ class ChemFitStep(PipelineStep):
         grid = LocalGrid(localfit)
         localfit.grid = grid
         grid.gridfit = localfit
-
-        # Override the list of atmospheric parameters that are allowed to vary
-        # during ChemFit.
-        # TODO: maybe allow log g?
-        # TODO: specifying the offset will raise an exception at localfit.py:271
-        #       "The best-fit value of parameter logg has been updated during the fit.
-        #       The provided uncertainty in this parameter therefore cannot be used"
-        #       Looks like we just have to make sure the error of the tempfit parameter
-        #       is not passed in -- error should be replaced with warning?
-        # localfit.settings['gridfit_offsets'] = { 'logg': [-1.0, -0.5, 0.0, 0.5, 1.0] }
-        localfit.settings['gridfit_offsets'] = { }
 
         # TODO: remove this after debugging
         # Override element list to speed up the test.
@@ -357,7 +448,23 @@ class ChemFitStep(PipelineStep):
             for elem in elements
         }
 
+        # Override the list of atmospheric parameters that are allowed to vary
+        # during ChemFit.
+        # TODO: maybe allow log g?
+        # TODO: specifying the offset will raise an exception at localfit.py:271
+        #       "The best-fit value of parameter logg has been updated during the fit.
+        #       The provided uncertainty in this parameter therefore cannot be used"
+        #       Looks like we just have to make sure the error of the tempfit parameter
+        #       is not passed in -- error should be replaced with warning?
+        # localfit.settings['gridfit_offsets'] = { 'logg': [-1.0, -0.5, 0.0, 0.5, 1.0] }
+        # localfit.settings['gridfit_offsets'] = { 'logg': [-0.5, 0.0, 0.5] }
+        localfit.settings['gridfit_offsets'] = { }
+        # localfit.settings['virtual_dof']['logg'] = [-0.5, 0.0, 0.5]
+        # localfit.settings['default_initial']['logg'] = gridfit_results['localfit']['gridfit']['logg']
+        # del gridfit_results['localfit']['gridfit']['logg']
+
         # TODO: verify scratch location, it seems to take it from local settings
+        #       use memory for line lists, etc, if helps with performance
 
         # TODO: figure out how to monkey-patch convolution,
         #       probably replace simulate_observation entirely
@@ -365,9 +472,9 @@ class ChemFitStep(PipelineStep):
         # TODO: figure out how to save arrays into yaml
         localfit.settings['abun'] = np.array(localfit.settings['abun'])
 
-        # TODO: figure out how to knock-out the continuum finder
+        # TODO: replacesplines with chebyshev in continuum finder
 
-        # TODO: allow higher levels
+        # TODO: allow higher levels of chemfit
 
         # Run abundance fitting
         localfit_results = localfit.localfit(**gridfit_results['localfit'], level = 1)

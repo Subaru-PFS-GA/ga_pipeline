@@ -10,6 +10,16 @@ from ..config import GAPipelineConfig
 from ...setup_logger import logger
 
 class SaveStep(PipelineStep):
+
+    UNITS = {
+        'T_eff': 'K',
+        'log_g': '',
+        'M_H': 'dex',
+        'a_M': 'dex',
+        'v_los': 'km s-1',
+        'E(B-V)': 'mag',
+    }
+
     def __init__(self, name=None):
         super().__init__(name)
 
@@ -46,11 +56,14 @@ class SaveStep(PipelineStep):
             flags
         )
 
-        stellar_params = self.__get_stellar_params(context)
+        stellar_params_tempfit = self.__get_stellar_params_tempfit(context)
+        stellar_params_chemfit = self.__get_stellar_params_chemfit(context)
+        stellar_params = self.__combine_stellar_params(stellar_params_tempfit, stellar_params_chemfit)
+        
         stellar_params_covar = context.state.tempfit_results.cov
         velocity_corrections = self.__get_velocity_corrections(context.state.coadd_results.merged_spectrum.observations)
-        abundances = self.__get_abundances(context)
-        abundances_covar = None
+        abundances = self.__get_abundances_chemfit(context)
+        abundances_covar = context.state.chemfit_results.cov
         measurement_flags = self.__get_measurement_flags(context)        
         notes = PfsStarNotes()
 
@@ -58,41 +71,69 @@ class SaveStep(PipelineStep):
         #       these are available in tempfit_results.flags
 
         context.state.pfsStar = PfsStar(
-            merged_spectrum.target,
-            merged_spectrum.observations,
-            merged_spectrum.wave,
-            merged_spectrum.flux,
-            merged_spectrum.mask,
-            merged_spectrum.sky,
-            merged_spectrum.covar,
-            merged_spectrum.covar2,
-            flags,
-            metadata,
-            flux_table,
-            stellar_params,
-            velocity_corrections,
-            abundances,
-            stellar_params_covar,
-            abundances_covar,
-            measurement_flags,
-            notes)
+            target = merged_spectrum.target,
+            observations = merged_spectrum.observations,
+            wavelength = merged_spectrum.wave,
+            flux = merged_spectrum.flux,
+            mask = merged_spectrum.mask,
+            sky = merged_spectrum.sky,
+            covar = merged_spectrum.covar,
+            covar2 = merged_spectrum.covar2,
+            flags = flags,
+            metadata = metadata,
+            fluxTable = flux_table,
+            stellarParams = stellar_params,
+            velocityCorrections = velocity_corrections,
+            abundances = abundances,
+            paramsCovar = stellar_params_covar,
+            abundCovar = abundances_covar,
+            measurementFlags = measurement_flags,
+            notes = notes
+        )
 
         # Save output FITS file
         identity, filename = context.pipeline.save_output_product(context.state.pfsStar)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
+
+    def __combine_stellar_params(self, *stellar_params_list):
+        method = []
+        frame = []
+        param = []
+        covarId = []
+        unit = []
+        value = []
+        value_err = []
+        flag = []
+        status = []
+
+        for params in stellar_params_list:
+            method.extend(params.method)
+            frame.extend(params.frame)
+            param.extend(params.param)
+            covarId.extend(params.covarId)
+            unit.extend(params.unit)
+            value.extend(params.value)
+            value_err.extend(params.valueErr)
+            flag.extend(params.flag)
+            status.extend(params.status)
+
+        return StellarParams(
+            method=np.array(method),
+            frame=np.array(frame),
+            param=np.array(param),
+            covarId=np.array(covarId),
+            unit=np.array(unit),
+            value=np.array(value),
+            valueErr=np.array(value_err),
+            flag=np.array(flag),
+            status=np.array(status),
+        )
     
-    def __get_stellar_params(self, context, include_snr=True):
+    def __get_stellar_params_tempfit(self, context, include_snr=True):
         # Extract stellar parameters from tempfit results
 
-        # Collect parameters
-        units = {
-            'T_eff': 'K',
-            'log_g': 'dex',
-            'M_H': 'dex',
-            'a_M': 'dex',
-            'v_los': 'km s-1',
-        }
+        # TODO: add carbon
 
         # TODO: what if RV is not fitted?
 
@@ -117,7 +158,7 @@ class SaveStep(PipelineStep):
             frame.append('helio')
             param.append(p)
             covarId.append(param_idx.index(p) if p in param_idx else 255)
-            unit.append(units[p] if p in units else '')
+            unit.append(self.UNITS[p] if p in self.UNITS else '')
 
             # Parameter values
 
@@ -172,6 +213,88 @@ class SaveStep(PipelineStep):
             flag=np.array(flag),
             status=np.array(status),
         )
+
+    def __get_stellar_params_chemfit(self, context, include_snr=True):
+
+        # Construct columns
+        method = []
+        frame = []
+        param = []
+        covarId = []
+        unit = []
+        value = []
+        value_err = []
+        flag = []
+        status = []
+
+        for p in context.state.chemfit_results.params_fit:
+            method.append('chemfit')
+            frame.append('rest')
+            param.append(p)
+
+            if p in context.state.chemfit_results.cov_params:
+                covarId.append(context.state.chemfit_results.cov_params.index(p))
+            else:
+                covarId.append(255)
+
+            unit.append(self.UNITS[p] if p in self.UNITS else '')
+
+            value.append(context.state.chemfit_results.params_fit[p])
+            value_err.append(context.state.chemfit_results.params_err[p])
+            flag.append(context.state.chemfit_results.params_flags[p] != ChemFitFlag.OK)
+            status.append(' '.join([
+                m.name for m in ChemFitFlag
+                if (m.value & context.state.chemfit_results.params_flags[p]) != 0
+            ]))
+
+        return StellarParams(
+            method=np.array(method),
+            frame=np.array(frame),
+            param=np.array(param),
+            covarId=np.array(covarId),
+            unit=np.array(unit),
+            value=np.array(value),
+            valueErr=np.array(value_err),
+            flag=np.array(flag),
+            status=np.array(status),
+        )
+
+    def __get_abundances_chemfit(self, context):
+
+        method = []
+        element = []
+        covarId = []
+        value = []
+        value_err = []
+        flag = []
+        status = []
+
+        for p in context.state.chemfit_results.abund_fit:
+            method.append('chemfit')
+            element.append(p)
+
+            if p in context.state.chemfit_results.cov_params:
+                covarId.append(context.state.chemfit_results.cov_params.index(p))
+            else:
+                covarId.append(255)
+
+            value.append(context.state.chemfit_results.abund_fit[p])
+            value_err.append(context.state.chemfit_results.abund_err[p])
+            flag.append(context.state.chemfit_results.abund_flags[p] != ChemFitFlag.OK)
+            status.append(' '.join([
+                m.name for m in ChemFitFlag
+                if (m.value & context.state.chemfit_results.abund_flags[p]) != 0
+            ]))
+
+        return Abundances(
+            method=np.array(method),
+            element=np.array(element),
+            covarId=np.array(covarId),
+            value=np.array(value),
+            valueErr=np.array(value_err),
+            flag=np.array(flag),
+            status=np.array(status),
+        )
     
     def __get_velocity_corrections(self, observations):
         # Assume observations are sorted by visit
@@ -186,18 +309,6 @@ class SaveStep(PipelineStep):
             JD=np.atleast_1d(JD),
             helio=np.atleast_1d(helio),
             bary=np.atleast_1d(bary),
-        )
-    
-    def __get_abundances(self, context):
-        # TODO: implement this
-        return Abundances(
-            method = np.array([], dtype=str),
-            element = np.array([], dtype=str),
-            covarId = np.array([], dtype=np.int8),
-            value = np.array([], dtype=np.float32),
-            valueErr = np.array([], dtype=np.float32),
-            flag = np.array([], dtype=bool),
-            status = np.array([], dtype=str),
         )
 
     def __get_measurement_flags(self, context):
