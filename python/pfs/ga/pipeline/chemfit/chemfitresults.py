@@ -1,6 +1,7 @@
 class ChemFitResults():
     def __init__(
         self, /,
+        chemfit_spectra=None, merged_spectrum=None,
         rv_fit=None, rv_err=None, rv_mcmc=None, rv_flags=None,
         params_free=None, params_fit=None, params_err=None, params_mcmc=None, params_flags=None,
         abund_free=None, abund_fit=None, abund_err=None, abund_mcmc=None, abund_flags=None,
@@ -11,6 +12,9 @@ class ChemFitResults():
         orig=None):
 
         if not isinstance(orig, ChemFitResults):
+            self.chemfit_spectra = chemfit_spectra
+            self.merged_spectrum = merged_spectrum
+
             self.rv_fit = rv_fit                        # Best fit RV
             self.rv_err = rv_err                        # Best fit RV uncertainty
             self.rv_mcmc = rv_mcmc                      # RV MC samples
@@ -32,6 +36,9 @@ class ChemFitResults():
             self.cov_params = cov_params                # Indexes of parameters in the covariance matrix
             self.flags = flags
         else:
+            self.chemfit_spectra = orig.chemfit_spectra
+            self.merged_spectrum = orig.merged_spectrum
+
             self.rv_fit = orig.rv_fit
             self.rv_err = orig.rv_err
             self.rv_mcmc = orig.rv_mcmc

@@ -3,6 +3,7 @@ import numpy as np
 
 import pfs.datamodel
 from pfs.datamodel import *
+from pfs.ga.pfsspec.survey.pfs.utils import *
 
 from ...common import Pipeline, PipelineError, PipelineStep, PipelineStepResults
 from ..config import GAPipelineConfig
@@ -25,60 +26,137 @@ class SaveStep(PipelineStep):
 
     def run(self, context):
 
-        state = context.state
-        merged_spectrum = state.coadd_results.merged_spectrum
-
         # Construct the output object based on the results from the pipeline steps
-        # TODO: 
+
+        if not context.config.run_tempfit:
+            raise NotImplementedError("Tempfit step must be run before SaveStep.")
+
+        # Collect all observations used for fitting
+        target = None
+        observations = []
+
+        for arm in context.state.tempfit_spectra:
+            for s in context.state.tempfit_spectra[arm]:
+                if s is not None:
+                    observations.append(s.observations)
+                    if target is None:
+                        target = s.target
+
+        observations = merge_observations(observations)
+        velocity_corrections = self.__get_velocity_corrections(observations)
+        measurement_flags = self.__get_measurement_flags(context)
+         
+        # Collect fit results
+        stellar_params_tempfit = self.__get_stellar_params_tempfit(context)
+        stellar_params_covar = context.state.tempfit_results.cov
+
+        if context.config.run_chemfit:
+            stellar_params_chemfit = self.__get_stellar_params_chemfit(context)
+            stellar_params = self.__combine_stellar_params(stellar_params_tempfit, stellar_params_chemfit)
+
+            abundances = self.__get_abundances_chemfit(context)
+            abundances_covar = context.state.chemfit_results.cov
+        else:
+            stellar_params = stellar_params_tempfit
+
+            abundances = None
+            abundances_covar = None
+        
+        notes = PfsStarNotes()
         metadata = {}
 
-        flags = MaskHelper(**{ v: k for k, v in merged_spectrum.mask_flags.items() })
+        # We can store the spectrum only if the coadd step was run
+        # If chemfit was also run, it should take precedence over the model
+        # computed for the coadd spectrum
+        if context.config.run_chemfit:
+            merged_spectrum = context.state.chemfit_results.merged_spectrum
 
-        # Construct the flux table, this is an alternative representation of the spectrum
-        shape = merged_spectrum.wave.shape
-        
-        flux_model = merged_spectrum.flux_model if merged_spectrum.flux_model is not None else np.zeros(shape)
-        cont = merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
-        norm_flux = merged_spectrum.flux / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
-        norm_err = merged_spectrum.flux_err / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
-        norm_model = merged_spectrum.flux_model / merged_spectrum.cont if (merged_spectrum.flux_model is not None and merged_spectrum.cont is not None) else np.zeros(shape)
+            flags = MaskHelper(**{ v: k for k, v in merged_spectrum.mask_flags.items() })
+
+            # Construct the flux table, this is an alternative representation of the spectrum
+            shape = merged_spectrum.wave.shape
+
+            wave, _ = merged_spectrum.wave_in_unit('nm')
+            flux, flux_err = merged_spectrum.flux_in_unit('nJy')
+            sky = merged_spectrum.sky_in_unit('nJy')
+            mask = merged_spectrum.mask
+            if merged_spectrum.line_model is not None:
+                cont = merged_spectrum.cont_in_unit('nJy') if merged_spectrum.cont is not None else np.zeros(shape)
+                flux_model = cont * merged_spectrum.line_model
+                norm_flux = flux / cont if cont is not None else np.zeros(shape)
+                norm_err = merged_spectrum.flux_err / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+                norm_model = merged_spectrum.line_model
+            else:
+                raise NotImplementedError()
+                norm_flux = merged_spectrum.flux / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+                norm_err = merged_spectrum.flux_err / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+                norm_model = merged_spectrum.flux_model / merged_spectrum.cont if (merged_spectrum.flux_model is not None and merged_spectrum.cont is not None) else np.zeros(shape)
+            
+            # TODO: unit conversion!
+            covar = merged_spectrum.covar
+            covar2 = merged_spectrum.covar2
+        elif context.config.run_coadd:
+            merged_spectrum = context.state.coadd_results.merged_spectrum
+            flags = MaskHelper(**{ v: k for k, v in merged_spectrum.mask_flags.items() })
+
+            # Construct the flux table, this is an alternative representation of the spectrum
+            shape = merged_spectrum.wave.shape
+
+            wave, _ = merged_spectrum.wave_in_unit('nm')
+            flux, flux_err = merged_spectrum.flux_in_unit('nJy')
+            sky = merged_spectrum.sky_in_unit('nJy')
+            mask = merged_spectrum.mask
+            flux_model = merged_spectrum.model_in_unit('nJy') if merged_spectrum.flux_model is not None else np.zeros(shape)
+            cont = merged_spectrum.cont_in_unit('nJy') if merged_spectrum.cont is not None else np.zeros(shape)
+            norm_flux = merged_spectrum.flux / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+            norm_err = merged_spectrum.flux_err / merged_spectrum.cont if merged_spectrum.cont is not None else np.zeros(shape)
+            norm_model = merged_spectrum.flux_model / merged_spectrum.cont if (merged_spectrum.flux_model is not None and merged_spectrum.cont is not None) else np.zeros(shape)
+            
+            # TODO: unit conversion!
+            covar = merged_spectrum.covar
+            covar2 = merged_spectrum.covar2
+        else:
+            # Dummy data to be able to save the FITS file
+            wave = np.array([0.0], dtype=float)
+            flux = np.array([0.0], dtype=float)
+            flux_err = np.array([0.0], dtype=float)
+            sky = np.array([0.0], dtype=float)
+            mask = np.array([0], dtype=np.int32)
+            flux_model = np.array([0.0], dtype=float)
+            cont = np.array([0.0], dtype=float)
+            norm_flux = np.array([0.0], dtype=float)
+            norm_err = np.array([0.0], dtype=float)
+            norm_model = np.array([0.0], dtype=float)
+            covar = np.array([[0.0]], dtype=float)
+            covar2 = np.array([[0.0]], dtype=float)
+            flags = MaskHelper()
+            
 
         flux_table = StarFluxTable(
-            merged_spectrum.wave,
-            merged_spectrum.flux,
-            merged_spectrum.flux_err,
+            wave,
+            flux,
+            flux_err,
             flux_model,                 # Best-fit fluxed model
             cont,                       # Model continuum
             norm_flux,                  # Continuum-normalized flux
             norm_err,                   # Error of continuum-normalized flux
             norm_model,                 # Continuum-normalized model
-            merged_spectrum.mask,
+            mask,
             flags
         )
-
-        stellar_params_tempfit = self.__get_stellar_params_tempfit(context)
-        stellar_params_chemfit = self.__get_stellar_params_chemfit(context)
-        stellar_params = self.__combine_stellar_params(stellar_params_tempfit, stellar_params_chemfit)
-        
-        stellar_params_covar = context.state.tempfit_results.cov
-        velocity_corrections = self.__get_velocity_corrections(context.state.coadd_results.merged_spectrum.observations)
-        abundances = self.__get_abundances_chemfit(context)
-        abundances_covar = context.state.chemfit_results.cov
-        measurement_flags = self.__get_measurement_flags(context)        
-        notes = PfsStarNotes()
 
         # TODO: where to store the global flags like tempfit_flags?
         #       these are available in tempfit_results.flags
 
         context.state.pfsStar = PfsStar(
-            target = merged_spectrum.target,
-            observations = merged_spectrum.observations,
-            wavelength = merged_spectrum.wave,
-            flux = merged_spectrum.flux,
-            mask = merged_spectrum.mask,
-            sky = merged_spectrum.sky,
-            covar = merged_spectrum.covar,
-            covar2 = merged_spectrum.covar2,
+            target = target,
+            observations = observations,
+            wavelength = wave,
+            flux = flux,
+            mask = mask,
+            sky = sky,
+            covar = covar,
+            covar2 = covar2,
             flags = flags,
             metadata = metadata,
             fluxTable = flux_table,
@@ -186,7 +264,7 @@ class SaveStep(PipelineStep):
             flag.append(f)
             status.append(s)
 
-        if include_snr:
+        if include_snr and context.config.run_coadd:
             for arm in context.state.coadd_results.coadd_spectra:
                 spec = context.state.coadd_results.coadd_spectra[arm][0]
 
@@ -324,6 +402,11 @@ class SaveStep(PipelineStep):
             status.append(' '.join([ m.name for m in TempFitFlag if (m.value & tempfit_flags) != 0 ]))
 
         # TODO: add abundance flags
+        if context.config.run_chemfit:
+            chemfit_flags = context.state.chemfit_results.flags
+            method.append('chemfit')
+            flag.append(chemfit_flags != ChemFitFlag.OK)
+            status.append(' '.join([ m.name for m in ChemFitFlag if (m.value & chemfit_flags) != 0 ]))
 
         return MeasurementFlags(
             method=np.array(method, dtype=str),

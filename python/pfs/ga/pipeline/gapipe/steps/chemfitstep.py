@@ -5,6 +5,9 @@ from ...setup_logger import logger
 
 import pfs.datamodel
 from pfs.datamodel import *
+from pfs.ga.pfsspec.core.obsmod.stacking import SpectrumStacker, SpectrumStackerTrace
+from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
+from pfs.ga.pfsspec.survey.pfs.utils import *
 
 try:
     from chemfit import ChemFit, LocalFit, LocalGrid
@@ -16,11 +19,12 @@ except ImportError as e:
 
 from pfs.ga.pfsspec.stellar import StellarSpectrum
 from pfs.ga.pfsspec.core import Physics
+from .coaddstepmixin import CoaddStepMixin
 from ...chemfit import ChemFitResults
 from ...common import Pipeline, PipelineError, PipelineStep, PipelineStepResults
 from ..config import GAPipelineConfig
 
-class ChemFitStep(PipelineStep):
+class ChemFitStep(PipelineStep, CoaddStepMixin):
 
     # Map TempFit parameters to ChemFit parameters
     # Not all of these are actually used by ChemFit
@@ -46,7 +50,7 @@ class ChemFitStep(PipelineStep):
     def init(self, context):
         if not context.config.run_chemfit:
             logger.info('Chemical abundance fitting is disabled, skipping...')
-            return PipelineStepResults(success=True, skip_remaining=True, skip_substeps=True)
+            return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=True)
 
         # Depending on the configuration, we may want to use the coadded spectrum
         # or the individual exposures
@@ -230,6 +234,18 @@ class ChemFitStep(PipelineStep):
 
         return gridfit_results
 
+    def _init_merger(self, context,
+                       no_data_bit=1,
+                       exclude_bits=0):
+
+        # Initialize the stacker object
+        stacker = SpectrumStacker()
+        stacker.spectrum_type = PfsStellarSpectrum
+        stacker.mask_no_data_bit = no_data_bit
+        stacker.mask_exclude_bits = exclude_bits
+
+        return stacker
+
     def __extract_results(
         self,
         context,
@@ -267,6 +283,11 @@ class ChemFitStep(PipelineStep):
                 ebv = context.state.tempfit_results.params_fit.get('ebv', None)
                 if ebv is not None:
                     s.apply_extinction(ebv=ebv)
+
+        merged_spectrum = self._merge_spectra(context, chemfit_spectra)
+
+        _, _, _, mask_flags = self._get_mask_flags(context, chemfit_spectra)
+        self._append_metadata(context, chemfit_spectra, merged_spectrum, mask_flags)
 
         abund_free = [ p for p in localfit.settings['elements'] ]
         abund_fit = {}
@@ -357,6 +378,9 @@ class ChemFitStep(PipelineStep):
         flags = ChemFitFlag.OK
         
         chemfit_results = ChemFitResults(
+            chemfit_spectra = chemfit_spectra,
+            merged_spectrum = merged_spectrum,
+
             rv_fit = None,
             rv_err = None,
             rv_mcmc = None,
