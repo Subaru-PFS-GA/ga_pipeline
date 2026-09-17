@@ -44,6 +44,7 @@ if [[ -n "${EUPS_PATH}" ]]; then
     export EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64|$(cat $EUPS_PATH/pkgroot)"
 
     eups_setup_safe cp_pipe
+    eups_setup_safe afw
     eups_setup_safe pfs_pipe2d
     
     # TODO: Because the GA datamodel is not part of the EUPS package yet,
