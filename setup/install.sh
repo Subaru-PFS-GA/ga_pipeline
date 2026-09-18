@@ -15,6 +15,8 @@
 # TODO: update git repos when re-running installer
 # TODO: add --quiet switch to suppress conda progress
 
+# TODO: create tmp directory used as scratch for chemfit
+
 # Defaults
 GAPIPE_DEBUG=0                                  # 1 for debugging
 GAPIPE_UPGRADE=0                                # 1 for upgrading an existing installation
@@ -35,6 +37,10 @@ LSST_CONDA_ENV_FILE="lsst.yaml"                 # Conda environment file to inst
 LSST_PIP_REQ_FILE='lsst_requirements.txt'       # Pip requirements file for additional dependencies to install in the LSST conda environment
 PFS_PIPE2D_VERSION="w.2026.14"                  # PFS PIPE2D version to install, if GAPIPE_LSST is set to 1
 PFS_EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64"
+
+# BasicATLAS build environment setup
+ATLAS_BUILD_ENV="atlas-build"
+ATLAS_BUILD_ENV_FILE="atlas-build.yaml"
 
 # Observation data locations
 # Set these variables before running the installer. This will be the default
@@ -66,8 +72,10 @@ PFSSPEC_GITHUB="Subaru-PFS-GA/ga_pfsspec"
 PFSSPEC_GIT_TAG="$GAPIPE_TAG"
 GAPIPE_GITHUB="Subaru-PFS-GA/ga_pipeline"
 GAPIPE_GIT_TAG="$GAPIPE_TAG"
+BASICATLAS_GITHUB="Subaru-PFS-GA/BasicATLAS"
+BASICATLAS_GIT_TAG="master"
 CHEMFIT_GITHUB="Subaru-PFS-GA/ga_chemfit"
-CHEMFIT_GIT_TAG="$GAPIPE_TAG"
+CHEMFIT_GIT_TAG="u/dobos/classes"
 
 function print_header() {
     echo "=================================================="
@@ -296,9 +304,9 @@ function run_cmd() {
     set -e
 
     # Log and error message if the status in non-zero
-    # if [[ $status -ne 0 ]]; then
-    #     log_error "Command failed with exit status $status: ${cmd}"
-    # fi
+    if [[ $status -ne 0 ]]; then
+        log_error "Command returned with non-zero status $status"
+    fi
 
     return $status
 }
@@ -503,7 +511,9 @@ function is_conda_env() {
     # Check if the conda environment exists
     # Assume that conda is already activated
 
-    log_info "Checking if conda environment ${GAPIPE_CONDA_ENV} exists."
+    env_name="$1"
+
+    log_info "Checking if conda environment ${env_name} exists."
     conda_dir=$(get_conda_dir)
 
     # TODO: is this correct?
@@ -512,16 +522,18 @@ function is_conda_env() {
     conda_envs=$(conda env list | \
                  grep -v '^#' | \
                  awk '{print($1)}' | \
-                 grep -E "^${GAPIPE_CONDA_ENV}$")
+                 grep -E "^${env_name}$")
 
     if [[ -n "${conda_envs}" ]]; then
+        log_debug "Conda environment ${env_name} exists."
         return 0
     else
+        log_debug "Conda environment ${env_name} does not exist."
         return 1
     fi
 }
 
-function install_conda_env() {
+function create_conda_env() {
     # Install the conda environment from a yaml file
     # Assume that conda is already activated
 
@@ -546,6 +558,23 @@ function update_conda_env() {
     run_cmd \
         "conda env update --quiet --name \""${env_name}"\" --file \""${env_file}"\"" \
         "conda_update_${env_name}.log"
+}
+
+function activate_conda_env() {
+    # Activate a conda environment
+
+    conda_dir="$1"
+    conda_env="$2"
+
+    log_info "Activating conda environment ${conda_env}."
+    run_cmd "source \"${conda_dir}/bin/activate\" \"${conda_env}\""
+}
+
+function deactivate_conda_env() {
+    # Deactivate the current conda environment
+
+    log_info "Deactivating current conda environment."
+    run_cmd "conda deactivate"
 }
 
 function install_pip_requirements() {
@@ -864,6 +893,73 @@ function install_chemfit_eups() {
     exit -2
 }
 
+function install_basicatlas_source() {
+    # Install BasicATLAS from source
+    # Assume already in the src directory
+
+    log_info "Testing if build environment for BasicATLAS is set up."
+
+    if is_conda_env "${ATLAS_BUILD_ENV}"; then
+        :
+    else
+        create_conda_env ${ATLAS_BUILD_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${ATLAS_BUILD_ENV_FILE}"))
+    fi
+
+    # Activate build environment
+    activate_conda_env "${GAPIPE_CONDA_DIR}" "${ATLAS_BUILD_ENV}"
+
+    # Clone or update the git repository
+    install_module_source "BasicATLAS" "${BASICATLAS_GITHUB}" "${BASICATLAS_GIT_TAG}"
+
+    # Patch and build the code
+    run_cmd "pushd BasicATLAS > /dev/null"
+
+    # The download script is expecting user input, simulate typing 'n' to skip downloading the full grid°
+    log_info "Download BasicATLAS data and source code."
+    run_cmd "source download.com <<< 'n'" "basicatlas_download.log"
+
+    # Download the restart files from google drive
+    run_cmd "python \"${SCRIPT_DIR}/download_google_drive.py\" 1xBhLEdUBZTjtHHg110FVH6G-rYFaPHTk light.h5 ./restarts"
+
+    # Build the fortran code
+    log_info "Patching and building BasicATLAS."
+    run_cmd "LD_LIBRARY_PATH=$CONDA_PREFIX/lib source compile.com" "basicatlas_compile.log"
+
+    # Verify BasicATLAS installation
+    run_cmd "python test.py" "basicatlas_test.log"
+
+    run_cmd "popd > /dev/null"
+
+    deactivate_conda_env
+}
+
+function install_chemfit_source() {
+    # Install ChemFit from source
+    # Assume already in the src directory
+
+    log_info "Installing ChemFit."
+
+    if [[ ! -d "ga_chemfit" ]]; then
+        git_clone "${CHEMFIT_GITHUB}" ga_chemfit 1
+
+        run_cmd "pushd ga_chemfit > /dev/null"
+        git_checkout "${CHEMFIT_GIT_TAG}"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished installing chemfit."
+    elif [[ -d "ga_chemfit" && $GAPIPE_UPGRADE -eq 1 ]]; then
+        log_info "chemfit repository already exists, but --upgrade option is set. Proceeding with upgrade."
+
+        run_cmd "pushd ga_chemfit > /dev/null"
+        git_checkout_or_update "${CHEMFIT_GIT_TAG}"
+
+        run_cmd "popd > /dev/null"
+        log_info "Finished upgrading gapipe."
+    else
+        log_info "ga_chemfit repository already exists. Skipped cloning."
+    fi
+}
+
 function install_gapipe_conda() {
     echo "Installing gapipe as a conda package is not implemented yet." >/dev/stderr
     exit -2
@@ -1133,6 +1229,10 @@ if [[ $GAPIPE_LSST -eq 1 ]]; then
     install_lsst_eups_packages "${LSST_VERSION}" \
         "cp_pipe ctrl_bps ctrl_bps_parsl display_ds9 display_matplotlib display_astrowidgets"
 
+    # Install additional PIPE2D dependencies
+    install_pfs_eups_packages "${PFS_PIPE2D_VERSION}" \
+        "afw"
+
     # Install PFS PIPE2D using EUPS
     install_pfs_eups_packages "${PFS_PIPE2D_VERSION}" \
         "pfs_pipe2d"
@@ -1141,7 +1241,7 @@ if [[ $GAPIPE_LSST -eq 1 ]]; then
 else
     # Install a standard conda environment
 
-    # Check if conda is installed and if not, donwload and execute installer silently
+    # Check if conda is installed and if not, download and execute installer silently
     conda_dir=$(get_conda_dir)
     if [[ -d "$conda_dir" && $GAPIPE_UPGRADE -eq 0 ]]; then
         log_info "Conda already installed, skipping task."
@@ -1158,23 +1258,22 @@ else
     run_cmd "source \"${conda_dir}/bin/activate\" base"
 
     # Check if the target environment exists
-    if [[ is_conda_env == 1 && $GAPIPE_UPGRADE -eq 0 ]]; then
+    if is_conda_env "${GAPIPE_CONDA_ENV}" && [[ $GAPIPE_UPGRADE -eq 0 ]]; then
         log_info "Conda environment ${GAPIPE_CONDA_ENV} already exists, skipping task."
         # TODO: only install packages
-    elif [[ is_conda_env == 1 && $GAPIPE_UPGRADE -eq 1 ]]; then
+    elif is_conda_env "${GAPIPE_CONDA_ENV}" && [[ $GAPIPE_UPGRADE -eq 1 ]]; then
         log_info "Conda environment ${GAPIPE_CONDA_ENV} already exists, but --upgrade option is set. Proceeding with upgrade."
         update_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
     else
         log_info "Conda environment ${GAPIPE_CONDA_ENV} does not exist, creating it."
-        install_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
+        create_conda_env ${GAPIPE_CONDA_ENV} $(realpath $(join_path "$SCRIPT_DIR" "${GAPIPE_CONDA_ENV_FILE}"))
     fi
 
     run_cmd "conda deactivate"
 fi
 
 # Activate the target environment
-log_info "Activating conda environment ${GAPIPE_CONDA_ENV}."
-run_cmd "source \"${GAPIPE_CONDA_DIR}/bin/activate\" \"${GAPIPE_CONDA_ENV}\""
+activate_conda_env "${GAPIPE_CONDA_DIR}" "${GAPIPE_CONDA_ENV}"
 
 # Depending on the package mode, install the GAPIPE software stack
 if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
@@ -1188,8 +1287,8 @@ if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
     install_module_source "ga_common" "${GACOMMON_GITHUB}" "${GACOMMON_GIT_TAG}"
     install_module_source "ga_chemfit" "${CHEMFIT_GITHUB}" "${CHEMFIT_GIT_TAG}"
 
+    install_basicatlas_source
     install_pfsspec_source
-
     install_gapipe_source
 
     run_cmd "popd > /dev/null"

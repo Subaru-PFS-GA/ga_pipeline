@@ -18,6 +18,6 @@ dependencies:
 - ipywidgets
 - ipython
 - ipython_genutils
+- dust_extinction
+- corner
 - pip
-# - pip:
-#   - extinction
