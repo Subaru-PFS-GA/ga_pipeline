@@ -883,16 +883,6 @@ function install_pfsspec_source() {
     fi
 }
 
-function install_chemfit_conda() {
-    echo "Installing chemfit as a conda package is not implemented yet." >/dev/stderr
-    exit -2
-}
-
-function install_chemfit_eups() {
-    echo "Installing chemfit as an EUPS package is not implemented yet." >/dev/stderr
-    exit -2
-}
-
 function install_basicatlas_source() {
     # Install BasicATLAS from source
     # Assume already in the src directory
@@ -919,7 +909,9 @@ function install_basicatlas_source() {
     run_cmd "source download.com <<< 'n'" "basicatlas_download.log"
 
     # Download the restart files from google drive
-    run_cmd "python \"${SCRIPT_DIR}/download_google_drive.py\" 1xBhLEdUBZTjtHHg110FVH6G-rYFaPHTk light.h5 ./restarts"
+    if [[ ! -f "./restarts/light.h5" ]]; then
+        run_cmd "python \"${SCRIPT_DIR}/download_google_drive.py\" 1xBhLEdUBZTjtHHg110FVH6G-rYFaPHTk light.h5 ./restarts"
+    fi
 
     # Build the fortran code
     log_info "Patching and building BasicATLAS."
@@ -933,31 +925,33 @@ function install_basicatlas_source() {
     deactivate_conda_env
 }
 
+function install_chemfit_conda() {
+    echo "Installing chemfit as a conda package is not implemented yet." >/dev/stderr
+    exit -2
+}
+
+function install_chemfit_eups() {
+    echo "Installing chemfit as an EUPS package is not implemented yet." >/dev/stderr
+    exit -2
+}
+
 function install_chemfit_source() {
     # Install ChemFit from source
     # Assume already in the src directory
 
-    log_info "Installing ChemFit."
+    # Clone or update the git repository
+    install_module_source "ga_chemfit" "${CHEMFIT_GITHUB}" "${CHEMFIT_GIT_TAG}"
 
-    if [[ ! -d "ga_chemfit" ]]; then
-        git_clone "${CHEMFIT_GITHUB}" ga_chemfit 1
+    run_cmd "pushd ga_chemfit > /dev/null"
 
-        run_cmd "pushd ga_chemfit > /dev/null"
-        git_checkout "${CHEMFIT_GIT_TAG}"
+    # Create local settings files
+    run_cmd "mkdir -p ./settings/local"
+    run_cmd "echo \"settings = dict(grid_filename=None)\"> ./settings/local/gridfit.py"
+    
+    run_cmd "mkdir -p ./settings/local"
+    run_cmd "echo \"settings = dict(scratch=None)\"> ./settings/local/localfit.py"
 
-        run_cmd "popd > /dev/null"
-        log_info "Finished installing chemfit."
-    elif [[ -d "ga_chemfit" && $GAPIPE_UPGRADE -eq 1 ]]; then
-        log_info "chemfit repository already exists, but --upgrade option is set. Proceeding with upgrade."
-
-        run_cmd "pushd ga_chemfit > /dev/null"
-        git_checkout_or_update "${CHEMFIT_GIT_TAG}"
-
-        run_cmd "popd > /dev/null"
-        log_info "Finished upgrading gapipe."
-    else
-        log_info "ga_chemfit repository already exists. Skipped cloning."
-    fi
+    run_cmd "popd > /dev/null"
 }
 
 function install_gapipe_conda() {
@@ -1050,10 +1044,12 @@ export PFSSPEC_DATA="${GAPIPE_ROOT}/data/pfsspec"
 # * <rel_path_to_module> is the relative path to the module from the root of the source code,
 #   i.e. the path to be added to PYTHONPATH, typically 'python' or 'src/python'
 # Specify multiple modules separated by new lines.
-export GAPIPE_MODULES="datamodel:$GAPIPE_ROOT/src/datamodel:python
-ga_common:$GAPIPE_ROOT/src/ga_common:python
-ga_pfsspec:$GAPIPE_ROOT/src/ga_pfsspec:python
-gapipe:$GAPIPE_ROOT/src/ga_pipeline:python
+export GAPIPE_MODULES="datamodel:${GAPIPE_ROOT}/src/datamodel:python
+ga_common:${GAPIPE_ROOT}/src/ga_common:python
+ga_pfsspec:${GAPIPE_ROOT}/src/ga_pfsspec:python
+ga_chemfit:${GAPIPE_ROOT}/src/ga_chemfit:python
+BasicATLAS:${GAPIPE_ROOT}/src/BasicATLAS:.
+gapipe:${GAPIPE_ROOT}/src/ga_pipeline:python
 gapipe-test:${GAPIPE_ROOT}/src/ga_pipeline:tests"
 
 # Define the debug port for remote debugging with vscode.
@@ -1285,9 +1281,9 @@ if [[ "$GAPIPE_PACKAGE" == "SOURCE" ]]; then
     # Clone and configure the repositories
     install_module_source "datamodel" "${DATAMODEL_GITHUB}" "${DATAMODEL_GIT_TAG}"
     install_module_source "ga_common" "${GACOMMON_GITHUB}" "${GACOMMON_GIT_TAG}"
-    install_module_source "ga_chemfit" "${CHEMFIT_GITHUB}" "${CHEMFIT_GIT_TAG}"
-
+    
     install_basicatlas_source
+    install_chemfit_source
     install_pfsspec_source
     install_gapipe_source
 
