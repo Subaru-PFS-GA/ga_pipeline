@@ -135,10 +135,11 @@ class CatalogScript(PipelineScript, Progress):
                         assignments = pd.concat([assignments, df])
 
         # Remove all duplicate rows
-        assignments = assignments.drop_duplicates(
-            # subset=['__target_idx', 'stage', 'pointing_idx', 'visit_idx'],
-            subset=['obcode'],
-            keep='last')
+        if assignments is not None:
+            assignments = assignments.drop_duplicates(
+                # subset=['__target_idx', 'stage', 'pointing_idx', 'visit_idx'],
+                subset=['obcode'],
+                keep='last')
 
         return assignments
 
