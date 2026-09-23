@@ -44,7 +44,6 @@ if [[ -n "${EUPS_PATH}" ]]; then
     export EUPS_PKGROOT="https://hscpfs.mtk.nao.ac.jp/pfs-drp-2d/Linux64|$(cat $EUPS_PATH/pkgroot)"
 
     eups_setup_safe cp_pipe
-    eups_setup_safe afw
     eups_setup_safe pfs_pipe2d
     
     # TODO: Because the GA datamodel is not part of the EUPS package yet,
@@ -54,6 +53,7 @@ if [[ -n "${EUPS_PATH}" ]]; then
     # These are necessary to run Butler after datamodel is unsetup'd
     eups_setup_safe sphgeom
     eups_setup_safe utils
+    eups_setup_safe afw
 
     # EUPS resets the pythonpath so in order to keep anything that was previously
     # set, we need to look at CONDA_EUPS_BACKUP_PYTHONPATH and construct a new
