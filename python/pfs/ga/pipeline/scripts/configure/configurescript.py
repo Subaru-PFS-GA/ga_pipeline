@@ -306,7 +306,11 @@ class ConfigureScript(PipelineScript, Progress):
                             
                     m[i] |= all_found
 
-                break
+                if any_found:
+                    break
+                else:
+                    # Try next repo
+                    continue
 
             if not found:
                 raise RuntimeError(f'Required product type `{product_name}` not found in any of the repositories.')
