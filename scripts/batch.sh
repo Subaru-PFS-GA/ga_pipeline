@@ -61,18 +61,22 @@
 SKIP_BEFORE=
 SKIP_AFTER=
 
+# Skip submitting jobs that are already done
+# This checks the existence of the output files pfsStar
+SKIP_DONE=1
+
 # Run in slurm, only applies to the gapipe-run command, only used with the "submit" verb
-BATCH_PARTITION="cpu"
+BATCH_PARTITION="med"
 # BATCH_PARTITION="v100"
 BATCH_PARAMS="--batch slurm --partition ${BATCH_PARTITION} --cpus 4 --mem 12G"
 BATCH_ARRAY_PARAMS="--array 0-1023"
 
 # This is the input product to the pipeline
 # TODO: move this to the config files, use pfsCalibrated as default
-# DATA_PRODUCT="pfsCalibrated"
+DATA_PRODUCT="pfsCalibrated"
 # DATA_PRODUCT="pfsMerged"
 # DATA_PRODUCT="pfsArm"
-DATA_PRODUCT="detectorMap"
+# DATA_PRODUCT="detectorMap"
 
 ### End of user config section
 
@@ -330,7 +334,9 @@ EOF
 function run_submit() {
     i=$i
 
-    file_list="run/${GARUN[$i]}_${CATID[$i]}_GAPipelineConfig.txt"
+    config_file_list="run/${GARUN[$i]}_${CATID[$i]}_GAPipelineConfig.txt"
+    filtered_file_list="run/${GARUN[$i]}_${CATID[$i]}_GAPipelineConfig_filtered.txt"
+    output_file_list="run/${GARUN[$i]}_${CATID[$i]}_PfsStar.txt"
     sbatch_script="run/run_${GARUN[$i]}_${CATID[$i]}.sh"
 
     # Look up the pipeline config yaml files and submit them as an array of batch jobs
@@ -346,14 +352,65 @@ gapipe-repo find-product GAPipelineConfig \
     --catid ${UNIQUE_CATIDS} \
     --objid ${OBJID[$i]} \
     --format path \
-    > "${file_list}"
+    > "${config_file_list}"
 EOF
     )
     run_cmd "$cmd"
 
-    echo "Pipeline config file list generated: ${file_list}"
+    echo "Pipeline config file list generated: ${config_file_list}"
 
-    # Generate the sbatch script for downloading the pfsCalibrated files in parallel
+    if [[ $SKIP_DONE -eq 1 ]]; then
+        echo "Skipping jobs that are already done"
+
+        # Look up the output files to see which jobs have already been completed
+        cmd=$(cat <<EOF
+gapipe-repo find-product PfsStar \
+    --yes ${EXTRAPARAMS} \
+    --configrundir "${CONFIGRUNDIR}" \
+    --configrun "${CONFIGRUN}" \
+    --run "${RUN[$i]}" \
+    --rundir "${RUNDIR[$i]}" \
+    --garun "${GARUN[$i]}" \
+    --garundir "${GARUNDIR[$i]}" \
+    --catid ${UNIQUE_CATIDS} \
+    --objid ${OBJID[$i]} \
+    --format path \
+    > "${output_file_list}"
+EOF
+        )
+        run_cmd "$cmd"
+
+        echo "Output file list generated: ${output_file_list}"
+
+        # Generate the difference of the pipeline config file list and the output file list
+
+        if [[ -s "${output_file_list}" ]]; then
+            awk '
+function stem(path, f) {
+f=path
+sub(/^.*\//, "", f)
+sub(/\.[^.]+$/, "", f)
+return f
+}
+
+FNR==NR { exclude[stem($0)]; next }
+!(stem($0) in exclude)
+' "${output_file_list}" "${config_file_list}" > "${filtered_file_list}"
+            
+            echo "Filtered pipeline config file list generated: ${filtered_file_list}"
+            config_file_list="${filtered_file_list}"
+        fi
+    fi
+
+    # Generate the sbatch script for processing the pipeline config files in parallel
+
+    config_file_count=$(wc -l < "${config_file_list}")
+    if [[ $config_file_count -eq 0 ]]; then
+        echo "No pipeline config files to process, skipping."
+        return
+    else
+        echo "Total pipeline config files to process: $config_file_count"
+    fi
 
     cat > "${sbatch_script}" <<EOF
 #!/bin/bash
@@ -368,7 +425,7 @@ EOF
 
 set -e
 
-FILELIST="${file_list}"
+FILELIST="${config_file_list}"
 TASK_ID="\$SLURM_ARRAY_TASK_ID"
 NUM_TASKS="\$SLURM_ARRAY_TASK_COUNT"
 
