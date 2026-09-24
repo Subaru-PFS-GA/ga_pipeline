@@ -8,18 +8,18 @@
 #
 # Example:
 #
-#   ./scripts/batch.sh download S25A_April2026 dSph_dra_2025-03 --config b_mr
-#   ./scripts/batch.sh extract S25A_April2026 dSph_dra_2025-03 --config b_mr
-#   ./scripts/batch.sh configure S25A_April2026 dSph_dra_2025-03 --config b_mr
-#   ./scripts/batch.sh submit S25A_April2026 dSph_dra_2025-03 --config b_mr
-#   ./scripts/batch.sh catalog S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh download S25A-OT02 S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh extract S25A-OT02 S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh configure S25A-OT02 S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh submit S25A-OT02 S25A_April2026 dSph_dra_2025-03 --config b_mr
+#   ./scripts/batch.sh catalog S25A-OT02 S25A_April2026 dSph_dra_2025-03 --config b_mr
 #
-#   This command will load the common config from
-#       ./configs/gapipe/S25A_April2026/common.sh,
+#   This command will SOURCE the common config from
+#       ./configs/gapipe/S25A-OT02/S25A_April2026/common.sh,
 #   then load the field-specific config from
-#       ./configs/gapipe/S25A_April2026/garuns/dSph_dra_2025-03.sh
+#       ./configs/gapipe/S25A-OT02/S25A_April2026/garuns/dSph_dra_2025-03.sh
 #   and then run the gapipe-configure command with the configuration template
-#       ./configs/gapipe/S25A_April2026/b_mr.py
+#       ./configs/gapipe/S25A-OT02/S25A_April2026/b_mr.py
 #
 # Arguments:
 #
@@ -30,12 +30,14 @@
 #       * run: Run the pipeline for the GAPIPE run
 #       * submit: Submit the pipeline run to the batch system (if configured)
 #       * catalog: Generate the catalog for the GAPIPE run
+#   <PARAM_PROPOSAL>: The name of the PFS program to process the data from. This should match the
+#       directory name in ./configs/gapipe/<PARAM_PROPOSAL>/<PARAM_RUN>/common.sh
 #   <PARAM_RUN>: The name of the PIPE2D run to process the data from. This should
-#       match the directory name in ./configs/gapipe/<PARAM_RUN>/common.sh
+#       match the directory name in ./configs/gapipe/<PARAM_PROPOSAL>/<PARAM_RUN>/common.sh
 #   <PARAM_GARUN>: The name of the GAPIPE run to create. This should match the
-#       file name in ./configs/gapipe/<PARAM_RUN>/garuns/<PARAM_GARUN>.sh
+#       file name in ./configs/gapipe/<PARAM_PROPOSAL>/<PARAM_RUN>/garuns/<PARAM_GARUN>.sh
 #   <PARAM_CONFIG>: The configuration templates to use for the gapipe-configure command.
-#       This should match the file name in ./configs/gapipe/<PARAM_CONFIG>.py
+#       This should match the file name in ./configs/gapipe/<PARAM_PROPOSAL>/<PARAM_RUN>/<PARAM_CONFIG>.py
 #       Not used with the "extract" verb.
 
 ### Developer notes:
@@ -62,17 +64,17 @@ SKIP_BEFORE=
 SKIP_AFTER=
 
 # Run in slurm, only applies to the gapipe-run command, only used with the "submit" verb
-BATCH_PARTITION="cpu"
-# BATCH_PARTITION="v100"
+# BATCH_PARTITION="cpu"
+BATCH_PARTITION="v100"
 BATCH_PARAMS="--batch slurm --partition ${BATCH_PARTITION} --cpus 4 --mem 12G"
 BATCH_ARRAY_PARAMS="--array 0-1023"
 
 # This is the input product to the pipeline
 # TODO: move this to the config files, use pfsCalibrated as default
-# DATA_PRODUCT="pfsCalibrated"
+DATA_PRODUCT="pfsCalibrated"
 # DATA_PRODUCT="pfsMerged"
 # DATA_PRODUCT="pfsArm"
-DATA_PRODUCT="detectorMap"
+# DATA_PRODUCT="detectorMap"
 
 ### End of user config section
 
@@ -104,9 +106,9 @@ function unique_array() {
 
 function get_config_files() {
     i=$1
-    local config_files="./configs/gapipe/${RUN[$i]}/common.py"
+    local config_files="./configs/gapipe/${PROPOSAL[$i]}/${RUN[$i]}/common.py"
     for config in "${PARAM_CONFIG[@]}"; do
-        config_files="${config_files} ./configs/gapipe/${RUN[$i]}/${config}.py"
+        config_files="${config_files} ./configs/gapipe/${PROPOSAL[$i]}/${RUN[$i]}/${config}.py"
     done
     echo "$config_files"
 }
@@ -129,13 +131,13 @@ function run_cmd() {
 function load_script_config() {
     # Load main config file
     echo "Loading configuration for run $PARAM_RUN."
-    source ./configs/gapipe/$PARAM_RUN/common.sh
+    source ./configs/gapipe/${PARAM_PROPOSAL}/${PARAM_RUN}/common.sh
 }
 
 function load_gapipe_config() {
     # Load the GAPIPE config file
     echo "Loading configuration for ${PARAM_GARUN}."
-    source ./configs/gapipe/${PARAM_RUN}/garuns/$PARAM_GARUN.sh
+    source ./configs/gapipe/${PARAM_PROPOSAL}/${PARAM_RUN}/garuns/${PARAM_GARUN}.sh
 
     echo "Number of configuration entries: ${#GARUN[@]}"
 }
@@ -271,6 +273,7 @@ done < "\${FILELIST}"
 EOF
 
     echo "run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.sh" " has been generated."
+    echo "run it as `sbatch --array=0-7 run/${GARUN[$i]}_${CATID[$i]}_${DATA_PRODUCT}.sh`"
 
     # Submit the batch job array for downloading the $DATA_PRODUCT files
 
@@ -560,6 +563,7 @@ set -e
 # Process command line arguments
 
 PARAM_VERB="$1" && shift
+PARAM_PROPOSAL="$1" && shift
 PARAM_RUN="$1" && shift
 PARAM_GARUN="$1" && shift
 PARAM_CONFIG=()
@@ -586,13 +590,16 @@ done
 
 # Set variables that are used in the config files based on the command line arguments
 
+GAPIPE_PROPOSAL="${PARAM_PROPOSAL}"
 GAPIPE_RUN="${PARAM_RUN}"
 GAPIPE_CONFIG="${PARAM_CONFIG[0]}"
 
 echo "PARAM_VERB=${PARAM_VERB}"
+echo "PARAM_PROPOSAL=${PARAM_PROPOSAL}"
 echo "PARAM_RUN=${PARAM_RUN}"
 echo "PARAM_GARUN=${PARAM_GARUN}"
 echo "PARAM_CONFIG=${PARAM_CONFIG[@]}"
+echo "GAPIPE_PROPOSAL=${GAPIPE_PROPOSAL}"
 echo "GAPIPE_RUN=${GAPIPE_RUN}"
 echo "GAPIPE_CONFIG=${GAPIPE_CONFIG}"
 
