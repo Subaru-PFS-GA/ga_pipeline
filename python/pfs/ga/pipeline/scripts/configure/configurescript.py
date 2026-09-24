@@ -407,7 +407,7 @@ class ConfigureScript(PipelineScript, Progress):
         # and if so, try to match them to the filters available in pfsConfig
         if pipeline_config.tempfit.photometry is not None:
             for filter_index, filter_name in enumerate(pfs_config.filterNames[idx]):
-                if filter_name is not None and filter_name != 'none':
+                if filter_name is not None and filter_name != 'none' and filter_name != 'nan':
                     # Try to match the filter name to something in the configuration
                     filter_found = False
                     for fn, mag in pipeline_config.tempfit.photometry.items():
@@ -437,12 +437,15 @@ class ConfigureScript(PipelineScript, Progress):
                             (pfs_config.totalFlux[idx][filter_index], pfs_config.totalFluxErr[idx][filter_index]),
                         ]:
                             
-                            if flux is not None and flux_error is not None and \
-                                np.isfinite(flux) and np.isfinite(flux_error):
-
+                            if flux is not None and np.isfinite(flux):
                                 flux_found = True
                                 mag.flux = flux
-                                mag.flux_error = flux_error
+
+                                if flux_error is not None and np.isfinite(flux_error):
+                                    mag.flux_error = flux_error
+                                else:
+                                    logger.warning(f'Flux error for filter {filter_name} is missing or NaN, setting it to sqrt(flux).')
+                                    mag.flux_error = np.sqrt(flux)
 
                                 # TODO: calculate magnitudes?
                                 break

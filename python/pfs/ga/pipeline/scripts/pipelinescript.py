@@ -553,7 +553,7 @@ class PipelineScript(Script):
                 if flux_found:
                     break
 
-            if flux_found and flux is not None and  np.isfinite(flux):
+            if flux_found and flux is not None and np.isfinite(flux):
 
                 if flux_err is None or np.isnan(flux_err):
                     logger.warning(f'Flux error for filter {filter} is missing or NaN, setting it to sqrt(flux).')
