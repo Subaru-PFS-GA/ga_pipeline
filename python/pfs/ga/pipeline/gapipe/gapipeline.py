@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from pfs.ga.pfsspec.survey.pfs.datamodel import *
 
+from pfs.ga.common.util.astro import *
 from pfs.ga.common.scripts import Script
 from pfs.ga.pfsspec.survey.repo import Repo, FileSystemRepo
 from pfs.ga.pfsspec.survey.pfs import PfsStellarSpectrum
@@ -947,3 +948,109 @@ class GAPipeline(Pipeline):
 
         if count > 0:
             logger.info(f'Calculated SNR for {count} spectra with mean SNR={mean_snr/count:.2f}.')
+
+    #region Wavelength conversion utilities
+
+    def normalize_wave_intervals(self, intervals, frame='both', rv=None):
+        """
+        Extract wavelength intervals used for masking spectra. Wavelengths are
+        returned in observed frame, so rest wavelengths are converted to observed
+        frame using the provided Doppler shift.
+                
+        Parameters
+        ----------
+        intervals : None, list of lists, or dict
+            - None: return None
+            - list of lists: return as-is (treated as observed-frame)
+            - dict with 'obs' and/or 'rest' keys: extract based on frame parameter
+        frame : str, optional
+            Which intervals to extract:
+            - 'obs': observed-frame intervals only
+            - 'rest': rest-frame intervals only
+            - 'both': merge obs and rest intervals (default)
+        rv : float, optional
+            Radial velocity (in km/s) to apply when converting rest-frame intervals to
+            observed frame. Only used if frame='rest' or frame='both' and rest intervals
+            are present.
+        
+        Returns
+        -------
+        None or list of lists
+            Intervals in requested frame(s), or None if none available
+        """
+        if intervals is None:
+            return None
+        
+        if isinstance(intervals, dict):
+            if frame == 'obs':
+                return intervals.get('obs', None)
+            elif frame == 'rest':
+                return self.__convert_wave_intervals_to_obs_frame(intervals.get('rest', None), rv)
+            elif frame == 'both':
+                obs = intervals.get('obs', None)
+                rest = self.__convert_wave_intervals_to_obs_frame(intervals.get('rest', None), rv)
+                return self.__merge_wave_intervals(obs, rest)
+            else:
+                raise ValueError(f"frame must be 'obs', 'rest', or 'both', got '{frame}'")
+        else:
+            # list of lists is treated as observed-frame
+            if frame == 'obs':
+                return intervals
+            elif frame == 'rest':
+                return None
+            elif frame == 'both':
+                return intervals
+            else:
+                raise ValueError(f"frame must be 'obs', 'rest', or 'both', got '{frame}'")
+
+    def __convert_wave_intervals_to_obs_frame(self, intervals, rv):
+        """
+        Convert rest-frame wavelength intervals to observed frame.
+                
+        Parameters
+        ----------
+        intervals : None, list of lists
+            Wavelength intervals in the rest frame.
+        rv : float
+            Radial velocity in km/s (positive for recession)
+        
+        Returns
+        -------
+        None or list of lists
+            Converted intervals in observed frame, or None if no rest-frame intervals exist
+        """
+        if intervals is None:
+            return None
+        else:
+            # Doppler shift formula: lambda_obs = lambda_rest * (1 + v/c)
+            # where v > 0 means recession
+            z = rv_to_z(rv)
+            
+            rest_intervals = []
+            for wmin, wmax in intervals:
+                rest_intervals.append([wmin * (1.0 + z), wmax * (1.0 + z)])
+            
+            return rest_intervals
+
+    def __merge_wave_intervals(self, *interval_lists):
+        """
+        Merge arbitrary number of interval lists.
+        
+        Parameters
+        ----------
+        *interval_lists : None or list of lists
+            Arbitrary number of interval lists (None values are ignored)
+        
+        Returns
+        -------
+        None or list of lists
+            Merged intervals, or None if all are None
+        """
+        merged = []
+        for intervals in interval_lists:
+            if intervals is not None:
+                merged.extend(intervals)
+        
+        return merged if merged else None
+
+    #endregion

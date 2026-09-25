@@ -120,8 +120,9 @@ class TempFitStep(PipelineStep):
         Initialize the RV fit object.
         """
 
-        # NOTE: we do not specify a mask bit here, as the mask is already applied when
-        #       collecting the spectra.
+        # NOTE: we do not specify a mask bit here, as the observation mask is
+        # already applied when collecting the spectra. The extra masks from the
+        # config will be applied later as needed.
 
         # Initialize the trace that will be used for logging and plotting
         if context.trace is not None:
@@ -157,9 +158,6 @@ class TempFitStep(PipelineStep):
 
         tempfit.synthmag_filters = context.state.tempfit_synthmag_filters
         tempfit.synthmag_grids = context.state.tempfit_synthmag_grids
-
-        tempfit.wave_include = context.config.tempfit.wave_include
-        tempfit.wave_exclude = context.config.tempfit.wave_exclude
 
         # Initialize the components from the configuration
         tempfit.init_from_args(None, None, context.config.tempfit.tempfit_args)
@@ -479,7 +477,19 @@ class TempFitStep(PipelineStep):
 
     def guess(self, context):
         # Guess initial parameter in two steps. First guess initial RV by cross-correlating
-        # with a fixed template, then, if broadband fluxes are available, guess T_eff
+        # with a fixed template using obs-frame only, then, if broadband fluxes are available, guess T_eff
+        
+        # Guess RV using the full mask in observed frame, ie. RV = 0
+        context.state.tempfit.wave_include = context.pipeline.normalize_wave_intervals(
+            context.config.tempfit.wave_include,
+            frame = 'both',
+            rv = 0.0
+        )
+        context.state.tempfit.wave_exclude = context.pipeline.normalize_wave_intervals(
+            context.config.tempfit.wave_exclude,
+            frame = 'both',
+            rv = 0.0
+        )
 
         # Generate the initial state for the fitting and guess the unknown parameters
         context.state.tempfit_state = context.state.tempfit.init_state(
@@ -520,6 +530,8 @@ class TempFitStep(PipelineStep):
                 rv_max = min(rv_max, context.state.tempfit_state.rv_bounds[1])
             context.state.tempfit_state.rv_bounds = (rv_min, rv_max)
 
+            self.__update_wave_mask(context, context.state.tempfit_state.rv_guess)
+
     def __guess_T_eff(self, context):
         # Guess T_eff using the broadband fluxes.
 
@@ -544,6 +556,20 @@ class TempFitStep(PipelineStep):
             # # Do not go too low in temperature
             # # TODO: check if this works well for M dwarfs
             # context.state.tempfit_state.params_0['T_eff'] = min(4250, T_eff_guess)
+
+    def __update_wave_mask(self, context, rv):
+        # Update the masks to match the best guess RV
+        # TODO: is it good enough to fit RV? Maybe update again before polishing
+        context.state.tempfit.wave_include = context.pipeline.normalize_wave_intervals(
+            context.config.tempfit.wave_include,
+            frame = 'both',
+            rv = rv
+        )
+        context.state.tempfit.wave_exclude = context.pipeline.normalize_wave_intervals(
+            context.config.tempfit.wave_exclude,
+            frame = 'both',
+            rv = rv
+        )
     
     def run(self, context):
         # TODO: add parameters to config to control the fitting procedure
@@ -554,16 +580,26 @@ class TempFitStep(PipelineStep):
             context.state.tempfit_state,
             method='Nelder-Mead')
 
-        # Run the maximum likelihood fitting with the gradient method
         context.state.tempfit_state.rv_0 = context.state.tempfit_results.rv_fit
         context.state.tempfit_state.params_0 = context.state.tempfit_results.params_fit
+        self.__update_wave_mask(context, context.state.tempfit_results.rv_fit)
+
+        # Refine the maximum likelihood fitting with the gradient method
         context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.run_ml(
             context.state.tempfit_state,
             method='gradient')
+
+        context.state.tempfit_state.rv_0 = context.state.tempfit_results.rv_fit
+        context.state.tempfit_state.params_0 = context.state.tempfit_results.params_fit
+        self.__update_wave_mask(context, context.state.tempfit_results.rv_fit)
         
         # Polish the result with further optimizing as a function of RV only
         context.state.tempfit_results, context.state.tempfit_state = context.state.tempfit.polish_rv_ml(
             context.state.tempfit_state)
+
+        context.state.tempfit_state.rv_0 = context.state.tempfit_results.rv_fit
+        context.state.tempfit_state.params_0 = context.state.tempfit_results.params_fit
+        self.__update_wave_mask(context, context.state.tempfit_results.rv_fit)
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
@@ -585,6 +621,9 @@ class TempFitStep(PipelineStep):
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
     def finish(self, context):
+
+        self.__update_wave_mask(context, context.state.tempfit_results.rv_fit)
+
         context.state.tempfit_results, context.state.tempfit_state = \
             context.state.tempfit.finish_ml(context.state.tempfit_state)
 

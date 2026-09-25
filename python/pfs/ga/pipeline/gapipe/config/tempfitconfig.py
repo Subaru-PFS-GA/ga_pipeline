@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Union, Optional
 
 from pfs.ga.common.config import Config
 from pfs.ga.pipeline.gapipe.config.vcorrconfig import VCorrConfig
@@ -119,9 +119,14 @@ class TempFitConfig(Config):
         self.correction_model = None
         self.correction_model_args = {}
 
-        # TODO: add different masks for rest-frame and observed-frame fitting
-        self.wave_include = None
-        self.wave_exclude = None
+        # Wavelength inclusion/exclusion for fitting
+        # wave_include and wave_exclude support flexible specifications for rest-frame and observed-frame fitting:
+        #   - None: Use all wavelengths (default)
+        #   - List of lists: [[wmin, wmax], ...] - Single set of wavelength ranges (applied to observed frame)
+        #   - Dict with 'rest' and 'obs' keys: {'rest': [[wmin, wmax], ...], 'obs': [[wmin, wmax], ...]}
+        #     Rest-frame wavelengths will be converted to observed-frame based on radial velocity
+        self.wave_include: Optional[Union[List[List[float]], Dict[str, List[List[float]]]]] = None
+        self.wave_exclude: Optional[Union[List[List[float]], Dict[str, List[List[float]]]]] = None
 
         # Velocity correction configuration
         self.vcorr = vcorr

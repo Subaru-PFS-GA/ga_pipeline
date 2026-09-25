@@ -99,10 +99,8 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
             params_fixed = context.state.tempfit_state.params_fixed,
             fluxes = context.state.tempfit_fluxes)
 
-        # Copy best fit parameters from likelihood stacking results        
-        tempfit_state.rv_fit = context.state.tempfit_results.rv_fit
-        tempfit_state.params_fit = context.state.tempfit_results.params_fit.copy()
-        tempfit_state.a_fit = context.state.tempfit_results.a_fit
+        # Copy best fit parameters from likelihood stacking results
+        tempfit_state.copy_from_results(context.state.tempfit_results)
 
         # Initialize the correction models and extinction curves to match
         # the wavelength grid of the coadded spectra
