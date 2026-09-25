@@ -82,6 +82,19 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
 
         return PipelineStepResults(success=True, skip_remaining=False, skip_substeps=False)
 
+    def __update_wave_mask(self, context, rv):
+        # Update the masks to match the best guess RV
+        context.state.tempfit.wave_include = context.pipeline.normalize_wave_intervals(
+            context.config.tempfit.wave_include,
+            frame = 'both',
+            rv = rv
+        )
+        context.state.tempfit.wave_exclude = context.pipeline.normalize_wave_intervals(
+            context.config.tempfit.wave_exclude,
+            frame = 'both',
+            rv = rv
+        )
+
     def __calculate_jacobian(self, context):
 
         """
@@ -91,6 +104,7 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
         # TODO: this is very similar to what's happening in CoaddStep.__fit_coadd_spectra
 
         tempfit = context.state.tempfit
+        self.__update_wave_mask(context, context.state.tempfit_results.rv_fit)
         tempfit.reset()
 
         tempfit_state = tempfit.init_state(
@@ -146,13 +160,10 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
             # simple bitmask, so we will simply set the flux to NaN for the masked
             # pixels but pass in all wavelength values, otherwise it would be difficult
             # to retreive the final model from ChemFit.localfit.
-            mask_bits = s.get_mask_bits(context.config.chemfit.mask_flags)
-            mask = s.mask_as_bool(bits=mask_bits)
-            mask = mask if mask is not None else np.full_like(s.wave, True, dtype=bool)
-
-            # TODO: apply the chemfit mask in extra, otherwise the
-            #       shape of the Jacobian will be different
-            # context.config.chemfit.settings['masks']['rest'] + context.config.chemfit.settings['masks']['lab'],
+            
+            # NOTE: we must use the same mask as for tempfit, otherwise
+            #       the jacobians will have different shapes and localfit will fail
+            mask = context.state.tempfit.get_full_mask(s)
 
             # Correct for extinction
             ebv = context.state.coadd_tempfit_results.params_fit.get('ebv', None)

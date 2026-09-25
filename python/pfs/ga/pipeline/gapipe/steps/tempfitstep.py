@@ -559,7 +559,6 @@ class TempFitStep(PipelineStep):
 
     def __update_wave_mask(self, context, rv):
         # Update the masks to match the best guess RV
-        # TODO: is it good enough to fit RV? Maybe update again before polishing
         context.state.tempfit.wave_include = context.pipeline.normalize_wave_intervals(
             context.config.tempfit.wave_include,
             frame = 'both',
