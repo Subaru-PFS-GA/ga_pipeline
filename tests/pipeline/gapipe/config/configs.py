@@ -1,5 +1,5 @@
 TEST_CONFIG_RUN21_JUNE2025_10092 = dict(
-    rerundir = 'rerun/run17',
+    rundir = 'rerun/run17',
     target = dict(
         identity = dict(
             catId = 10092,

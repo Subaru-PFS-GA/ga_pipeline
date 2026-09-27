@@ -100,3 +100,25 @@ class TestGAPipeline(TestCase):
         pipeline._Pipeline__stop_tracing()
 
         self.assertEqual(2, len(pipeline.product_cache[PfsSingle]))
+
+
+    def test_normalize_wave_interval(self):
+        config = self.get_test_config()
+        input_repo, work_repo = self.get_test_repo(config)
+        pipeline = self.create_test_pipeline(config, input_repo, work_repo)
+
+        intervals = {
+            'obs': [[4000, 5000], [6000, 7000]],
+            'rest': [[3500, 4500], [5500, 6500]]
+        }
+        rv = 300  # km/s
+
+        obs_intervals = pipeline.normalize_wave_intervals(intervals, frame='obs', rv=rv)
+        self.assertEqual(obs_intervals, intervals['obs'])
+        self.assertEqual(len(obs_intervals), 2)
+
+        rest_intervals = pipeline.normalize_wave_intervals(intervals, frame='rest', rv=rv)
+        self.assertEqual(len(rest_intervals), 2)
+
+        both_intervals = pipeline.normalize_wave_intervals(intervals, frame='both', rv=rv)
+        self.assertEqual(len(both_intervals), 4)

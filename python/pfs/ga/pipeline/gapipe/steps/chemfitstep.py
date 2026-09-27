@@ -124,18 +124,30 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
         # Calculate the Jacobian needed for the final covariance matrix in ChemFit
         tempfit_results, tempfit_state = tempfit.calculate_jac_ml(
             tempfit_state,
-            normalize_continuum = context.config.chemfit.normalize_continuum
+            normalize_continuum = context.config.chemfit.normalize_continuum,
         )
 
         # Chemfit's localfit expects the Jacobian in teff, logg and carbon only
-        # Keep only the relevant rows of the Jacobian
-        jac = tempfit_results.jac
+        # Combine the arms to a single matrix and keep only the relevant rows of
+        # the Jacobian. Also apply the mask that will be used with chemfit so the
+        # number of wavelength bins will match.
+        jac = []
+        for arm in context.state.chemfit_arms:
+            # TODO: we need the very same mask that chemfit uses
+            spec = context.state.coadd_results.coadd_spectra[arm][0]
+            mask = context.state.tempfit.get_full_mask(spec)
+            jac.append(tempfit_results.jac[arm][0][mask, :])
+
+        jac = np.concatenate(jac)
+
         jac_params = []
         if jac is not None:
             keep = []
             for i, p in enumerate(tempfit_results.jac_params):
+                # Include only params that chemfit can handle and
+                # for which the jacobian is correct
                 cp = self.TEMPFIT_PARAM_MAP.get(p, None)
-                if cp in self.ALLOWED_GRIDFIT_PARAMS:
+                if cp in self.ALLOWED_GRIDFIT_PARAMS and np.all(np.isfinite(jac[:, i])):
                     jac_params.append(cp)
                     keep.append(i)
 
