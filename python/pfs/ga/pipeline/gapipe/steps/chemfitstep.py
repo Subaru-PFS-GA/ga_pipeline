@@ -84,22 +84,50 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
 
     def __update_wave_mask(self, context, rv):
         # Update the masks to match the best guess RV
-        context.state.tempfit.wave_include = context.pipeline.normalize_wave_intervals(
-            context.config.tempfit.wave_include,
-            frame = 'both',
-            rv = rv
-        )
+
+        # Use the chemfit mask.
+        # TODO: the chemfit mask is defined in air
+        if 'masks' in context.config.chemfit.settings and \
+            context.config.chemfit.settings['masks'] is not None:
+
+            wave_exclude = {
+                'rest': context.config.chemfit.settings['masks'].get('rest', []),
+                'obs': context.config.chemfit.settings['masks'].get('lab', [])
+            }
+        else:
+            wave_exclude = None
+
+        # context.state.tempfit.wave_include = context.pipeline.normalize_wave_intervals(
+        #     context.config.tempfit.wave_include,
+        #     frame = 'both',
+        #     rv = rv
+        # )
+
         context.state.tempfit.wave_exclude = context.pipeline.normalize_wave_intervals(
-            context.config.tempfit.wave_exclude,
+            wave_exclude,
             frame = 'both',
             rv = rv
         )
+
+        pass
 
     def __calculate_jacobian(self, context):
 
         """
         Calculate the Jacobian of the flux with respect to the atmospheric parameters using TempFit.
         """
+
+        # First we reset the tempfit object because the mask is different from what's used
+        # before. Then we reinitialize the flux correction model and the extinction curves
+        # and re-evaluate the best-fit model. The Jacobian is then calculate as the numeric
+        # derivative of the flux with respect to the atmospheric parameters.
+
+        # Tempfit returns the Jacobian for each arm and each exposure separately, but since
+        # we work with the coadded spectra, we will have one "exposure" per arm.
+        # Then we combine the Jacobians from all arms to form a single matrix. This is the
+        # step when the chemfit mask is applied to make sure that the shape of the Jacobian
+        # from tempfit matches the shape of the Jacobian chemfit computes with respect to
+        # the abundances.
 
         # TODO: this is very similar to what's happening in CoaddStep.__fit_coadd_spectra
 
@@ -431,6 +459,60 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
         return chemfit_results
 
     def run(self, context):
+        # Repeat fitting the coadded spectrum using the original model grid but
+        # this time apply the chemfit mask and keep RV fixed. This is the
+        # substitute of chemfit.gridfit
+
+        # TODO: merge this with Jacobian calculation
+
+        # TODO: do we want to use the fluxes in this fit? We keep T_eff fixed anyway
+
+        coadd_spectra = context.state.coadd_results.coadd_spectra
+
+        tempfit = context.state.tempfit
+        self.__update_wave_mask(context, context.state.tempfit_results.rv_fit)
+        tempfit.reset()
+
+        # Keep RV and T_eff fixed, refine the rest of the parameters
+        rv_fixed = True
+        params_0 = context.state.tempfit_results.params_fit.copy()
+        params_fixed = context.state.tempfit_state.params_fixed.copy()
+        for p in ['T_eff', 'ebv']:
+            if p not in params_fixed:
+                value = context.state.tempfit_results.params_fit[p]
+                params_0[p] = value
+                params_fixed[p] = value
+
+        tempfit_state = tempfit.init_state(
+            coadd_spectra,
+            rv_0 = context.state.tempfit_results.rv_fit,
+            rv_fixed = rv_fixed,
+            params_0 = params_0,
+            params_fixed = params_fixed,
+            fluxes = None)
+
+        tempfit_results, tempfit_state = tempfit.run_ml(
+            tempfit_state,
+            method='gradient')
+
+        # TODO: can we use these refined results but switch back to the tempfit
+        #       mask to evaluate the flux correction and calculate the best-fit model
+        #       according to that?
+
+        # TODO: add trace hook
+        #       note that the flux correction model is incorrect here
+        #       because we use the chemfit mask
+        # Append the flux correction model to the coadded spectra
+        coadd_spectra, _ = tempfit.append_corrections_and_templates(
+            tempfit_state,
+            coadd_spectra, None,
+            tempfit_results.rv_fit,
+            tempfit_results.params_fit,
+            a_fit=None,
+            match='template',
+            apply_correction=True,
+        )
+        
         # ChemFit.localfit expects the Jacobian of the flux with respect to the
         # atmospheric parameters. Tempfit does not, by default, provide it becase
         # we calculate the full Hessian instead to estimate the covariances.
@@ -464,7 +546,7 @@ class ChemFitStep(PipelineStep, CoaddStepMixin):
         }
 
         # Override the mask because it is already applied to the spectra
-        localfit.settings['mask'] = []
+        localfit.settings['masks'] = []
         localfit.settings['fit_normalized'] = context.config.chemfit.normalize_continuum
         # localfit.settings['cont_pix']
         # localfit.settings['spline_order']
