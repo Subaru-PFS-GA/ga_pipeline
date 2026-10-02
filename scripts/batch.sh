@@ -55,7 +55,7 @@
 # EXTRAPARAMS="--dry-run --log-level DEBUG"
 # EXTRAPARAMS="--dry-run --debug"
 # EXTRAPARAMS="--debug"
-# EXTRAPARAMS="--log-level DEBUG"
+EXTRAPARAMS="--log-level DEBUG"
 # EXTRAPARAMS="--top 10"
 
 

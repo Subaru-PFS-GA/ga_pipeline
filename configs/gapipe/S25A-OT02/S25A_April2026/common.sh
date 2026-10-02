@@ -1,0 +1,12 @@
+# Data locations
+export GAPIPE_DATADIR="${GAPIPE_DATAROOT}/S25A-OT02/2d"
+export GAPIPE_RUN="S25A_April2026"
+export GAPIPE_RUNDIR="S25A_April2026"
+export GAPIPE_CONFIGRUN="S25A_April2026"
+export GAPIPE_CONFIGRUNDIR="S25A_April2026"
+
+# Pipe2d processing run -- when using butler
+# export GAPIPE_USE_BUTLER=0
+export GAPIPE_USE_BUTLER=1
+export BUTLER_CONFIGDIR="${GAPIPE_DATADIR}"
+export BUTLER_COLLECTIONS="S25A_April2026"
